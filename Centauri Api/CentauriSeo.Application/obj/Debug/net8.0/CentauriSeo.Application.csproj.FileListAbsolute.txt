@@ -1,0 +1,17 @@
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.AssemblyInfoInputs.cache
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.AssemblyInfo.cs
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.csproj.CoreCompileInputs.cache
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Application.deps.json
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Application.dll
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Application.pdb
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Core.dll
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Infrastructure.dll
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Core.pdb
+C:\Digna\Centauri Api\CentauriSeo.Application\bin\Debug\net8.0\CentauriSeo.Infrastructure.pdb
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.csproj.AssemblyReference.cache
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\Centauri.CD105B48.Up2Date
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.dll
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\refint\CentauriSeo.Application.dll
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\CentauriSeo.Application.pdb
+C:\Digna\Centauri Api\CentauriSeo.Application\obj\Debug\net8.0\ref\CentauriSeo.Application.dll

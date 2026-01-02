@@ -1,0 +1,801 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Centauri Api",
+    "version": "1.0"
+  },
+  "paths": {
+    "/api/analyze": {
+      "post": {
+        "tags": [
+          "Analysis"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeoRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeoRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Seo/analyze": {
+      "post": {
+        "tags": [
+          "Seo"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeoRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeoRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeoResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeoResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeoResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/WeatherForecast": {
+      "get": {
+        "tags": [
+          "WeatherForecast"
+        ],
+        "operationId": "GetWeatherForecast",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WeatherForecast"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WeatherForecast"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WeatherForecast"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ArticleInput": {
+        "type": "object",
+        "properties": {
+          "raw": {
+            "type": "string",
+            "nullable": true
+          },
+          "format": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CompositeScore": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContextInput": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": "string",
+            "nullable": true
+          },
+          "citationRules": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Diagnostics": {
+        "type": "object",
+        "properties": {
+          "topIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopIssue"
+            },
+            "nullable": true
+          },
+          "skippedDueToMissingInputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExamplePair": {
+        "type": "object",
+        "properties": {
+          "bad": {
+            "type": "string",
+            "nullable": true
+          },
+          "good": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalScores": {
+        "type": "object",
+        "properties": {
+          "userVisible": {
+            "$ref": "#/components/schemas/UserVisibleFinal"
+          },
+          "internal": {
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalTags": {
+        "type": "object",
+        "properties": {
+          "informativeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "citation": {
+            "type": "string",
+            "nullable": true
+          },
+          "structure": {
+            "type": "string",
+            "nullable": true
+          },
+          "voice": {
+            "type": "string",
+            "nullable": true
+          },
+          "grammar": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InputIntegrity": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "received": {
+            "$ref": "#/components/schemas/ReceivedInputs"
+          },
+          "missingInputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "invalidInputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "defaultsApplied": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "nullable": true
+          },
+          "skippedChecks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "notEvaluatedMetrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level1Output": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/Level1Summary"
+          },
+          "sentenceMapIncluded": {
+            "type": "boolean"
+          },
+          "sentenceMap": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SentenceMapEntry"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level1Summary": {
+        "type": "object",
+        "properties": {
+          "sentenceCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "structureDistribution": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "informativeTypeDistribution": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "citationDistribution": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "grammarDistribution": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level2Output": {
+        "type": "object",
+        "properties": {
+          "originalInfoScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "expertiseScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "credibilityScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "authorityScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "intentScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "sectionScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "keywordScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "simplicityScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "grammarScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "variationScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "plagiarismScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level2Scores": {
+        "type": "object",
+        "properties": {
+          "intentScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "sectionScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "keywordScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "originalInfoScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "expertiseScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "credibilityScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "authorityScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "simplicityScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "grammarScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "variationScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "plagiarismScore": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level3Output": {
+        "type": "object",
+        "properties": {
+          "relevanceScore": {
+            "$ref": "#/components/schemas/CompositeScore"
+          },
+          "eeatScore": {
+            "$ref": "#/components/schemas/CompositeScore"
+          },
+          "readabilityScore": {
+            "$ref": "#/components/schemas/CompositeScore"
+          },
+          "retrievalFactuality": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "synthesisCoherence": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level3Scores": {
+        "type": "object",
+        "properties": {
+          "relevanceScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "eeatScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "readabilityScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "retrievalFactualityScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "synthesisCoherenceScore": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level4Output": {
+        "type": "object",
+        "properties": {
+          "aiIndexingScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          },
+          "seoScore": {
+            "$ref": "#/components/schemas/ScoreEntry"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Level4Scores": {
+        "type": "object",
+        "properties": {
+          "aiIndexingScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "centauriSeoScore": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReceivedInputs": {
+        "type": "object",
+        "properties": {
+          "articlePresent": {
+            "type": "boolean"
+          },
+          "primaryKeywordPresent": {
+            "type": "boolean"
+          },
+          "secondaryKeywordsPresent": {
+            "type": "boolean"
+          },
+          "metaTitlePresent": {
+            "type": "boolean"
+          },
+          "metaDescriptionPresent": {
+            "type": "boolean"
+          },
+          "urlPresent": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Recommendation": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "type": "string",
+            "nullable": true
+          },
+          "whatToChange": {
+            "type": "string",
+            "nullable": true
+          },
+          "examples": {
+            "$ref": "#/components/schemas/ExamplePair"
+          },
+          "improves": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScoreEntry": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SentenceMapEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          },
+          "finalTags": {
+            "$ref": "#/components/schemas/FinalTags"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SeoRequest": {
+        "type": "object",
+        "properties": {
+          "article": {
+            "$ref": "#/components/schemas/ArticleInput"
+          },
+          "primaryKeyword": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryKeywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "metaTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "metaDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "context": {
+            "$ref": "#/components/schemas/ContextInput"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SeoResponse": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "inputIntegrity": {
+            "$ref": "#/components/schemas/InputIntegrity"
+          },
+          "level1": {
+            "$ref": "#/components/schemas/Level1Output"
+          },
+          "level2": {
+            "$ref": "#/components/schemas/Level2Output"
+          },
+          "level3": {
+            "$ref": "#/components/schemas/Level3Output"
+          },
+          "level4": {
+            "$ref": "#/components/schemas/Level4Output"
+          },
+          "finalScores": {
+            "$ref": "#/components/schemas/FinalScores"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/Diagnostics"
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            },
+            "nullable": true
+          },
+          "level2Scores": {
+            "$ref": "#/components/schemas/Level2Scores"
+          },
+          "level3Scores": {
+            "$ref": "#/components/schemas/Level3Scores"
+          },
+          "level4Scores": {
+            "$ref": "#/components/schemas/Level4Scores"
+          },
+          "seoScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "recommendationsLegacy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TopIssue": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "type": "string",
+            "nullable": true
+          },
+          "severity": {
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "impact": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UserVisibleFinal": {
+        "type": "object",
+        "properties": {
+          "seoScore": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "relevanceScore": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "eeatScore": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "readabilityScore": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "aiIndexingScore": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WeatherForecast": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "temperatureC": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "temperatureF": {
+            "type": "integer",
+            "format": "int32",
+            "readOnly": true
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

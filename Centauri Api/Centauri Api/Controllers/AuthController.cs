@@ -264,7 +264,7 @@ public class AuthController : ControllerBase
 
     private string GetCallbackUrl()
     {
-        return "https://localhost:7206/api/v1/auth/callback";
+        return $"http://ec2-13-126-103-12.ap-south-1.compute.amazonaws.com:3000/api/v1/auth/callback";
         //return $"{Request.Scheme}://{Request.Host}/api/v1/auth/callback";
     }
     private async Task<GoogleJsonWebSignature.Payload> ValidateIdToken(string idToken)

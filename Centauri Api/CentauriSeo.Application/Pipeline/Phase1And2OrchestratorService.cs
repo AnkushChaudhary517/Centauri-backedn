@@ -1,13 +1,14 @@
-using System.Text.Json;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.Linq;
+using CentauriSeo.Application.Pipeline;
+using CentauriSeo.Application.Services;
 using CentauriSeo.Core.Models.Input;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
-using CentauriSeo.Application.Services;
-using CentauriSeo.Application.Pipeline;
+using CentauriSeo.Infrastructure.Services;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace CentauriSeo.Application.Pipeline;
 
@@ -16,15 +17,18 @@ public class Phase1And2OrchestratorService
     private readonly GroqClient _groq;
     private readonly GeminiClient _gemini;
     private readonly OpenAiClient _openAi; // used for ChatGPT arbitration
+    private readonly ILlmCacheService _cache;
 
     public Phase1And2OrchestratorService(
         GroqClient groq,
         GeminiClient gemini,
-        OpenAiClient openAi)
+        OpenAiClient openAi,
+        ILlmCacheService cache)
     {
         _groq = groq;
         _gemini = gemini;
         _openAi = openAi;
+        _cache = cache;
     }
 
     // Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
@@ -79,7 +83,16 @@ public class Phase1And2OrchestratorService
                                 "\"SentenceId\" (string),\"\"Confidence\" (double),\"Reason\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
                                 "\"ClaimsCitation\" (boolean).If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType..... never ever ever add any value except from the list. Reason is string not json array. The response choices[0].message.Content is not coming correctly it should be proper json";
 
-                var aiRaw = await _openAi.CompleteAsync(prompt);
+                string aiRaw = string.Empty;
+                var cacheKey = _cache.ComputeRequestKey(prompt, "ChatGptArbitration");
+                var cached = await _cache.GetAsync(cacheKey);
+                if(cached != null)
+                    aiRaw = cached;
+                else
+                {
+                    aiRaw = await _openAi.CompleteAsync(prompt);
+                    await _cache.SaveAsync(cacheKey, aiRaw);
+                }
 
                 try
                 {

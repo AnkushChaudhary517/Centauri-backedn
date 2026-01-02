@@ -1,9 +1,17 @@
-using Microsoft.EntityFrameworkCore;
-using CentauriSeo.Infrastructure.LlmClients;
+using Amazon.DynamoDBv2;
+using Amazon.S3;
+using Centauri_Api.Impl;
+using Centauri_Api.Interface;
+using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
 using CentauriSeo.Infrastructure.Data;
-using CentauriSeo.Application.Pipeline;
+using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +43,29 @@ builder.Services.AddDbContext<LlmCacheDbContext>(options =>
 // register cache service
 builder.Services.AddScoped<ILlmCacheService, LlmCacheService>();
 
+// JWT Configuration
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var secretKey = jwtSettings.GetValue<string>("SecretKey") ?? "your-secret-key-that-is-at-least-32-characters-long-for-hs256";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+    };
+});
+
 builder.Services.AddHttpClient<GroqClient>(c =>
 {
     c.BaseAddress = new Uri("https://api.groq.com");
@@ -64,6 +95,15 @@ builder.Services.AddHttpClient<PerplexityClient>(c =>
 
 // register orchestrator service
 builder.Services.AddScoped<Phase1And2OrchestratorService>();
+builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
+// Register DynamoDB client for DI
+builder.Services.AddAWSService<IAmazonDynamoDB>();
+
+// Register your repository
+builder.Services.AddScoped<IDynamoDbService, DynamoDbService>();
+// Application services
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 var app = builder.Build();
 

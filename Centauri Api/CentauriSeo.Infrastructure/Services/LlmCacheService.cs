@@ -49,4 +49,16 @@ public class LlmCacheService : ILlmCacheService
         _db.LlmCacheEntries.Add(entry);
         await _db.SaveChangesAsync();
     }
+    public async Task SaveAsync(string requestKey, string responseText)
+    {
+        var entry = new LlmCacheEntry
+        {
+            RequestKey = requestKey,
+            ResponseText = responseText,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.LlmCacheEntries.Add(entry);
+        await _db.SaveChangesAsync();
+    }
 }

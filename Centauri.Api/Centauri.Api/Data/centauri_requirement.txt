@@ -1,0 +1,1653 @@
+INPUT SPECIFICATION (WITH EXCEPTION HANDLING)
+1. Article
+What it is
+The full content to be analyzed and scored.
+Format
+"article": {
+  "raw": "string",
+  "format": "text | markdown | html"
+}
+
+raw is mandatory.
+format is optional. Default = text.
+Exception handling
+If raw is missing, null, or empty after trimming:
+
+
+Stop processing
+No metrics should be computed.
+Output requirements if missing
+"status": "failed",
+"missing_inputs": ["article"]
+
+2. Primary Keyword
+What it is
+The main keyword the article is intended to rank for.
+Format
+"primary_keyword": "string"
+
+Single keyword or phrase.
+Not a list.
+Exception handling
+If missing or empty:
+Skip all keyword-dependent logic
+Still compute:
+
+
+Readability
+Grammar
+Variation
+Plagiarism
+Parts of EEAT not dependent on keywords
+
+
+Output requirements if missing
+"status": "partial",
+"missing_inputs": ["primary_keyword"],
+"skipped_checks": ["keyword_presence", "intent_alignment", "section_coverage"]
+
+3. Secondary Keywords
+What it is
+Supporting keywords that strengthen topical relevance.
+Format
+"secondary_keywords": ["string"]
+
+Optional list.
+Can be empty.
+
+
+Exception handling
+If missing or null:
+Default to empty list.
+No penalty.
+
+
+Output requirements if defaulted
+"defaults_applied": {
+  "secondary_keywords_defaulted_to_empty": true
+}
+
+4. Meta Title
+What it is
+The SEO title of the page.
+Format
+"meta_title": "string"
+Optional.
+May be empty.
+
+
+Exception handling
+If missing or empty:
+
+
+Skip title-based keyword and variant checks.
+Do not force score to zero unless policy explicitly says so.
+Output requirements if missing
+"missing_inputs": ["meta_title"],
+"skipped_checks": ["meta_title_keyword_checks"]
+
+5. Meta Description
+What it is
+The SEO meta description of the page.
+Format
+"meta_description": "string"
+
+Optional.
+May be empty.
+Exception handling
+If missing or empty:
+Skip meta-description–based checks.
+
+
+Output requirements if missing
+"missing_inputs": ["meta_description"],
+"skipped_checks": ["meta_description_keyword_checks"]
+
+6. URL
+What it is
+The canonical URL of the page being evaluated.
+Format
+"url": "string"
+Optional.
+Must be parseable if provided.
+
+
+Exception handling
+If missing:
+Skip URL slug checks.
+If present but invalid:
+Treat as missing.
+Output requirements if missing or invalid
+"missing_inputs": ["url"],
+"skipped_checks": ["url_slug_keyword_checks"]
+
+7. Context (Optional)
+What it is
+Execution context for search, citation, and language rules.
+Format
+"context": {
+  "locale": "en-US | en-IN | ...",
+  "citation_rules": "default"
+}
+Exception handling
+If missing:
+Use defaults.
+No penalty.
+Output requirements if defaulted
+"defaults_applied": {
+  "locale_defaulted": true
+}
+MANDATORY OUTPUT BLOCK (FOR ALL REQUESTS)
+This block must always be returned — even on success.
+"input_integrity": {
+  "status": "success | partial | failed",
+  "received": {
+    "article_present": true,
+    "primary_keyword_present": true,
+    "secondary_keywords_present": true,
+    "meta_title_present": false,
+    "meta_description_present": false,
+    "url_present": false
+  },
+  "missing_inputs": [],
+  "invalid_inputs": [],
+  "defaults_applied": {},
+  "skipped_checks": [],
+  "not_evaluated_metrics": [],
+  "messages": []
+}
+
+STATUS RULES (NON-NEGOTIABLE)
+Condition
+Status
+Article missing
+failed
+Article present, anything else missing
+partial
+All inputs present
+success
+
+
+Final Execution Model for Sentence-Type Tagging (Critical Path)
+Core principle
+Perplexity and Gemini BOTH tag sentence types independently
+ChatGPT validates, resolves, and finalizes
+The validated output becomes the single source of truth for all scoring
+This is not optional. This is the foundation.
+Phase 0: Input parsing (single step)
+Article is split into:
+Sentence IDs (S1, S2, S3…)
+Paragraph and section boundaries
+
+
+Sentence text is frozen at this stage.
+All tools operate on the same sentence map.
+Phase 1: Parallel sentence tagging (independent, blind)
+Track A: Perplexity (pattern + web-informed tagging)
+Perplexity tags each sentence independently for:
+Sentence type:
+
+
+Fact
+Claim
+Definition
+Opinion
+Prediction
+Statistic
+
+
+Citation presence (based on:
+
+
+Third-party mentions
+Hyperlinks
+Known external references)
+
+
+Informative intent signals (lightweight)
+Important
+Perplexity does NOT see Gemini’s output.
+Perplexity does NOT apply scores.
+It returns tags + confidence, not decisions.
+Output example
+{
+  "S12": {
+    "type": "Statistic",
+    "citation": "missing",
+    "confidence": 0.81
+  }
+}
+Track B: Gemini (linguistic + rule-based tagging)
+Gemini tags the same sentences independently for:
+Sentence structure
+Informative type
+Voice
+Grammar flag
+Citation presence (rule-based detection)
+First-person vs third-person signals
+Gemini applies strict grammar and linguistic rules, not web context.
+Important
+Gemini does NOT see Perplexity’s tags.
+Gemini does NOT fetch external data.
+Gemini focuses on how the sentence is written, not whether it’s true.
+
+
+Output example
+{
+  "S12": {
+    "type": "Claim",
+    "citation": "absent",
+    "confidence": 0.88
+  }
+}
+
+Phase 2: Validation & arbitration (ChatGPT-only)
+This is the most important step.
+What ChatGPT does
+ChatGPT receives:
+Perplexity’s sentence tags
+Gemini’s sentence tags
+The raw sentence text
+ChatGPT then:
+Compares tags sentence by sentence
+Detects:
+Agreement
+Partial mismatch
+Direct conflict
+Applies resolution rules to finalize the tag
+Conflict resolution rules (non-negotiable)
+Rule 1: If both agree → accept
+Perplexity: Statistic
+Gemini: Statistic
+→ Final: Statistic
+Rule 2: Statistic beats everything
+If either tool flags Statistic, ChatGPT checks:
+Is there a number, percentage, count, ratio?
+Is it factual or illustrative?
+If yes → Final = Statistic
+This rule exists because credibility penalties depend on this.
+Rule 3: Prediction vs Claim
+Future tense, forecasts, outcomes → Prediction
+Present or past assertion → Claim
+ChatGPT resolves using tense and modal verbs.
+Rule 4: Opinion only if subjective language exists
+Words like:
+believe
+think
+feel
+in our view
+If absent, Opinion cannot be final.
+Rule 5: Citation presence is re-evaluated
+ChatGPT independently checks for:
+First-person sources
+Third-person mentions
+Hyperlinks
+ChatGPT’s decision overrides both tools here.
+Phase 3: Final sentence map (authoritative)
+After validation, ChatGPT produces:
+{
+  "S12": {
+    "final_type": "Statistic",
+    "citation": "missing",
+    "validated_by": "chatgpt"
+  }
+}
+
+This validated sentence map is now immutable.
+Phase 4: Scoring (Gemini only)
+Gemini now re-enters the flow and uses the validated tags to compute:
+Credibility Score
+Authority Score
+Expertise Score
+All downstream metrics
+Gemini cannot re-tag sentences at this stage.
+Ownership of Level 2, Level 3, and Level 4 Scores
+Non-negotiable principle
+All Level 2, Level 3, and Level 4 scores are computed ONLY by Gemini.
+No other tool is allowed to:
+Calculate them
+Modify them
+Override them
+Recompute them after validation
+Final Authority Chain (one line)
+Tagging → Perplexity + Gemini
+Validation → ChatGPT
+Scoring (L2–L4) → Gemini only
+Explanation → ChatGPT
+
+
+Computation Logics
+
+Level 1 : Sentence Structure
+Type
+Structure
+SaaS Examples
+Authoritative Score
+Simple (1 IC)
+Contains one independent clause.
+1. The team finalized the migration checklist. 2. Billing details are stored securely. 3. Marketing sent an update this morning. 4. Our pricing tiers are simple and transparent. 5. The onboarding process takes five minutes.
+1
+Compound (2+ ICs)
+Contains two or more independent clauses joined by a coordinating conjunction or semicolon.
+1. The trial period has ended, but you can easily continue with a paid plan. 2. Our developers fixed the bug; the site is running smoothly again. 3. You can choose the basic package, or you can select the pro features. 4. We launched the beta last week, and user feedback has been overwhelmingly positive. 5. The report generated quickly; however, it contained a few minor errors.
+1
+Complex (1 IC + 1+ DC)
+Contains one independent clause and at least one dependent clause (connected by a subordinating word).
+1. Since the old system was slow, we migrated all of our clients to the new cloud environment. 2. Our API documentation, which is constantly updated, helps third-party developers integrate faster. 3. You will not lose any data if you cancel your subscription today. 4. We deployed the fix after the engineering team conducted a final review. 5. When you log in next time, you will see the redesigned dashboard.
+1
+Compound-Complex (2+ ICs + 1+ DC)
+Contains two or more independent clauses and at least one dependent clause.
+1. Although the setup is complex, the results are worth the effort, and most users complete it within an hour. 2. Because our team works remotely, we use this tool for daily standups, but we still prefer video calls for long meetings. 3. The company is profitable, and they plan to expand next quarter if the current growth trend continues. 4. The initial product was simple, but it grew quickly once we added the collaboration features. 5. If you experience any downtime, submit a ticket immediately, and our support team will respond within minutes.
+0.5
+Sentence Fragment
+An incomplete sentence, lacking a subject or a complete verb, relying on context for meaning.
+(Context: Features of our latest update include:) 1. A complete UI overhaul. 2. Faster report generation. 3. Integration with Slack and Teams. 4. Single-click deployment options. 5. Better documentation and tutorials.
+0
+
+
+Perplexity and Gemini
+Level 1 : Functional Type
+Type
+Definition
+SaaS Examples
+Authoritative Score
+Declarative
+Makes a statement or relays factual information. Ends with a period.
+1. The new analytics dashboard is available to all premium users. 2. Our platform integrates with over 50 third-party tools. 3. Data is encrypted every twelve hours. 4. Customer churn decreased after implementing this feature. 5. You can schedule your campaign inside the app.
+1
+Interrogative
+Asks a direct question to request information. Ends with a question mark.
+1. Are you getting the most value out of your current subscription? 2. How does our AI engine categorize support tickets? 3. Which automation rule should reduce manual entry? 4. Have you seen the performance improvements? 5. What pain points is your team facing?
+0
+Imperative
+Gives a command, instruction, or request. Ends with a period or exclamation mark.
+1. Click here to download the integration guide. 2. Please review the updated terms. 3. Upgrade now to unlock advanced reporting! 4. Clear your cache for best performance. 5. Don’t forget to set up two-factor authentication.
+1
+Exclamatory
+Expresses strong emotion, urgency, or excitement. Ends with an exclamation mark.
+1. We just hit one million active users! 2. What an incredible time-saver this feature is! 3. Our security patch is live! 4. The final deadline is today! 5. This is the simplest interface we’ve launched!
+0.5
+
+
+Perplexity and Gemini
+Level 1 : Voice
+Category
+Type
+Definition
+SaaS Examples
+Authoritative Score
+Polarity
+Affirmative (Positive)
+States a proposition as true or positive.
+1. You successfully connected your external data sources. 2. The upgrade will be completed tonight. 3. The sales team is exceeding its quarterly goal. 4. We are launching the new feature next week. 5. This tool saves five hours of manual work weekly.
+1
+Polarity
+Negative
+States a proposition as false or negated (usually contains not).
+1. We do not store your financial data. 2. The system is not vulnerable to that attack. 3. You cannot use SSO on the free tier. 4. Our application did not experience downtime. 5. Users should not bypass the security settings.
+1
+Voice
+Active Voice
+The subject performs the action; clear and direct.
+1. Our engineers fixed the vulnerability. 2. The product manager will share the roadmap. 3. The customer paid the invoice. 4. You must reset your password every 90 days. 5. The new compiler increased build speed.
+1
+Voice
+Passive Voice
+The subject receives the action; emphasis on the action rather than the actor.
+1. The vulnerability was fixed by our engineers. 2. The roadmap will be shared tomorrow. 3. The invoice was paid this morning. 4. Your password must be reset every 90 days. 5. Build speed was increased significantly.
+0.5
+Voice
+Active + Passive
+Mixed use of active and passive across sentences in the piece.
+(General classification without specific examples in the document)
+0.5
+
+
+Perplexity and Gemini
+
+Level 1 : Informative Type
+Type
+Definition
+SaaS Examples (Documents + Added Examples)
+Authoritative Score
+Question
+A sentence that seeks information, clarification, or feedback.
+What integrations are most important to your team? / How often do clients request real-time analytics? / Which payment gateways do you prefer? / When is the ideal migration window?
+0
+Fact
+A statement proven or generally accepted as true.
+Dashboard latency improved by 40ms. / Servers are in three regions. / Python is our backend language. / Data processing runs on AWS.
+1
+Observation 
+A descriptive note capturing something noticed, detected, or interpreted based on evidence.
+1. Users tend to drop off during the second onboarding step. 2. Support tickets spike after every major release. 3. Teams using the automation feature log in more frequently. 4. Activity declines noticeably on weekends.
+1
+Definition
+Formally explains the meaning or function of a concept.
+CLV is the revenue expected from a customer account. / A Webhook sends real-time updates. / SSO allows one-credential access. / API Rate Limiting controls request volume.
+1
+Claim
+An assertion presented as true, often requiring evidence.
+Our algorithm gives the most accurate forecasts. / This is the fastest CDN. / We deliver 99.999% uptime. / The new flow doubles productivity.
+1
+Statistic
+A numerical data point supporting an idea.
+85% of customers see ROI in six months. / 3.4B API calls processed last month. / Average implementation time is 14 days. / Supports 12 languages.
+1
+Opinion
+A belief, judgment, or personal viewpoint.
+I believe the new pricing works best. / Dark mode is more pleasing. / We feel this is our strongest feature. / It's an easy enterprise solution.
+1
+Prediction
+A future-looking statement derived from expectation or trend.
+We will ship the mobile app next quarter. / Remote work will increase tool demand. / Conversion rate may rise 3%. / Pricing model should adapt by Q3.
+1
+Transition
+A bridging sentence moving the reader to the next idea.
+Now that we've covered setup… / But first… / In the following section… / To appreciate this capability…
+0
+Suggestion
+Recommends an action or improvement.
+Enable two-factor authentication. / Schedule quarterly onboarding reviews. / Pilot the analytics dashboard with a small group. / Automate invoice generation.
+1
+Filler
+Adds no meaningful information but maintains flow.
+That's a great question. / As you can see… / So, let's get started… / It's worth remembering this point.
+0
+Uncertain 
+Uses modal verbs suggesting possibility, not certainty.
+The upgrade might improve speed. / Onboarding could finish in two weeks. / Engagement should rise with the new feature. / Integration may reduce manual effort. / (Added) 5. This model might outperform the previous version. 6. The rollout could create temporary load issues.
+0
+
+
+Perplexity and Gemini
+Level 1 : Info Quality
+Type
+Definition
+SaaS Examples (Documents + Added Examples)
+Well Known
+Information universally accepted as a standard fact or best practice; requires no proof.
+SQL is a standard database language. / Strong password policies improve security. / SSL/TLS encrypts data in transit. / A/B testing improves conversions. / (Added) Cloud uptime SLAs are measured monthly.
+Partially Known
+Information true but dependent on internal or contextual knowledge; not universally known.
+API key format changed in v3.1.0. / Support team’s first response time is under 45 minutes. / Basic tier supports 5 users. / Feature flag F-48 controls new UI visibility. / (Added) Our internal audit tool refreshes logs every 12 hours.
+Derived
+Insights generated by combining or interpreting data, frameworks, or internal analysis; not a raw fact.
+Teams using SSO log in 30% faster (derived from usage data). / XYZ model shows correlation between tutorial completion and retention. / Market contraction forecast due to regulatory changes. / Feature A is redundant because Feature B overlaps. / (Added) Based on customer patterns, onboarding friction predicts churn risk.
+Unique
+Proprietary, novel information exclusive to the company; part of IP or competitive advantage.
+Quantum Indexing Engine reduces search time by 10x. / SecureToken Protocol guarantees zero-knowledge encryption. / Discovery of undocumented competitor vulnerability. / Collaborative Sandboxing feature invented internally. / (Added) Our ranking model scores draft clarity before publication.
+False
+Information proven incorrect based on credible sources.
+Great Wall visible from space (false). / Edison invented the light bulb (false). / Bananas grow on trees (false). / (Added SaaS examples) “All cloud providers store passwords in plain text” (false). / “GDPR requires data to be stored only in Europe” (false).
+
+
+Perplexity and Gemini
+Level 1 : Grammar Flag 
+Type
+Definition
+Examples (Added)
+Score
+Grammatically Correct Sentence
+Not defined in the documents. Interpreted as a sentence that follows standard grammar rules.
+“The system generated the report successfully.”
+1
+Grammatically Incorrect Sentence
+Not defined in the documents. Interpreted as a sentence containing grammar errors (tense, structure, agreement, typos).
+“The system generate the report successful.”
+0
+
+Perplexity and Gemini
+Level 1 : Citation Flag
+Type
+Definition
+Examples (Aligned With Your Source Rules)
+Score
+Sentence With Citation
+Not defined in the documents. Interpreted as any sentence that includes a recognized source via:
+• First-person source (We observed, We noticed…)
+• Third-person mention (According to…, As per…)
+• Hyperlinked text (a word or phrase linked to an external source, even if not explicitly mentioned)
+First-person source: “We observed higher completion rates after simplifying onboarding.”
+Third-person mention: “According to Deloitte, AI adoption accelerated after 2020.”
+Hyperlinked text (natural): “Our churn model is based on a retention study that analysed 500 SaaS companies.”
+Another hyperlink example: “The new scoring method follows the original research published last year.”
+1
+Sentence Without Citation
+A sentence that provides information without a source indicator, name, or hyperlink.
+1. “Trial-to-paid conversions improved last month.”
+2. “Most teams complete onboarding within an hour.”
+3. “The new UI makes navigation easier.”
+4. “Enterprise customers adopted the feature quickly.”
+5. “The API returns responses faster after the latest patch.”
+0
+
+
+Perplexity and Gemini
+Level 1 : Pronoun Flag
+Type
+Definition
+Examples (Added)
+Score
+Sentence With Pronoun
+Not defined in the documents. Interpreted as any sentence containing a personal, demonstrative, or relative pronoun.
+Personal: “We improved the onboarding flow.” / “You can update billing anytime.” / “They requested API access.”
+Demonstrative: “This reduces setup time.” / “Those logs are auto-archived.”
+Relative: “The feature that you enabled is now live.”
+1
+Sentence Without Pronoun
+A sentence that contains no pronouns of any kind.
+“The dashboard loads in under two seconds.” / “User activity increased by 12 percent.” / “Account deletion requires admin approval.” / “The integration supports five data sources.”
+0
+
+
+
+Level 1 : Intent Match (Maximum Score - 10)
+Intent Match is a strict mathematical score (0-10) derived from the search intent distribution of the top 5 ranking competitors.
+Search: Perform a Google Search for the primary keyword and analyze the Top 10 results.
+Classify Competitors: Tag each result as Informational, Transactional, Navigational, or Commercial.
+Classify Input: Tag the user's content with the same intent categories.
+Score: The score is the percentage of top competitors that share the same intent as the user's content, scaled to 10.
+Formula:
+Intent Match = (Maximum Competitors with same intent/10)
+Example:
+Competitors: 3 Informational, 2 Transactional.
+User Content: Informational.
+Match: 3 out of 5 competitors match.
+Score: 6/10
+Level 1 : Subtopic Lists
+
+The Subtopic Lists classification is not a score applied to every sentence, but rather a classification process applied to the structure of the entire content piece against the top-ranking results for the target keyword.
+The goal is to create a comprehensive inventory of subtopics (usually extracted from H2, H3, and H4 tags) covered by the content piece and compare this inventory to the subtopics covered by the top-ranking competitors.
+The process involves comparing the subtopic list of the content piece against a curated "Master Subtopic List" derived from the top 10 ranking results
+Classification Type
+Definition (How the Subtopic is Categorized)
+Weight/Score (Used in Section Score)
+Required Subtopic (RS)
+A subtopic that is critical to the topic, covered by three or more of the top 5 ranking competitors. This is a must-have element for comprehensive coverage.
+1
+Optional Subtopic (OS)
+A subtopic covered by one or two of the top 5 ranking competitors. This adds depth but is not mandatory.
+0.5
+Missing Subtopic (MS)
+A subtopic marked as Required (RS) that is not present in the content piece being evaluated.
+-0.5
+Original Subtopic (OG)
+A subtopic covered in the content piece that is not present in any of the top 5 competitor documents. This indicates unique coverage/research.
+0.5
+
+
+Level 1 : HTML Elements
+
+This new classification, which we will call Structural Element Count, provides the basis for the Variety Score calculation. It focuses on the specific, meaningful content block elements you listed.
+This tracks the count and proportion of elements that define the physical layout and content type of the piece.
+Element Type
+Corresponding HTML Tags
+Definition for Counting
+Used in Variety Score (pi​)
+Paragraphs
+<p>
+Count of individual paragraph blocks.
+Yes
+Headers
+<h1>, <h2>, <h3>, <h4>
+Count of header tags used to structure sections. (Treat all H tags equally for this score).
+Yes
+Lists (Points)
+<ul>, <ol>
+Count of individual list items (<li>) within ordered or unordered lists.
+Yes
+Tables
+<table>
+Count of distinct <table> structures. (Count the table once, not each cell).
+Yes
+Pictures
+<img>, <figure>
+Count of image files or figure blocks.
+Yes
+Other
+All other content-bearing tags (e.g., <blockquote>, <pre>, <hr>, <video>, <audio>).
+Count of these distinct non-core structural elements.
+No (Treated as Noise)
+
+
+Level 1 : AI Indexing Base Scores
+This classification system assigns a base score to every sentence based on its clarity, factual density, and ease of extraction by an automated system (like an AI language model or a knowledge graph).
+We will use two orthogonal classifications to capture the necessary inputs for the Level 2 metrics: Clarity & Synthesis and Fact & Retrieval.
+Classification 1: Clarity & Synthesis Score (C&S)
+This measures the simplicity and focus of the language, which is key for the Signal-to-Noise Score and Technical Clarity Score at Level 2.
+Type
+Definition
+Score (C&S)
+High Clarity / Focused
+Sentence is concise, uses active voice, and contains one main idea or fact with minimal modifiers or introductory phrases.
+1.0
+Moderate Complexity
+Sentence is compound or complex (multiple clauses) but remains grammatically sound and clear; may contain necessary technical jargon or modifiers.
+0.5
+Low Clarity / Fluff
+Sentence contains excessive filler, redundant phrasing, highly ambiguous pronouns, or an unnecessary quantity of modifiers/adjectives (low signal-to-noise ratio).
+0.1
+Unindexable / Noise
+Sentence is purely transitional, a rhetorical device, or grammatically incomplete noise (e.g., "So, as we can see here, let's look at this fantastic new thing we have.").
+0.0
+
+
+Classification 2: Fact & Retrieval Score (F&R)
+
+This measures the factual density and verifiability, which is key for the Answer Block Density Score and Factual Isolation Score at Level 2.
+Type
+Definition
+Score (F&R)
+Verifiable & Isolated
+Sentence contains one or more clear, discrete, and verifiable facts or entities (e.g., a number, a definition, a specific name) and is structured to serve as a direct answer.
+1.0
+Contextual & Mixed
+Sentence contains verifiable facts but also mixes in opinions, predictions, or requires significant context to be true; facts are not cleanly separated.
+0.5
+Subjective / Unverifiable
+Sentence is purely opinion, prediction, or a generic, unquantifiable claim (e.g., "We believe this is the best solution on the market").
+0.1
+No Factual Content
+Sentence is a question, transition, or filler with zero information that an AI could extract or verify (e.g., "Now, how about that?").
+0.0
+
+
+Level 1 : Plagiarism Status 
+Type
+Definition
+Examples (Added)
+Score
+Unique Sentence
+A sentence for which no matching or significantly similar content is found during the plagiarism scan (10 percent scan or deep scan).
+“The dashboard uses an adaptive caching layer to reduce load times.”
+1
+Copied Sentence
+A sentence that matches or closely resembles existing content found through live Google Search during the scan.
+“Customer data is encrypted in transit using SSL certificates.”
+0
+
+
+
+
+
+Level 2 : Intent Score (Max 20)
+
+The Intent Score measures the alignment of the content piece's primary goal (Informational, Transactional, Navigational, or Commercial) with the goals of the highest-ranking search results for the target keyword.
+Goal: To confirm that the content serves the same fundamental user need that Google currently rewards for that specific keyword.
+Scale: $0 - 10$
+Inputs Required (Level 1: Intent Match)
+Content Intent Classification: The single primary intent of the content piece being analyzed (e.g., Informational).
+Competitor Intent Classification: The primary intent of each of the top 5 ranking competitors ($N=5$).
+Calculation Steps
+Step 1: Count the Intent Matches
+
+Determine how many of the top 10 competitors share the exact same primary intent as the content piece being evaluated.
+C_match = number of competitors (out of 10) matching the primary intent
+C_total = 10
+Step 2: Calculate the Base Intent Score (IS)
+
+The score is the percentage of matching competitors, scaled to a base of 10.
+Base Intent Score = (C_match / C_total) * 10
+Example
+Competitor Position
+Competitor's Intent
+Content Piece Intent
+Match?
+1
+Informational
+Informational
+Yes
+2
+Informational
+Informational
+Yes
+3
+Commercial
+Informational
+No
+4
+Informational
+Informational
+Yes
+5
+Transactional
+Informational
+No
+Totals
+
+
+
+
+$C_{\text{match}} = 3$
+
+Calculation:
+Intent Score = (3 / 5) * 10 = 0.6 * 10 = 6.0
+
+
+Step 3 - Calculate Final Intent Score by Multiplying Base Intent Score it by 2
+
+Intent Score = Base Intent Score * 2
+
+Level 2 : Section Score (MAX 10)
+
+The Section Score quantifies the content's topical depth by rewarding coverage of mandatory subtopics (derived from competitor analysis) and providing a bonus for unique, original subtopics.
+Goal: To ensure the article meets the baseline for comprehensive coverage while encouraging original research.
+Scale: $0 - 10$ (Typically caps around 10, but the bonus can slightly exceed it in rare cases).
+Inputs Required (Level 1: Subtopic Lists)
+
+The score relies on the counts derived from classifying the content's headings against the top-ranking competitors:
+RS_total = Total count of unique Required Subtopics identified from the competitor set.
+ These are subtopics covered by 3 or more of the top 10 competitors.
+RS_covered = Count of the Required Subtopics (from RS_total) that the content piece successfully covers.
+OG = Count of Original Subtopics found in the content piece that are not present in the top 10 competitors.
+
+Calculation Steps
+
+Step 1: Calculate the Required Coverage Baseline
+
+The baseline is the percentage of required subtopics covered, scaled to 10.
+
+Step 2: Apply the Original Subtopic Bonus
+
+The bonus is calculated as the ratio of original subtopics to required subtopics, used as a multiplier to the baseline. This ensures the bonus is proportional to the size of the required topic list.
+Formula:
+Section Score = (RS_covered / RS_total) * 10 * (1 + OG / RS_total)
+
+Example
+Imagine a keyword has 10 total Required Subtopics.
+RS_total = 10
+The content piece:
+Covers 8 Required Subtopics
+ RS_covered = 8
+
+
+Includes 2 Original Subtopics
+ OG = 2
+
+
+The Section Score is calculated as follows:
+Section Score = (8 / 10) * 10 * (1 + 2 / 10)
+Section Score = 0.8 * 10 * (1 + 0.2)
+Section Score = 8 * 1.2 = 9.6
+
+
+
+Level 2: Keyword Score (KS) (Max 10)
+The Keyword Score (KS) measures how well the Primary and Secondary keywords are integrated across key on-page elements and the body text.
+It evaluates both strategic placement and controlled frequency, ensuring relevance without keyword stuffing.
+Goal
+ To quantify how effectively the content signals topical relevance through keyword usage.
+Scale
+ 0 to 10
+Step 1: Build a Primary Keyword Variant Set
+Given a Primary Keyword (PK), generate a variant pool:
+Include:
+Morphological variants
+
+
+Singular/plural
+Verb tenses
+Noun forms
+ Example:
+ ai content checker → AI content checking, AI-based content checker
+
+
+Lexical variants
+
+
+Synonyms
+Common substitutions
+ Example:
+ checker → tool, software, platform
+
+
+Search-derived variants
+
+
+“People also search for”
+Titles from top-ranking pages
+H2/H3 phrases from top results
+This variant set becomes:
+PK_variants = {v1, v2, v3 … vn}
+Step 2: Replace exact-match checks with variant-match checks
+Every place that currently says:
+“Contains Primary Keyword”
+Must become:
+“Contains any variant of the Primary Keyword”
+Example changes
+Before
+F_H1 = 1 if H1 contains exact PK
+
+After
+F_H1 = 1 if H1 contains any PK_variant
+
+Same replacement applies to:
+Meta Title
+
+
+URL slug
+
+
+H2 / H3 headers
+
+
+Section topic detection
+
+
+Step 3: Weight variants correctly (important)
+Not all variants are equal.
+Recommended internal weighting:
+Exact primary keyword → full weight
+Close lexical variant → slightly lower weight
+Semantic equivalent → lowest acceptable weight
+
+
+This avoids:
+Keyword stuffing
+Over-crediting loose matches
+A. Component 1: Placement Score (P-Score)
+This component measures keyword usage in high-impact, fixed-location elements.
+ It replaces the earlier Header SEO Score and Meta or URL Optimization into one weighted score.
+Level 1 Inputs (Binary Flags: 1 or 0)
+Classification (Flag)
+Definition
+Weight (W)
+Max
+F_H1
+H1 contains the Primary Target Keyword (PTK)
+3.0
+3.0
+F_Title
+Meta Title contains PTK
+3.0
+3.0
+F_URL
+URL slug contains PTK or a close semantic variation
+2.0
+2.0
+F_H2_H3
+At least 50% of H2 or H3 tags contain a Secondary Keyword (SK) or variation
+1.0
+1.0
+F_Desc
+Meta Description contains PTK or SK
+1.0
+1.0
+Total
+
+
+10.0
+10.0
+
+Each flag can only take a value of 1 (present) or 0 (absent).
+Calculation of Placement Score (P-Score)
+The Placement Score is the weighted sum of all keyword placement flags.
+P-Score = (F_H1 * 3) + (F_Title * 3) + (F_URL * 2) + (F_H2_H3 * 1) + (F_Desc * 1)
+
+Since the total weight equals 10, the P-Score naturally falls on a 0–10 scale.
+B. Component 2: Frequency Score (F-Score)
+This component measures keyword density in the main body text, such as paragraphs and list items.
+Inputs
+W_total = Total word count of the body text
+ C_PTK = Count of Primary Target Keyword occurrences
+ C_SK = Count of Secondary Keyword occurrences
+D_PTK_Target = Ideal PTK density range (for example, 0.5% to 1.5%)
+ D_SK_Target = Ideal combined SK density range (for example, 1.5% to 3.0%)
+Step 1: Calculate Actual Keyword Densities
+D_PTK_Actual = C_PTK / W_total
+D_SK_Actual = C_SK / W_total
+
+Step 2: Score PTK Performance
+Score_PTK is assigned as follows:
+If D_PTK_Actual is within the target range: 10 points
+If slightly below or above the range: scaled score between 5 and 9
+If far below or clearly overstuffed: 0 points
+Step 3: Score SK Performance
+Score_SK follows the same logic:
+Within target range: 10 points
+Slight deviation: scaled score between 5 and 9
+Severe underuse or stuffing: 0 points
+
+
+Step 4: Calculate Final Frequency Score
+The Frequency Score is the average of PTK and SK performance.
+F-Score = (Score_PTK + Score_SK) / 2
+C. Final Keyword Score (KS)
+The final Keyword Score combines Placement and Frequency, with higher emphasis on placement due to its stronger SEO signaling power.
+Weighting
+Placement Weight = 6
+
+
+Frequency Weight = 4
+
+
+Final Formula
+Keyword Score (KS) = (P-Score * 6 / 10) + (F-Score * 4 / 10)
+
+The final KS value ranges from 0 to 10.
+
+
+Level 2 Original Information Score
+The score is calculated entirely from Level 1: Info Quality labels.
+Step 1: Count sentences labeled as:
+Unique
+Less Known / Partially Known
+
+
+Let:
+U = Unique sentences
+L = Less Known sentences
+T = Total sentences evaluated
+Step 2: Find the percentage of original information
+Original Info % = ((U + L) / T) * 100
+Step 3: Convert percentage to a 0–10 score
+Original Info Score = Original Info % / 10
+The Original Information Score is simply:
+the share of Unique + Less Known sentences in the content, scaled to a 0–10 range.
+Example: If 30% of all sentences are Unique or Less Known → Score = 3
+Level 2 - Expertise Score (Max 20)
+The score is calculated from five Level 1 signals:
+Opinion sentences
+Prediction sentences
+Observation sentences
+Sentences with first-person pronouns
+Suggestion sentences
+Let:
+E = Total number of sentences that fall into any of the five categories above
+T = Total number of sentences
+
+
+Step 1: Calculate the expertise percentage
+Expertise % = (E / T) * 100
+Step 2: Convert percentage to a base score on 0–10
+Base Expertise Score = Expertise % / 10
+
+Step 3: Multiply by 2 (as per document)
+“Expertise score = Balance expertise score * 2.”
+Expertise Score = Base Expertise Score * 2
+
+Summary : Expertise Score measures the presence of subjective, experiential, or interpretive elements in the writing. It is:
+A weighted measure of Opinions + Predictions + Observations + First-Person sentences + Suggestions, scaled to a 0–20 range.
+Level 2 - Credibility Score (Max 10)
+STEP 1 — Evaluate each sentence using the 4-level priority rule
+Stop evaluating a sentence as soon as one condition is met.
+1. Check STATISTICS first (highest priority)
+If the sentence contains a statistic and has no source → Terminate and award o credibility score for the entire article
+If it has a source → +1
+Stop here for this sentence.
+2. If not a statistic → check PREDICTION
+If unsourced → 0
+If sourced → +1
+Stop here for this sentence.
+3. If not prediction → check CLAIM or DEFINITION
+If sourced → +1
+If unsourced → +1 only when the statement is less known or a unique general fact
+Otherwise → 0
+Stop here for this sentence.
+4. If none of the above → check OPINION
+If sourced → +1
+If unsourced → 0
+Fluff, transitions, and questions always score 0.
+STEP 2 — Identify whether a source is present
+A sentence counts as “with source” when the writer uses:
+First-person source
+“We observed…”
+“We noticed…”
+“In our survey…”
+“Talking to customers…”
+Third-person mention
+“According to Gartner…”
+“As per Deloitte…”
+Third-person hyperlink
+Any hyperlinked word pointing to a credible source
+ (e.g., “retention report” linking to research)
+STEP 3 — Sum the credibility points
+Let:
+C = Total credibility points from all sentences
+T = Total number of sentences
+Credibility % = (C / T) * 100
+STEP 4 — Convert to a 0–10 score
+Credibility Score = Credibility % / 10
+Equivalent simplified version:
+Credibility Score = (C / T) * 10
+
+In One Line
+Credibility Score = (Total Credibility Points ÷ Total Sentences) × 10,  with credibility points assigned using the strict 4-level rule:
+
+
+Statistics → Prediction → Claim/Definition → Opinion.
+Level 2 - Authority Score (Max 10)
+Authority Score is calculated sentence by sentence using four Level 1 classification systems:
+Functional Type
+Sentence Structure
+Informative Type
+Voice
+Each of these carries an authoritative weight (already provided in the Level 1 tables).
+STEP 1 — Calculate Authoritative Score for Each Sentence
+For every sentence:
+Sentence Authority = Functional Type Score * Structure Score * Informative Type Score * Voice Score
+
+Example:
+ If a sentence is:
+Declarative (1)
+Simple (1)
+Fact (1)
+Active voice (1)
+Then:
+1×1×1×1=11 \times 1 \times 1 \times 1 = 11×1×1×1=1
+If any component has a 0, the entire sentence’s authority becomes 0.
+STEP 2 — Sum All Sentence Authority Scores
+Let:
+A = Total authority points across all sentences
+T = Total number of sentences
+Authority Percentage = (A / T) * 100
+STEP 3 — Convert to a 0–10 Score
+Authority Score = Authority Percentage / 10
+Simplified:
+Authority Score = (A / T) * 10
+
+One-Line Summary
+Authority Score measures how authoritative each sentence is based on its function, structure, informativeness, and voice — multiplying all four values — and then averages and scales the result to 0–10.
+Level 2 - Simplicity Score (Max 3.33)
+Simplicity Score is calculated from the complexity percentage, which comes from Level 1 Sentence Structure classifications.
+Let:
+Complexity % = percentage of sentences that are Complex or Compound-Complex
+
+
+STEP 1 — Convert complexity percentage to a 0–10 value
+
+Complexity Score (0-10) = Complexity % / 10
+
+Example:
+ If 30 percent of sentences are complex:
+30 / 10 = 3
+
+
+STEP 2 — Convert to base simplicity
+
+Base Simplicity Score = 10 - Complexity Score
+
+Example:
+10 - 3 = 7
+
+This reflects:  more complexity → lower simplicity score
+
+STEP 3 — Scale down to final Simplicity Score
+
+Simplicity Score = Base Simplicity Score / 3
+
+Example:
+7 / 3 = 2.33
+
+
+One-Line Summary
+Simplicity Score measures how easy the content is to read by penalizing complex sentence structures, converting the result into a 0–10 simplicity scale, and dividing by 3 to fit the Readability component.
+
+
+Level 2 - Grammar Score (Max 3.33)
+Grammar Score is calculated from Level 1 Grammar Flags
+ (Grammatically Correct = 1, Grammatically Incorrect = 0).
+Let:
+T = Total number of sentences
+I = Number of incorrect grammar sentences
+STEP 1 — Compute Grammar Percentage
+
+Grammar % = ((T - I) / T) * 100
+This represents the percentage of sentences without grammar errors.
+
+STEP 2 — Convert Grammar % to a 0–10 score
+
+Base Grammar Score = Grammar % / 10
+
+Example:
+ Grammar % = 90
+Base Grammar Score = 90 / 10 = 9
+
+
+
+STEP 3 — Scale to final Grammar Score
+
+Grammar Score = Base Grammar Score / 3
+
+Example:
+9 / 3 = 3
+
+One-Line Summary
+Grammar Score measures how many sentences are grammatically correct, converts that accuracy into a 0–10 score, and then divides by 3 as part of the Readability scoring system.
+Level 2- Variation Score  (Max 3.33)
+Variation Score measures content variety based on the distribution of 5 element types:
+Paragraphs
+Headers
+Lists
+Tables
+Pictures
+Let:
+N = 5 (total element categories)
+p₁ … p₅ = proportion of each element in the content
+All proportions must sum to 1.
+STEP 1 — Compute Shannon Entropy (H)
+
+H = - (p1 * log2(p1) + p2 * log2(p2) + p3 * log2(p3) + p4 * log2(p4) + p5 * log2(p5))
+
+If any pi = 0, then treat:
+pi * log2(pi) = 0
+STEP 2 — Compute Maximum Possible Entropy
+
+Hmax = log2(5) ≈ 2.3219
+
+STEP 3 — Normalize to a 0–10 Variety Score
+
+
+V10 = (H / Hmax) * 10
+
+
+This gives the Base Variety Score.
+STEP 4 — Convert to Final Variation Score
+Variation Score = V10 / 3
+
+One-Line Summary
+Variation Score uses Shannon Entropy to measure how diverse the content format is across paragraphs, headers, lists, tables, and pictures, converts that to a 0–10 scale, then divides by 3 for Readability.
+Level 2 - Plagiarism Score
+Centauri assigns a plagiarism score based on the sentence-level classification:
+Unique Sentence → 1
+Copied Sentence → 0
+These are determined during
+the Initial 10% Scan, and
+the Deep Scan (if plagiarism exceeds 20%).
+Let:
+U = Number of unique sentences
+T = Total number of valid sentences scanned
+
+
+STEP 1 — Compute Plagiarism Score Percentage
+Plagiarism Score % = (U / T) * 100
+
+
+This represents the percentage of sentences not identified as copied.
+STEP 2 — Convert to Final Score (0–10)
+
+Plagiarism Score = Plagiarism Score % / 10
+
+
+Equivalent simplified form:
+Plagiarism Score = (U / T) * 10
+
+
+One-Line Summary
+Plagiarism Score is the percentage of unique (non-copied) sentences detected by the plagiarism scanner, scaled to a 0–10 score.
+Level 3 - Relevance Score
+Relevance Score is the sum of three Level 2 metrics:
+Intent Score
+Section Score
+Original Information Score
+Keyword Score
+
+
+Let:
+IS = Intent Score
+SS = Section Score
+OIS = Original Information Score
+KS = Keyword Score
+Formula
+
+Relevance Score = Intent Score + Section Score + Original Information Score+Keyword Score
+
+
+One-Line Summary
+Relevance Score adds together how well the content matches search intent, how well it covers expected subtopics, and how much original information it contains.
+Level 3 - EEAT Score
+EEAT Score is the combined total of three Level 2 metrics:
+Expertise Score
+Credibility Score
+Authority Score
+
+
+Let:
+ES = Expertise Score
+CS = Credibility Score
+AS = Authority Score
+Formula
+
+EEAT Score = Expertise Score + Credibility Score + Authority Score
+
+
+There is no additional weighting or scaling beyond how each component is already calculated.
+One-Line Summary
+EEAT Score is the sum of expertise signals, evidence-quality signals, and authoritative sentence structure signals found in the content.
+Level 3 - Readability Score
+Readability Score combines three Level 2 metrics:
+Simplicity Score
+Grammar Score
+Variation Score
+
+
+Let:
+SS = Simplicity Score
+GS = Grammar Score
+VS = Variation Score
+
+
+Formula
+Readability Score = Simplicity Score + Grammar Score + Variation Score
+
+
+No extra scaling or weighting is applied.
+One-Line Summary
+Readability Score expresses how easy a piece is to read by combining sentence simplicity, grammar accuracy, and content-format variety.
+Level 3- Retrieval & Factuality
+This metric is built from three components:
+Answer Block Density Score
+Factual Isolation Score
+Entity Alignment Score
+Let:
+ABD = Answer Block Density Score
+FI = Factual Isolation Score
+EA = Entity Alignment Score
+Each component is balanced on its own scale:
+ABD × 3
+FI × 2.5
+EA × 1.5
+Formula
+Retrieval & Factuality = ABD + FI + EA
+
+
+
+Component
+Meaning
+Scaling
+Answer Block Density
+Measures how quickly and clearly the main question is answered.
+Base score × 3
+Factual Isolation
+Measures how cleanly verifiable facts are separated from fluff.
+Base score × 2.5
+Entity Alignment
+Measures whether key concepts/entities match authoritative knowledge.
+Base score × 1.5
+
+
+One-Line Summary
+Retrieval & Factuality evaluates how easily an AI system can extract answers, verify facts, and recognize entities, combining three scaled sub-scores into one value.
+Level 3 - Synthesis & Coherence 
+This metric combines two components:
+Signal-to-Noise Score
+Technical Clarity Score
+Let:
+SN = Signal-to-Noise Score
+TC = Technical Clarity Score
+
+
+Formula
+Synthesis & Coherence = SN + TC
+
+
+Component Definitions (Simplified)
+Component
+Meaning
+Scaling
+Signal-to-Noise
+Measures how much of the content is meaningful vs. filler. High score = minimal fluff.
+Base × 2
+Technical Clarity
+Measures sentence clarity and simplicity; avoids ambiguity or over-use of modifiers.
+Base × 1 (no multiplier)
+
+
+One-Line Summary
+Synthesis & Coherence reflects how tightly the content stays on-message and how clearly it communicates technical information.
+Level 4 - AI Indexing Score
+AI Indexing Score is composed of two major components:
+Retrieval & Factuality
+Synthesis & Coherence
+Let:
+RF = Retrieval & Factuality
+SC = Synthesis & Coherence
+Formula
+AI Indexing Score = Retrieval & Factuality + Synthesis & Coherence
+
+
+There is no additional scaling after this sum.
+One-Line Summary
+AI Indexing Score estimates how well an AI system can retrieve, interpret, and structure the content by combining factual clarity with narrative coherence.
+Level 4 - SEO Score
+SEO Score is built from three major components:
+Relevance Score
+EEAT Score
+Readability Score
+Let:
+R = Relevance Score
+E = EEAT Score
+RD = Readability Score
+
+
+Formula
+
+SEO Score = Relevance Score + EEAT Score + Readability Score
+
+
+There is no weighting — each component contributes equally.
+One-Line Summary
+SEO Score is the combined effect of relevance, expertise/credibility/authority, and readability, producing the final search-optimization score for a piece of content.
+1) Output must always be structured JSON
+Regardless of success, partial, or failed runs, the response must be valid JSON with a stable schema.
+
+2) Output states
+Status values
+failed
+ Article missing or cannot be parsed.
+
+
+partial
+ Article parsed, but one or more optional SEO inputs missing or invalid (meta title, meta description, url) OR primary keyword missing.
+
+
+success
+ All key inputs present and scoring completed.
+
+
+
+3) Output sections (always returned)
+Every response must include these top-level sections, even if empty:
+{
+  "request_id": "string",
+  "status": "success|partial|failed",
+  "input_integrity": {},
+  "level_1": {},
+  "level_2": {},
+  "level_3": {},
+  "level_4": {},
+  "final_scores": {},
+  "diagnostics": {},
+  "recommendations": {}
+}
+
+
+4) Input integrity block (mandatory)
+Must be returned in every output.
+"input_integrity": {
+  "received": {
+    "article_present": true,
+    "primary_keyword_present": true,
+    "secondary_keywords_present": true,
+    "meta_title_present": false,
+    "meta_description_present": false,
+    "url_present": false
+  },
+  "missing_inputs": ["meta_title", "meta_description", "url"],
+  "invalid_inputs": [],
+  "defaults_applied": {
+    "article_format_defaulted": true,
+    "secondary_keywords_defaulted_to_empty": false,
+    "locale_defaulted": true
+  },
+  "skipped_checks": [
+    "meta_title_keyword_checks",
+    "meta_description_keyword_checks",
+    "url_slug_keyword_checks"
+  ],
+  "not_evaluated_metrics": [
+    "meta_title_component",
+    "meta_description_component",
+    "url_component"
+  ],
+  "messages": [
+    "Meta Title missing: title-based checks not evaluated.",
+    "URL missing: slug checks not evaluated."
+  ]
+}
+
+
+5) Level 1 output logic (validated sentence map)
+Requirement
+Level 1 output must reflect the validated tags (Perplexity + Gemini tagged, ChatGPT validated).
+Format
+Return:
+Summary counts by label
+
+
+Optional sentence-level map (toggleable)
+
+
+"level_1": {
+  "summary": {
+    "sentence_count": 120,
+    "structure_distribution": {"simple": 60, "compound": 20, "complex": 30, "compound_complex": 10},
+    "informative_type_distribution": {"fact": 40, "claim": 25, "definition": 15, "opinion": 20, "prediction": 5, "statistic": 10},
+    "citation_distribution": {"with_citation": 22, "without_citation": 98},
+    "grammar_distribution": {"correct": 110, "incorrect": 10}
+  },
+  "sentence_map_included": false
+}
+
+If sentence map is included
+Each sentence must have stable IDs and final tags:
+"sentence_map": [
+  {
+    "id": "S12",
+    "text": "string",
+    "final_tags": {
+      "informative_type": "statistic",
+      "citation": "missing",
+      "structure": "simple",
+      "voice": "active",
+      "grammar": "correct"
+    }
+  }
+]
+
+
+6) Level 2 output logic (computed only by Gemini)
+Return every Level 2 metric:
+numeric value
+
+
+computation status (computed / not_evaluated)
+
+
+reason when not computed
+
+
+"level_2": {
+  "original_info_score": {"value": 3.2, "status": "computed"},
+  "expertise_score": {"value": 8.0, "status": "computed"},
+  "credibility_score": {"value": 5.6, "status": "computed"},
+  "authority_score": {"value": 6.1, "status": "computed"},
+  "intent_score": {"value": null, "status": "not_evaluated", "reason": "primary_keyword_missing"},
+  "section_score": {"value": null, "status": "not_evaluated", "reason": "primary_keyword_missing"}
+}
+
+
+7) Level 3 output logic (computed only by Gemini)
+Return composites with their components:
+"level_3": {
+  "relevance_score": {
+    "value": 11.2,
+    "status": "computed",
+    "components": ["intent_score", "section_score", "original_info_score"]
+  },
+  "eeat_score": {
+    "value": 19.7,
+    "status": "computed",
+    "components": ["expertise_score", "credibility_score", "authority_score"]
+  },
+  "readability_score": {
+    "value": 7.4,
+    "status": "computed",
+    "components": ["simplicity_score", "grammar_score", "variation_score"]
+  }
+}
+
+
+8) Level 4 output logic (computed only by Gemini)
+"level_4": {
+  "ai_indexing_score": {
+    "value": 12.5,
+    "status": "computed",
+    "components": ["retrieval_factuality", "synthesis_coherence"]
+  },
+  "centauri_seo_score": {
+    "value": 38.3,
+    "status": "computed",
+    "components": ["relevance_score", "eeat_score", "readability_score"]
+  }
+}
+
+
+9) Final scores block (what user sees)
+Tab 4 says only 5 scores should be shown to users. So the output must include both:
+final_scores.user_visible (only 5)
+
+
+final_scores.internal (full)
+
+
+"final_scores": {
+  "user_visible": {
+    "centauri_seo_score": 38.3,
+    "relevance_score": 11.2,
+    "eeat_score": 19.7,
+    "readability_score": 7.4,
+    "ai_indexing_score": 12.5
+  },
+  "internal": {
+    "level_2": "full metric list here",
+    "level_1": "full distributions here"
+  }
+}
+
+
+10) Diagnostics block (why the score is low)
+Diagnostics must be:
+specific
+
+
+evidence-linked (sentence IDs)
+
+
+not formula-heavy
+
+
+"diagnostics": {
+  "top_issues": [
+    {
+      "issue": "Unsourced statistics",
+      "severity": "high",
+      "evidence": ["S12", "S47", "S88"],
+      "impact": ["credibility_score", "eeat_score"]
+    }
+  ],
+  "skipped_due_to_missing_inputs": ["meta_title_component"]
+}
+
+
+11) Recommendations block (actionable fixes)
+Must contain:
+issue
+
+
+what to change
+
+
+examples (good vs bad)
+
+
+which score it improves
+
+
+"recommendations": [
+  {
+    "issue": "Unsourced statistics",
+    "what_to_change": "Add a source using third-person mention or hyperlink for each statistic sentence.",
+    "examples": {
+      "bad": "Retention increased by 22 percent.",
+      "good": "Retention increased by 22 percent (linked to retention report)."
+    },
+    "improves": ["credibility_score", "eeat_score"]
+  }
+]
+
+
+12) Output restrictions (hard rules)
+Do not expose:
+
+
+raw formulas
+
+
+SERP intent distribution raw numbers (unless internal)
+
+
+model disagreement logs to end users
+
+
+Always expose:
+
+
+missing inputs
+
+
+skipped checks
+
+
+which issues caused score drops (with sentence IDs)
+Recommendation Quality Guidelines
+Issue Type
+Bad Recommendation (What NOT to do)
+Why This Is Bad
+Best-Practice Recommendation
+Example (Good)
+Unsourced statistics
+Add more sources to improve credibility.
+Vague, non-actionable, no location or method.
+Add a clear source for each statistic using a hyperlink or third-person mention.
+“Retention increased by 22 percent according to the 2024 SaaS Benchmarks Report.”
+Weak credibility
+Improve credibility by citing reliable sources.
+Does not tell what, where, or how to fix.
+Identify all sentences marked as statistics or predictions and add sources to each.
+“Churn dropped by 15 percent based on our internal cohort analysis.”
+Low authority
+Use more authoritative language.
+Subjective and unclear.
+Convert claims into facts by tightening language and removing hedging words.
+Bad: “This might help teams scale.” Good: “This helps teams scale by automating onboarding.”
+Poor sentence structure
+Simplify your sentences.
+No guidance on what to simplify.
+Break compound-complex sentences into two shorter declarative sentences.
+“The system processes requests. It returns results in under two seconds.”
+Missing keyword signals
+Add the primary keyword in headers.
+Risks keyword stuffing.
+Add a close variant of the primary keyword naturally in one H2 where intent aligns.
+“How an AI-based content checker improves on-page quality”
+Low originality
+Add more original insights.
+Abstract, not measurable.
+Add at least one paragraph with first-hand observation or internal data.
+“In our analysis of 120 pages, pages with tables ranked faster.”
+Low expertise
+Show more expertise in the content.
+Does not indicate how expertise is shown.
+Add one opinion or observation sentence backed by experience or data.
+“We noticed onboarding drop-offs spike at the API key step.”
+Poor readability
+Improve readability.
+No guidance or examples.
+Reduce complex and compound-complex sentences to under 30 percent of total sentences.
+Split long sentences and remove nested clauses.
+Weak section coverage
+Cover more subtopics.
+Unclear which subtopics are missing.
+Add sections addressing the missing SERP-derived subtopics explicitly.
+Add a section titled “How AI content checkers handle originality.”
+Citation issues
+Add links where needed.
+Does not specify which sentences.
+Add citations only to sentences marked as statistics, predictions, or less-known claims.
+Link only the statistic phrase, not the entire paragraph.
+
+
+
+

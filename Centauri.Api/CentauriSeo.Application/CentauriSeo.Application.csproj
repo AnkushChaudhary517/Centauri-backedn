@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CentauriSeo.Core\CentauriSeo.Core.csproj" />
+    <ProjectReference Include="..\CentauriSeo.Infrastructure\CentauriSeo.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

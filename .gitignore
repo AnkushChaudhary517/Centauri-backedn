@@ -9,6 +9,7 @@ dist/
 build/
 bin/
 obj/
+.vs/
 
 # Env files
 .env

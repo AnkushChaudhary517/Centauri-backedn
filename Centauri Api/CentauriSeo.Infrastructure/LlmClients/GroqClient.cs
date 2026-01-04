@@ -1,3 +1,4 @@
+using CentauriSeo.Core.Models.Output;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
@@ -56,6 +57,7 @@ public class GroqClient
         var systemInstruction = $"use this document for reference. Document : {systemRequirement}.\n Dont invent any new informativeType.... i am providing you the list of values.... anything else will be Uncertain. even with such information you have already provided wrong values...Return a JSON array where each element is an object with properties: " +
                                 "\"SentenceId\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
                                 "\"ClaimsCitation\" (boolean).If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType..... never ever ever add any value except from the list";
+                                
 
         // Compose user content with indexed sentence IDs so response includes stable IDs
         var userContent = string.Join("\n", sentenceList.Select((t, i) => $"S{i + 1}: {t}"));

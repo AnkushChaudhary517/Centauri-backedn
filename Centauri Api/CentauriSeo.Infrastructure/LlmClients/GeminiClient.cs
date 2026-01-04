@@ -34,7 +34,7 @@ public class GeminiClient
                               "\"SentenceId\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
                               "\"ClaimsCitation\" (boolean).Voicetype must be either \"Active\" or \"Passive\".  Default VoiceType is \"Active\". Structure must be one of these  Simple|Compound|Complex|CompoundComplex|Fragment .  Default Structure is Simple. If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType and VoiceType..... never ever ever add any value except from the list";
         var modelName = "gemini-1.5-flash";
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyBVxLk4soBJFpbuAXSU8W7tPAQTI-nmWjw";
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyB2NNIPmTtdbZV7sjNgDeVgyVkyqOa0Rt8";
 
         // 2. Gemini Specific JSON Body (Contents/Parts format)
         // 3. Build Gemini-Specific Request Body

@@ -1,6 +1,9 @@
+﻿using Azure;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
 using CentauriSeo.Core.Models.Input;
+using CentauriSeo.Core.Models.Output;
+using CentauriSeo.Core.Models.Scoring;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
@@ -133,5 +136,75 @@ public class Phase1And2OrchestratorService
         // 3) Run arbitration engine to produce validated sentences TODO: pass Groq tags when implemented
         var validated = new Phase1And2Orchestrator().Execute(sentences, groqTags, geminiTags, chatGptDecisions);
         return validated;
+    }
+
+
+    public async Task<List<Recommendation>> GenerateRecommendationsAsync(Level2Scores l2, Level3Scores l3, Level4Scores l4)
+    {
+
+        var issues = new
+        {
+            SimplicityScore = l2.SimplicityScore,
+            GrammarScore = l2.GrammarScore,
+            KeywordScore = l2.KeywordScore,
+            ReadabilityScore = l3.ReadabilityScore,
+            EeatScore = l3.EeatScore,
+            AiIndexingScore = l4.AiIndexingScore,
+            SeoScore = l4.CentauriSeoScore
+        };
+
+        // 2️⃣ System prompt (instructions for AI)
+        string systemPrompt = @"
+You are an SEO content optimization expert.
+Generate actionable content improvement recommendations based on the provided scores.
+
+Rules:
+- Only generate recommendations for scores below acceptable thresholds.
+- Output VALID JSON ONLY.
+- Do NOT include markdown.
+- Do NOT include explanations.
+- Use this exact schema:
+
+[
+  {
+    ""issue"": string,
+    ""whatToChange"": string,
+    ""examples"": {
+      ""bad"": string,
+      ""good"": string
+    },
+    ""improves"": string[]
+  }
+]
+
+Scoring thresholds:
+- Simplicity < 2
+- Grammar < 2
+- Keyword < 5
+- Readability < 7
+- EEAT < 18
+- AI Indexing < 50
+- Overall SEO < 40
+";
+
+        // 3️⃣ User prompt (JSON of the scores)
+        string userPrompt = JsonSerializer.Serialize(issues);
+        try
+        {
+            var response = await _gemini.GenerateAsync(userPrompt, systemPrompt);
+            var res = JsonSerializer.Deserialize<GeminiApiResponse>(response, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            string aiContent = res?.Candidates?.ToList()?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
+
+
+            // 5️⃣ Deserialize JSON safely
+            var recommendations = JsonSerializer.Deserialize<List<Recommendation>>(aiContent,new JsonSerializerOptions() { PropertyNameCaseInsensitive=true});
+            return recommendations;
+        }
+        catch(Exception ex)
+        {
+        }
+        
+
+        return  new List<Recommendation>();
     }
 }

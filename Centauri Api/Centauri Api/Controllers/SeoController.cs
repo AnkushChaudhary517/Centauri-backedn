@@ -224,7 +224,8 @@ public class SeoController : ControllerBase
             TopIssues = topIssues 
         };
         // Populate recommended quick diagnostics/recommendations (legacy)
-        response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
+        response.Recommendations = await _orchestrator.GenerateRecommendationsAsync(l2, l3, l4);
+        //response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
 
         // --- Final input_integrity.status per document rules ---
         bool allPresent = input.Received.ArticlePresent

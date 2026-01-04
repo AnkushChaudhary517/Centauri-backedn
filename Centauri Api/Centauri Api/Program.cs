@@ -84,7 +84,7 @@ builder.Services.AddHttpClient<OpenAiClient>(c =>
 builder.Services.AddHttpClient<GeminiClient>(c =>
 {
     c.BaseAddress = new Uri("https://generativelanguage.googleapis.com");
-    c.DefaultRequestHeaders.Add("x-goog-api-key", "AIzaSyBVxLk4soBJFpbuAXSU8W7tPAQTI-nmWjw");
+    c.DefaultRequestHeaders.Add("x-goog-api-key", "AIzaSyB2NNIPmTtdbZV7sjNgDeVgyVkyqOa0Rt8");
 });
 
 builder.Services.AddHttpClient<PerplexityClient>(c =>

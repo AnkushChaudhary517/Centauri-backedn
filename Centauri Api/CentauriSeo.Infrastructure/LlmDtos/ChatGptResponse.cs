@@ -22,4 +22,23 @@ namespace CentauriSeo.Infrastructure.LlmDtos
     {
         public string Content { get; set; }
     }
+
+
+    public class GeminiApiResponse
+    {
+        public Candidate[] Candidates { get; set; }
+    }
+    public class Candidate
+    {
+        public Content Content { get; set; }
+    }
+
+    public class Content
+    {
+        public Parts[] Parts { get; set; }
+    }
+    public class Parts
+    {
+        public string Text { get; set; }
+    }
 }

@@ -3,6 +3,7 @@ using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Client;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,8 +20,9 @@ public class GeminiClient
 {
     private readonly HttpClient _http;
     private readonly ILlmCacheService _cache;
+    private readonly IConfiguration _config;
 
-    public GeminiClient(HttpClient http, ILlmCacheService cache) => (_http, _cache) = (http, cache);
+    public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config) => (_http, _cache, _config) = (http, cache, config);
 
     public async Task<string> GenerateAsync(string input, string systemRequirement)
     {
@@ -30,7 +32,8 @@ public class GeminiClient
                               "\"SentenceId\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
                               "\"ClaimsCitation\" (boolean).Voicetype must be either \"Active\" or \"Passive\".  Default VoiceType is \"Active\". Structure must be one of these  Simple|Compound|Complex|CompoundComplex|Fragment .  Default Structure is Simple. If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType and VoiceType..... never ever ever add any value except from the list";
         var modelName = "gemini-1.5-flash";
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyB2NNIPmTtdbZV7sjNgDeVgyVkyqOa0Rt8";
+        var key = _config["GeminiApiKey"];
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}";
 
         // 2. Gemini Specific JSON Body (Contents/Parts format)
         // 3. Build Gemini-Specific Request Body

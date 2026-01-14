@@ -60,7 +60,13 @@ public static class Phase2_ArbitrationEngine
             Structure = g.Structure,
             Voice = g.Voice,
             HasCitation = p.ClaimsCitation,
-            Confidence = confidence
+            Confidence = confidence,
+            IsGrammaticallyCorrect = g.IsGrammaticallyCorrect,
+            HasPronoun = g.HasPronoun,
+            IsPlagiarized = g.IsPlagiarized,
+            InfoQuality = g.InfoQuality,
+            FunctionalType = g.FunctionalType,
+             HtmlTag = g.HtmlTag
         };
     }
 }

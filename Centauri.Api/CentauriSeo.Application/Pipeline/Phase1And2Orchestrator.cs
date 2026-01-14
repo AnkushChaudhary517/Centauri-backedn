@@ -19,8 +19,8 @@ public class Phase1And2Orchestrator
 
         foreach (var s in sentences)
         {
-            var p = perplexity.Single(x => x.SentenceId == s.Id);
-            var g = gemini.Single(x => x.SentenceId == s.Id);
+            var p = perplexity.FirstOrDefault(x => x.SentenceId == s.Id);
+            var g = gemini.FirstOrDefault(x => x.SentenceId == s.Id);
             var ai = chatGpt?.SingleOrDefault(x => x.SentenceId == s.Id);
 
             result.Add(Phase2_ArbitrationEngine.Arbitrate(s, p, g, ai));

@@ -74,11 +74,12 @@ builder.Services.AddHttpClient<GroqClient>(c =>
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 });
 
+var openAiKey = builder.Configuration["OpenAiKey"];
 // register LLM clients (HttpClient already configured earlier)
 builder.Services.AddHttpClient<OpenAiClient>(c =>
 {
     c.BaseAddress = new Uri("https://api.openai.com");
-    c.DefaultRequestHeaders.Add("Authorization", "Bearer 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");
+    c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiKey}");
 });
 
 builder.Services.AddHttpClient<GeminiClient>(c =>

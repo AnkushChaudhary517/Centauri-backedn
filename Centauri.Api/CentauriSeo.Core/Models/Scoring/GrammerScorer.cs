@@ -8,7 +8,7 @@ namespace CentauriSeo.Application.Scoring;
 public static class GrammarScorer
 {
     // Returns 0..3.33
-    public static double Score(IEnumerable<Level1Sentence> sentences)
+    public static double Score(IEnumerable<ValidatedSentence> sentences)
     {
         var list = sentences.ToList();
         if (!list.Any()) return 3.333333;

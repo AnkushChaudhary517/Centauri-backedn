@@ -11,7 +11,8 @@
     public enum VoiceType
     {
         Active,
-        Passive
+        Passive,
+        Both
     }
     public enum InformativeType
     {
@@ -36,5 +37,13 @@
         Derived,
         Unique,
         False
+    }
+
+    public enum  FunctionalType
+    {
+        Declarative,
+        Interrogative,
+        Imperative,
+        Exclamatory
     }
 }

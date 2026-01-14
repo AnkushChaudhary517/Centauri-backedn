@@ -8,29 +8,90 @@ namespace CentauriSeo.Application.Scoring;
 
 public static class VariationScorer
 {
-    // Returns 0..3.33 by computing normalized Shannon entropy across 5 bins approximated from sentence structure distribution.
-    public static double Score(IEnumerable<Level1Sentence> sentences)
+    public static double Score(IEnumerable<ValidatedSentence> sentences)
     {
-        var list = sentences.ToList();
-        if (!list.Any()) return 3.333333;
+        if (sentences == null || !sentences.Any())
+            return 0;
 
-        // map to five bins: simple, compound, complex, compound_complex, fragment
-        var total = list.Count;
-        double pSimple = list.Count(s => s.Structure == SentenceStructure.Simple) / (double)total;
-        double pCompound = list.Count(s => s.Structure == SentenceStructure.Compound) / (double)total;
-        double pComplex = list.Count(s => s.Structure == SentenceStructure.Complex) / (double)total;
-        double pCompoundComplex = list.Count(s => s.Structure == SentenceStructure.CompoundComplex) / (double)total;
-        double pFragment = list.Count(s => s.Structure == SentenceStructure.Fragment) / (double)total;
+        int paragraphs = 0;
+        int headers = 0;
+        int lists = 0;
+        int tables = 0;
+        int pictures = 0;
 
-        double H = 0.0;
-        foreach (var p in new[] { pSimple, pCompound, pComplex, pCompoundComplex, pFragment })
+        foreach (var sentence in sentences)
         {
-            if (p > 0) H -= p * Math.Log2(p);
+            if (string.IsNullOrWhiteSpace(sentence.HtmlTag))
+                continue;
+
+            switch (sentence.HtmlTag.ToLower())
+            {
+                case "p":
+                    paragraphs++;
+                    break;
+
+                case "h1":
+                case "h2":
+                case "h3":
+                case "h4":
+                case "h5":
+                case "h6":
+                    headers++;
+                    break;
+
+                case "ul":
+                case "ol":
+                case "li":
+                    lists++;
+                    break;
+
+                case "table":
+                    tables++;
+                    break;
+
+                case "img":
+                    pictures++;
+                    break;
+            }
         }
 
-        double Hmax = Math.Log2(5);
-        double V10 = (H / Hmax) * 10.0;
-        double variation = V10 / 3.0; // 0..3.33
-        return Math.Clamp(variation, 0.0, 3.333333);
+        int total =
+            paragraphs +
+            headers +
+            lists +
+            tables +
+            pictures;
+
+        if (total == 0)
+            return 0;
+
+        // STEP 1 — proportions
+        double[] proportions =
+        {
+            (double)paragraphs / total,
+            (double)headers / total,
+            (double)lists / total,
+            (double)tables / total,
+            (double)pictures / total
+        };
+
+        // STEP 2 — Shannon Entropy
+        double entropy = 0;
+        foreach (var p in proportions)
+        {
+            if (p > 0)
+            {
+                entropy += -p * Math.Log(p, 2);
+            }
+        }
+
+        // STEP 3 — Normalize to 0–10
+        const double Hmax = 2.321928094887362; // log2(5)
+        double varietyScore10 = (entropy / Hmax) * 10;
+
+        // STEP 4 — Convert to final Variation Score
+        double finalScore = varietyScore10 / 3;
+
+        return Math.Round(finalScore, 2);
     }
 }

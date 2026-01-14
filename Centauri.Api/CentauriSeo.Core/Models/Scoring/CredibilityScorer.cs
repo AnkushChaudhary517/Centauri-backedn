@@ -9,7 +9,7 @@ namespace CentauriSeo.Application.Scoring;
 public static class CredibilityScorer
 {
     // Returns 0..10 per documented 4-level priority rule
-    public static double Score(IEnumerable<Level1Sentence> sentences)
+    public static double Score(IEnumerable<ValidatedSentence> sentences)
     {
         var list = sentences.ToList();
         if (!list.Any()) return 0.0;

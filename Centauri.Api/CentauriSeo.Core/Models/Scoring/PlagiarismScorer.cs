@@ -10,7 +10,7 @@ public static class PlagiarismScorer
     // Plagiarism Score = (U / T) * 10
     // where U = number of unique (non-copied) sentences, T = total sentences scanned.
     // Return range: 0 .. 10
-    public static double Score(IEnumerable<Level1Sentence> sentences)
+    public static double Score(IEnumerable<ValidatedSentence> sentences)
     {
         var list = sentences.ToList();
         if (!list.Any())

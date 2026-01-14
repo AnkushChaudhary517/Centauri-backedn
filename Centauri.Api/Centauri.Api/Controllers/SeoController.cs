@@ -10,6 +10,7 @@ using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Scoring;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Application.Utils;
+using CentauriSeo.Core.Models.Outputs;
 
 namespace CentauriSeoBackend.Controllers;
 
@@ -134,8 +135,46 @@ public class SeoController : ControllerBase
             input.Messages.Add("Primary keyword missing: keyword-dependent checks skipped.");
         }
 
+       
+
+        // --- Phase1/2 orchestration (deterministic stub if orchestrator not available) ---
+        OrchestratorResponse orchestratorResponse = null;
+        //IReadOnlyList<ValidatedSentence> validated = null;
+        try
+        {
+            orchestratorResponse = await _orchestrator.RunAsync(request);
+
+        }
+        catch(Exception ex)
+        {
+            //validated = level1.Select(l => new ValidatedSentence
+            //{
+            //    Id = l.Id,
+            //    Text = l.Text,
+            //    Grammar = l.IsGrammaticallyCorrect ? "correct" : "incorrect",
+            //    InformativeType = l.InformativeType,
+            //    Structure = l.Structure,
+            //    Voice = l.Voice,
+            //    HasCitation = l.HasCitation,
+            //    Confidence = 1.0
+            //}).ToList();
+        }
         // --- Phase 0 + Level 1 ---
-        var level1 = Level1Engine.Analyze(request.Article);
+        //var l1 = Level1Engine.Analyze(request.Article);
+
+        var level1 = orchestratorResponse?.ValidatedSentences?.ToList()?.ConvertAll(x => new Level1Sentence()
+        {
+            HasCitation = x.HasCitation,
+            HasPronoun = x.HasPronoun,
+            Id = x.Id,
+            InfoQuality = x.InfoQuality,
+            InformativeType = x.InformativeType,
+            IsGrammaticallyCorrect = x.IsGrammaticallyCorrect,
+            IsPlagiarized = x.IsPlagiarized,
+            Structure = x.Structure,
+            Text = x.Text
+        });
+
         response.Level1.Summary.SentenceCount = level1.Count;
 
         response.Level1.Summary.StructureDistribution = level1
@@ -158,30 +197,8 @@ public class SeoController : ControllerBase
             ["incorrect"] = level1.Count(s => !s.IsGrammaticallyCorrect)
         };
 
-        // --- Phase1/2 orchestration (deterministic stub if orchestrator not available) ---
-        IReadOnlyList<ValidatedSentence> validated;
-        try
-        {
-            var businessPromt = "";//System.IO.File.ReadAllText("Data/centauri_requirement.txt");
-            validated = await _orchestrator.RunAsync(request.Article,businessPromt);
-        }
-        catch
-        {
-            validated = level1.Select(l => new ValidatedSentence
-            {
-                Id = l.Id,
-                Text = l.Text,
-                Grammar = l.IsGrammaticallyCorrect ? "correct" : "incorrect",
-                InformativeType = l.InformativeType,
-                Structure = l.Structure,
-                Voice = l.Voice,
-                HasCitation = l.HasCitation,
-                Confidence = 1.0
-            }).ToList();
-        }
-
         response.Level1.SentenceMapIncluded = true;
-        response.Level1.SentenceMap = validated.Select(v => new SentenceMapEntry
+        response.Level1.SentenceMap = orchestratorResponse?.ValidatedSentences?.Select(v => new SentenceMapEntry
         {
             Id = v.Id,
             Text = v.Text,
@@ -196,7 +213,11 @@ public class SeoController : ControllerBase
         }).ToList();
 
         // --- Compute scores (scorers will internally respect missing primary_keyword where required) ---
-        var l2 = Level2Engine.Compute(request, validated, level1);
+        var l2 = Level2Engine.Compute(request, orchestratorResponse?.ValidatedSentences);
+
+        l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
+        l2.SectionScore =   orchestratorResponse?.SectionScore ?? 1.0;
+        l2.AuthorityScore *= 10;
         var l3 = Level3Engine.Compute(l2);
         var l4 = Level4Engine.Compute(l2, l3);
 
@@ -213,7 +234,7 @@ public class SeoController : ControllerBase
                 AiIndexingScore = response.Level4Scores.AiIndexingScore,
                 SeoScore = response.Level4Scores.CentauriSeoScore,
                 EeatScore = response.Level3Scores.EeatScore,
-                ReadabilityScore = response.Level3Scores.ReadabilityScore,
+                ReadabilityScore = response.Level3Scores.ReadabilityScore * 10,
                 RelevanceScore = response.Level3Scores.RelevanceScore
             }
         };
@@ -224,7 +245,15 @@ public class SeoController : ControllerBase
             TopIssues = topIssues 
         };
         // Populate recommended quick diagnostics/recommendations (legacy)
-        response.Recommendations = await _orchestrator.GenerateRecommendationsAsync(l2, l3, l4);
+        
+        int offset = 100;
+        for (int i = 0; i < level1.Count; i+=offset)
+        {
+            var chunk = level1.Skip(i).Take(offset).ToList();
+            var level1Sentences = string.Join(" ", chunk.Select(s => s.Text));
+            response.Recommendations.AddRange(await _orchestrator.GenerateRecommendationsAsync(level1Sentences, l2, l3, l4));
+
+        }
         //response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
 
         // --- Final input_integrity.status per document rules ---

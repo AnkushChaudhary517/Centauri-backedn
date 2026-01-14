@@ -37,6 +37,10 @@ public class LlmCacheService : ILlmCacheService
 
     public async Task SaveAsync(string requestKey, string requestText, string responseText, string provider)
     {
+        if(_db.LlmCacheEntries.Any(x => x.RequestKey == requestKey))
+        {
+            _db.LlmCacheEntries.RemoveRange(_db.LlmCacheEntries.Where(x => x.RequestKey == requestKey));
+        }
         var entry = new LlmCacheEntry
         {
             RequestKey = requestKey,
@@ -51,6 +55,10 @@ public class LlmCacheService : ILlmCacheService
     }
     public async Task SaveAsync(string requestKey, string responseText)
     {
+        if (_db.LlmCacheEntries.Any(x => x.RequestKey == requestKey))
+        {
+            _db.LlmCacheEntries.RemoveRange(_db.LlmCacheEntries.Where(x => x.RequestKey == requestKey));
+        }
         var entry = new LlmCacheEntry
         {
             RequestKey = requestKey,

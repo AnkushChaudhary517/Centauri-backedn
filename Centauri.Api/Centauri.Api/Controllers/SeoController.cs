@@ -13,6 +13,7 @@ using CentauriSeo.Application.Utils;
 using CentauriSeo.Core.Models.Outputs;
 using CentauriSeo.Infrastructure.Logging;
 using System.Text.Json;
+using Centauri_Api.Model;
 
 namespace CentauriSeoBackend.Controllers;
 
@@ -252,15 +253,8 @@ public class SeoController : ControllerBase
             TopIssues = topIssues 
         };
         // Populate recommended quick diagnostics/recommendations (legacy)
-        
-        int offset = 100;
-        for (int i = 0; i < level1.Count; i+=offset)
-        {
-            var chunk = level1.Skip(i).Take(offset).ToList();
-            var level1Sentences = string.Join(" ", chunk.Select(s => s.Text));
-            response.Recommendations.AddRange(await _orchestrator.GenerateRecommendationsAsync(level1Sentences, l2, l3, l4));
-
-        }
+        var list = level1?.ToList();
+        _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, JsonSerializer.Deserialize<List<Level1Sentence>>(JsonSerializer.Serialize(level1)));
         //response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
 
         // --- Final input_integrity.status per document rules ---
@@ -282,5 +276,19 @@ public class SeoController : ControllerBase
         }
 
         return Ok(response);
+    }
+
+
+    [HttpPost("recommendations")]
+    public async Task<ActionResult<RecommendationResponse>> GetRecommendations([FromBody] SeoRequest request)
+    {
+        // Basic input validation
+        if (request == null || string.IsNullOrWhiteSpace(request.Article.Raw))
+        {
+            return BadRequest("Invalid request: ArticleText is required.");
+        }
+        // Generate recommendations using the TextAnalysisHelper
+        var recommendations = await _orchestrator.GetRecommendationResponseAsync(request.Article.Raw);
+        return Ok(recommendations);
     }
 }

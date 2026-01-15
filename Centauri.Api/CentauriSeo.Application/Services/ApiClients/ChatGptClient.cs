@@ -41,7 +41,7 @@ public class ChatGptClient
         var response = await _client.PostAsync("https://api.openai.com/v1/chat/completions", requestContent);
         var resultJson = await response.Content.ReadAsStringAsync();
 
-        await _cache.SaveAsync(key, payload, resultJson, provider);
+        //await _cache.SaveAsync(key, payload, resultJson, provider);
 
         return resultJson;
     }

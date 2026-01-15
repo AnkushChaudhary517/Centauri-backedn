@@ -35,14 +35,14 @@ builder.Services.AddCors(options =>
     });
 });
 
-// register EF Core Sqlite for caching
-var connectionString = builder.Configuration.GetConnectionString("LlmCache") 
-                       ?? "Data Source=llmcache.db";
-builder.Services.AddDbContext<LlmCacheDbContext>(options =>
-    options.UseSqlite(connectionString));
+//// register EF Core Sqlite for caching
+//var connectionString = builder.Configuration.GetConnectionString("LlmCache") 
+//                       ?? "Data Source=llmcache.db";
+//builder.Services.AddDbContext<LlmCacheDbContext>(options =>
+//    options.UseSqlite(connectionString));
 
 // register cache service
-builder.Services.AddScoped<ILlmCacheService, LlmCacheService>();
+builder.Services.AddSingleton<ILlmCacheService, InMemoryCacheService>();
 
 // JWT Configuration
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -75,6 +75,7 @@ builder.Services.AddHttpClient<GroqClient>(c =>
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 });
 
+builder.Services.AddMemoryCache();
 var openAiKey = builder.Configuration["OpenAiKey"]?.DecodeBase64();
 // register LLM clients (HttpClient already configured earlier)
 builder.Services.AddHttpClient<OpenAiClient>(c =>
@@ -95,26 +96,27 @@ builder.Services.AddHttpClient<PerplexityClient>(c =>
     c.DefaultRequestHeaders.Add("Authorization", "Bearer YOUR_KEY");
 });
 
+
 // register orchestrator service
-builder.Services.AddScoped<Phase1And2OrchestratorService>();
+builder.Services.AddSingleton<Phase1And2OrchestratorService>();
 builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
 // Register DynamoDB client for DI
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 
 // Register your repository
-builder.Services.AddScoped<IDynamoDbService, DynamoDbService>();
+builder.Services.AddSingleton<IDynamoDbService, DynamoDbService>();
 // Application services
-builder.Services.AddScoped<ITokenService, TokenService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddSingleton<ITokenService, TokenService>();
+builder.Services.AddSingleton<IAuthService, AuthService>();
 
 var app = builder.Build();
 
 // Ensure database created (simple and safe)
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<LlmCacheDbContext>();
-    db.Database.EnsureCreated();
-}
+//using (var scope = app.Services.CreateScope())
+//{
+//    var db = scope.ServiceProvider.GetRequiredService<LlmCacheDbContext>();
+//    db.Database.EnsureCreated();
+//}
 
 if (app.Environment.IsDevelopment())
 {

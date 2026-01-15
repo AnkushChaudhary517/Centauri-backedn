@@ -34,7 +34,7 @@ public class PerplexityClient
         });
 
         var content = await res.Content.ReadAsStringAsync();
-        await _cache.SaveAsync(key, payload, content, provider);
+        //await _cache.SaveAsync(key, payload, content, provider);
         return content;
     }
 
@@ -67,14 +67,14 @@ public class PerplexityClient
                 var parsed = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(apiResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (parsed != null && parsed.Count == sentenceList.Count)
                 {
-                    await _cache.SaveAsync(key, payload, apiResponse, provider);
+                    //await _cache.SaveAsync(key, payload, apiResponse, provider);
                     return parsed;
                 }
             }
             catch { /* fallthrough to deterministic fallback */ }
 
             // If API returned but could not parse, still cache raw and fall back
-            await _cache.SaveAsync(key, payload, apiResponse, provider);
+            //await _cache.SaveAsync(key, payload, apiResponse, provider);
         }
         catch
         {
@@ -91,7 +91,7 @@ public class PerplexityClient
 
         // Cache the deterministic JSON form so future runs reuse it
         var fallbackJson = JsonSerializer.Serialize(fallback);
-        await _cache.SaveAsync(key, payload, fallbackJson, provider);
+        //await _cache.SaveAsync(key, payload, fallbackJson, provider);
 
         return fallback;
     }

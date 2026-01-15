@@ -246,42 +246,92 @@ public class Phase1And2OrchestratorService
         //return 0.0;
     }
 
-    public async Task<List<Recommendation>> GenerateRecommendationsAsync(string article,Level2Scores l2, Level3Scores l3, Level4Scores l4)
+    public async Task<RecommendationResponse> GetRecommendationResponseAsync(string article)
+    {
+        var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true };
+        var cacheKey = _cache.ComputeRequestKey(article, "GeminiRecommendations:Complete");
+        var cached = await _cache.GetAsync(cacheKey);
+        if (!string.IsNullOrEmpty(cached))
+        {
+            return JsonSerializer.Deserialize<RecommendationResponse>(cached, options);
+        }
+        return new RecommendationResponse()
+        {
+            Recommendations = new List<Recommendation>(),
+            Status = "NotStarted"
+        };
+    }
+
+    public async Task<List<Recommendation>> GetFullRecommendationsAsync(string article, List<Level1Sentence> level1)
+    {
+        int offset = 100;
+        var response = new List<Recommendation>();
+        var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true };
+        var cacheKey = _cache.ComputeRequestKey(article, "GeminiRecommendations:Complete");
+        var cached = await _cache.GetAsync(cacheKey);
+        if (!string.IsNullOrEmpty(cached))
+        {
+            var recommendationRes=  JsonSerializer.Deserialize<RecommendationResponse>(cached, options);
+            return recommendationRes?.Recommendations;
+        }
+
+        try
+        {
+            for (int i = 0; i < level1.Count; i += offset)
+            {
+                var chunk = level1.Skip(i).Take(offset).ToList();
+                var level1Sentences = string.Join(" ", chunk.Select(s => s.Text));
+                response.AddRange(await GenerateRecommendationsAsync(level1Sentences));
+                if (response != null && response.Count > 0)
+                    await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(new RecommendationResponse()
+                    {
+                        Recommendations = response,
+                        Status = "InProgress"
+                    }));
+            }
+            if (response != null && response.Count > 0)
+                await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(new RecommendationResponse()
+                {
+                    Recommendations = response,
+                    Status = "Complete"
+                }));
+
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in getting full recommendation : {ex.Message}:{ex.StackTrace}");
+            if (response != null && response.Count > 0)
+                await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(new RecommendationResponse()
+                {
+                    Recommendations = response,
+                    Status = "Error"
+                }));
+        }
+        
+        return response;
+    }
+
+    public async Task<List<Recommendation>> GenerateRecommendationsAsync(string article)
     {
         try
         {
-            var issues = new
-            {
-                SimplicityScore = l2.SimplicityScore,
-                GrammarScore = l2.GrammarScore,
-                KeywordScore = l2.KeywordScore,
-                ReadabilityScore = l3.ReadabilityScore,
-                EeatScore = l3.EeatScore,
-                AiIndexingScore = l4.AiIndexingScore,
-                SeoScore = l4.CentauriSeoScore
-            };
-
+            var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true };
             var cacheKey = _cache.ComputeRequestKey(article, "GeminiRecommendations");
             var cached = await _cache.GetAsync(cacheKey);
             if (!string.IsNullOrEmpty(cached))
             {
-                return JsonSerializer.Deserialize<List<Recommendation>>(cached, new JsonSerializerOptions() { PropertyNameCaseInsensitive = true }); ;
+                return JsonSerializer.Deserialize<List<Recommendation>>(cached, options); ;
             }
 
 
             var cachedRecommendations = await _cache.GetAsync(cacheKey);
             if(cachedRecommendations != null)
             {
-                return JsonSerializer.Deserialize<List<Recommendation>>(cachedRecommendations, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return JsonSerializer.Deserialize<List<Recommendation>>(cachedRecommendations, options);
             }
 
             var response = await _gemini.GenerateRecommendationsAsync(article);
-            var recommendations = JsonSerializer.Deserialize<List<Recommendation>>(response, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            //string aiContent = res?.Candidates?.ToList()?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
-
-
-            //// 5️⃣ Deserialize JSON safely
-            //var recommendations = JsonSerializer.Deserialize<List<Recommendation>>(aiContent,new JsonSerializerOptions() { PropertyNameCaseInsensitive=true});
+            var recommendations = JsonSerializer.Deserialize<List<Recommendation>>(response, options);
 
             if (recommendations != null && recommendations.Count > 0)
                 await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(recommendations));
@@ -292,6 +342,7 @@ public class Phase1And2OrchestratorService
         catch(Exception ex)
         {
             await _logger.LogErrorAsync($"Error occured in generate recommendaton :  {ex.Message}:{ex.StackTrace}");
+            throw;
         }
         
 

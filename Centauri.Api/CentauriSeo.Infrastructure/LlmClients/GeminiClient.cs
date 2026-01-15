@@ -1,6 +1,7 @@
 ﻿using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
+using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using GenerativeAI.Types;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +23,7 @@ public class GeminiClient
     private readonly ILlmCacheService _cache;
     private readonly IConfiguration _config;
     private readonly string _apiKey;
+    private readonly FileLogger _logger;
 
     // Use a stable model version unless you are specifically testing 2.0/2.5 previews
     private const string ModelId = "gemini-2.5-flash";
@@ -32,6 +34,7 @@ public class GeminiClient
         _cache = cache;
         _config = config;
         _apiKey = _config["GeminiApiKey"]?.DecodeBase64();
+        _logger = new FileLogger();
     }
 
 
@@ -116,6 +119,7 @@ Example:
         }
         catch (Exception ex)
         {
+            await _logger.LogErrorAsync($"Error occured in get section score :  {ex.Message}:{ex.StackTrace}");
         }
         return string.Empty;
     }
@@ -168,6 +172,7 @@ Example:
         }
         catch (Exception ex)
         {
+            await _logger.LogErrorAsync($"Error occured in get plagiarism score :  {ex.Message}:{ex.StackTrace}");
         }
         return 0;
     }
@@ -197,6 +202,7 @@ Example:
         }
         catch(Exception ex)
         {
+            await _logger.LogErrorAsync($"Error occured in tagArticleAsync :  {ex.Message}:{ex.StackTrace}");
         }
 
         return new List<GeminiSentenceTag>();
@@ -274,6 +280,7 @@ Example:
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync();
+            await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
             throw new Exception($"Gemini API Error: {error}");
         }
 

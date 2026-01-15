@@ -10,6 +10,7 @@ using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
+using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,6 +27,7 @@ public class Phase1And2OrchestratorService
     private readonly GeminiClient _gemini;
     private readonly OpenAiClient _openAi; // used for ChatGPT arbitration
     private readonly ILlmCacheService _cache;
+    private readonly FileLogger _logger;
 
     public Phase1And2OrchestratorService(
         GroqClient groq,
@@ -37,6 +39,7 @@ public class Phase1And2OrchestratorService
         _gemini = gemini;
         _openAi = openAi;
         _cache = cache;
+        _logger = new FileLogger();
     }
 
     // Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
@@ -141,8 +144,9 @@ public class Phase1And2OrchestratorService
                         }
                     }
                 }
-                catch
+                catch(Exception ex)
                 {
+                    await _logger.LogErrorAsync($"Error occured in handling mismatch : {ex.Message}:{ex.StackTrace}");
                     // Fallback: prefer Gemini when AI response not parseable
                     //chatGptDecisions = sentences.Select(s => new ChatGptDecision
                     //{
@@ -282,6 +286,7 @@ public class Phase1And2OrchestratorService
         }
         catch(Exception ex)
         {
+            await _logger.LogErrorAsync($"Error occured in generate recommendaton :  {ex.Message}:{ex.StackTrace}");
         }
         
 

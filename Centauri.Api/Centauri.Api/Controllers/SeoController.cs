@@ -11,6 +11,8 @@ using CentauriSeo.Application.Scoring;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Application.Utils;
 using CentauriSeo.Core.Models.Outputs;
+using CentauriSeo.Infrastructure.Logging;
+using System.Text.Json;
 
 namespace CentauriSeoBackend.Controllers;
 
@@ -147,6 +149,7 @@ public class SeoController : ControllerBase
         }
         catch(Exception ex)
         {
+            await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
             //validated = level1.Select(l => new ValidatedSentence
             //{
             //    Id = l.Id,

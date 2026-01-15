@@ -164,7 +164,7 @@ Example:
                     .GetProperty("unique_sentence_count")
                     .GetInt32();
                         copiedCount = sentences.Count - uniqueCount;
-                        p = copiedCount * 100 / sentences.Count;
+                        p = (int)Math.Ceiling((copiedCount * 100.0) / sentences.Count);
                     }
                 }
                 return p;

@@ -82,15 +82,16 @@ public class Phase1And2OrchestratorService
 
         if (anyMismatch != null && anyMismatch.Count>0)
         {
-            // Build compact arbitration prompt
-            var promptBuilder = new System.Text.StringBuilder();
-            //promptBuilder.AppendLine($"Use this document to generate the required responses. Document : {businessPromt}");
-            promptBuilder.AppendLine("You are an arbiter. For each sentence provide a final informative type, confidence (0-1) and optional reason (JSON array).");
-            promptBuilder.AppendLine("Sentences and tags:");
 
-            var batchSize = 100;
+
+            var batchSize = 50;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
+                // Build compact arbitration prompt
+                var promptBuilder = new System.Text.StringBuilder();
+                //promptBuilder.AppendLine($"Use this document to generate the required responses. Document : {businessPromt}");
+                promptBuilder.AppendLine("You are an arbiter. For each sentence provide a final informative type, confidence (0-1) and optional reason (JSON array).");
+                promptBuilder.AppendLine("Sentences and tags:");
                 foreach (var s in sentences.Skip(i).Take(batchSize))
                 {
                     var gq = groqTags.SingleOrDefault(x => x.SentenceId == s.Id);
@@ -129,6 +130,10 @@ public class Phase1And2OrchestratorService
                         {
                             var content = res.Choices?.FirstOrDefault()?.Message?.Content;
                             chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatGptDecision>>(content));
+                            if (chatGptDecisions != null)
+                            {
+                                await _cache.SaveAsync(cacheKey, aiRaw);
+                            }
                         }
                            
 

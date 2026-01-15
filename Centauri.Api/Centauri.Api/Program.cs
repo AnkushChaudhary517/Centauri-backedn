@@ -4,6 +4,7 @@ using Centauri_Api.Impl;
 using Centauri_Api.Interface;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
+using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.Data;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.Services;
@@ -74,7 +75,7 @@ builder.Services.AddHttpClient<GroqClient>(c =>
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 });
 
-var openAiKey = builder.Configuration["OpenAiKey"];
+var openAiKey = builder.Configuration["OpenAiKey"]?.DecodeBase64();
 // register LLM clients (HttpClient already configured earlier)
 builder.Services.AddHttpClient<OpenAiClient>(c =>
 {

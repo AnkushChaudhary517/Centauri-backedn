@@ -55,8 +55,13 @@ public class ReceivedInputs
     public bool PrimaryKeywordPresent { get; set; }
     public bool SecondaryKeywordsPresent { get; set; }
     public bool MetaTitlePresent { get; set; }
+    public string MetaTitle { get; set; }
     public bool MetaDescriptionPresent { get; set; }
+    public string MetaDescription { get; set; }
     public bool UrlPresent { get; set; }
+    public string Url { get; set; }
+    public string PrimaryKeyword { get; set; }
+    public string SecondaryKeywords { get; set; }
 }
 
 public class Level1Output

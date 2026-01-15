@@ -105,6 +105,18 @@ You must apply these exact definitions for every sentence:
     - **true** if the sentence contains personal (we, you), demonstrative (this, that), or relative pronouns.
     - **Default: false**.
 
+9. **ClaritySynthesisType** (ClaritySynthesisType)
+    - **Focused**: Sentence is concise, uses active voice, and contains one main idea or fact with minimal modifiers or introductory phrases. 
+    - **ModerateComplexity**: Sentence is compound or complex (multiple clauses) but remains grammatically sound and clear; may contain necessary technical jargon or modifiers.
+    - **LowClarity**: Sentence contains excessive filler, redundant phrasing, highly ambiguous pronouns, or an unnecessary quantity of modifiers/adjectives (low signal-to-noise ratio).
+    - **UnIndexable**: Sentence is purely transitional, a rhetorical device, or grammatically incomplete noise (e.g., ""So, as we can see here, let's look at this fantastic new thing we have."").(Default)
+
+10. **FactRetrievalType** (FactRetrievalType)
+    - **VerifiableIsolated**: Sentence contains one or more clear, discrete, and verifiable facts or entities (e.g., a number, a definition, a specific name) and is structured to serve as a direct answer.
+    - **ContexualMixed**: Sentence contains verifiable facts but also mixes in opinions, predictions, or requires significant context to be true; facts are not cleanly separated.
+    - **Unverifiable**: Sentence is purely opinion, prediction, or a generic, unquantifiable claim (e.g., ""We believe this is the best solution on the market"").
+    - **NotFactual**: Sentence is a question, transition, or filler with zero information that an AI could extract or verify (e.g., ""Now, how about that?""). (Default)
+
 ## Execution Constraints
 - **Blind Analysis**: Do not verify truth or fetch web data. Tag purely on linguistic structure.
 - **No Markdown**: Return ONLY a raw JSON array. No ```json tags, no intro, no outro.
@@ -121,7 +133,9 @@ You must apply these exact definitions for every sentence:
     ""InfoQuality"": ""Enum"",
     ""ClaimsCitation"": boolean,
     ""IsGrammaticallyCorrect"": boolean,
-    ""HasPronoun"": boolean
+    ""HasPronoun"": boolean,
+    ""ClaritySynthesisType"":""Enum"",
+    ""FactRetrievalType"":""Enum""
   }
 ]
 

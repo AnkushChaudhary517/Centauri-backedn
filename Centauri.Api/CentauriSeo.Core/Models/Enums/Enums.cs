@@ -46,4 +46,19 @@
         Imperative,
         Exclamatory
     }
+
+    public enum ClaritySynthesisType
+    {
+        Focused,
+        ModerateComplexity,
+        LowClarity,
+        UnIndexable
+    }
+    public enum FactRetrievalType
+    {
+        VerifiableIsolated,
+        ContexualMixed,
+        Unverifiable,
+        NotFactual
+    }
 }

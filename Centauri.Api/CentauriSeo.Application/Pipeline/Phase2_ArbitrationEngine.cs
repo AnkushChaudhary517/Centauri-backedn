@@ -66,7 +66,10 @@ public static class Phase2_ArbitrationEngine
             IsPlagiarized = g.IsPlagiarized,
             InfoQuality = g.InfoQuality,
             FunctionalType = g.FunctionalType,
-             HtmlTag = g.HtmlTag
+             HtmlTag = g.HtmlTag,
+             ClaritySynthesisType = g.ClaritySynthesisType,
+             FactRetrievalType = g.FactRetrievalType,
+             Grammar = g.IsGrammaticallyCorrect ? "Correct" : "Incorrect"
         };
     }
 }

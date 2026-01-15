@@ -58,7 +58,11 @@ public class SeoController : ControllerBase
 
         // Meta title/description/url presence and URL validity
         input.Received.MetaTitlePresent = !string.IsNullOrWhiteSpace(request?.MetaTitle);
-        input.Received.MetaDescriptionPresent = !string.IsNullOrWhiteSpace(request?.MetaDescription);
+        input.Received.MetaTitle = request.MetaTitle;
+        input.Received.MetaDescription = request.MetaDescription;
+        input.Received.Url = request.Url;
+        input.Received.PrimaryKeyword = request.PrimaryKeyword;
+        input.Received.SecondaryKeywords = (request.SecondaryKeywords != null) ? JsonSerializer.Serialize(request.SecondaryKeywords) : null;
 
         bool urlPresent = !string.IsNullOrWhiteSpace(request?.Url);
         bool urlValid = false;
@@ -234,11 +238,11 @@ public class SeoController : ControllerBase
         {
             UserVisible = new UserVisibleFinal()
             {
-                AiIndexingScore = response.Level4Scores.AiIndexingScore,
-                SeoScore = response.Level4Scores.CentauriSeoScore,
-                EeatScore = response.Level3Scores.EeatScore,
-                ReadabilityScore = response.Level3Scores.ReadabilityScore * 10,
-                RelevanceScore = response.Level3Scores.RelevanceScore
+                AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore),
+                SeoScore = Math.Round(response.Level4Scores.CentauriSeoScore),
+                EeatScore = Math.Round(response.Level3Scores.EeatScore),
+                ReadabilityScore = Math.Round(response.Level3Scores.ReadabilityScore * 10),
+                RelevanceScore = Math.Round(response.Level3Scores.RelevanceScore)
             }
         };
 

@@ -31,7 +31,9 @@ public static class Level2Engine
             SimplicityScore = SimplicityScorer.Score(validated),
             GrammarScore = GrammarScorer.Score(validated),
             VariationScore = VariationScorer.Score(validated),
-            PlagiarismScore = PlagiarismScorer.Score(validated)
+            PlagiarismScore = PlagiarismScorer.Score(validated),
+            ClaritySynthesisScore = ClaritySynthesisScorer.Score(validated),
+            FactRetrievalScore = FactRetrievalScorer.Score(validated)
         };
     }
 }

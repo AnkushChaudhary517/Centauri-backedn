@@ -13,6 +13,7 @@ using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -50,17 +51,23 @@ public class Phase1And2OrchestratorService
         var sentenceTagging = (await _gemini.TagArticleAsync(SentenceTaggingPrompts.SentenceTaggingPrompt, request.Article.Raw, "gemini:tagging:level1")).ToList();
         var sentences = sentenceTagging?.Select(s => new Sentence(s.SentenceId, s.Sentence,0) ).ToList();
         var userContent = JsonSerializer.Serialize(sentences);
-        // 1) Fetch tags separately: use Groq instead of Perplexity for Level-1 tagging
-        var geminiTags = (await _gemini.TagArticleAsync(SentenceTaggingPrompts.GeminiSentenceTagPrompt, userContent, "gemini:tagging")).ToList();
-        geminiTags?.ForEach(g =>
+
+
+        var geminiTask = _gemini.TagArticleAsync(SentenceTaggingPrompts.GeminiSentenceTagPrompt, userContent, "gemini:tagging");
+        var groqTask = _groq.TagSentencesAsync(userContent,string.Empty);       
+        await Task.WhenAll(geminiTask, groqTask);
+
+
+        var geminiTags = await geminiTask;
+        geminiTags?.ToList()?.ForEach(g =>
         {
             var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
             g.Sentence = sentence?.Sentence ?? string.Empty;
             g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
         });
 
-        var groqTags = (await _groq.TagSentencesAsync(userContent,string.Empty)).ToList();
-        groqTags?.ForEach(g =>
+        var groqTags = await groqTask;
+        groqTags?.ToList()?.ForEach(g =>
         {
             var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
             g.Sentence = sentence?.Sentence ?? string.Empty;
@@ -78,95 +85,31 @@ public class Phase1And2OrchestratorService
             return false;
         }).ToList();
 
-        List<ChatGptDecision>? chatGptDecisions = null;
-
+        List<ChatGptDecision>? chatGptDecisions = new List<ChatGptDecision>();
+       
         if (anyMismatch != null && anyMismatch.Count>0)
         {
 
-
+            var tasks = new List<Task<List<ChatGptDecision>>>();
             var batchSize = 50;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
-                // Build compact arbitration prompt
-                var promptBuilder = new System.Text.StringBuilder();
-                //promptBuilder.AppendLine($"Use this document to generate the required responses. Document : {businessPromt}");
-                promptBuilder.AppendLine("You are an arbiter. For each sentence provide a final informative type, confidence (0-1) and optional reason (JSON array).");
-                promptBuilder.AppendLine("Sentences and tags:");
-                foreach (var s in sentences.Skip(i).Take(batchSize))
-                {
-                    var gq = groqTags.SingleOrDefault(x => x.SentenceId == s.Id);
-                    var gm = geminiTags.SingleOrDefault(x => x.SentenceId == s.Id);
-
-                    promptBuilder.AppendLine($"ID: {s.Id}");
-                    promptBuilder.AppendLine($"Text: {s.Text}");
-                    promptBuilder.AppendLine($"Groq: {JsonSerializer.Serialize(gq)}");
-                    promptBuilder.AppendLine($"Gemini: {JsonSerializer.Serialize(gm)}");
-                    promptBuilder.AppendLine();
-                }
-
-                var prompt = promptBuilder.ToString();
-                prompt += $" Dont invent any new informativeType.... i am providing you the list of values.... anything else will be Uncertain. even with such information you have already provided wrong values...Return a JSON array where each element is an object with properties: " +
-                                "\"SentenceId\" (string),\"\"Confidence\" (double),\"Reason\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
-                                "\"ClaimsCitation\" (boolean).If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType..... never ever ever add any value except from the list. Reason is string not json array. The response choices[0].message.Content is not coming correctly it should be proper json";
-
-                string aiRaw = string.Empty;
-                var cacheKey = _cache.ComputeRequestKey(prompt, "ChatGptArbitration");
-                var cached = await _cache.GetAsync(cacheKey);
-                if(cached != null)
-                    aiRaw = cached;
-                else
-                {
-                    aiRaw = await _openAi.CompleteAsync(prompt);
-                    
-                    
-                }
-
-                try
-                {
-                    if(chatGptDecisions != null && chatGptDecisions.Any())
-                    {
-                        var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                        if(res != null)
-                        {
-                            var content = res.Choices?.FirstOrDefault()?.Message?.Content;
-                            chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatGptDecision>>(content));
-                            if (chatGptDecisions != null)
-                            {
-                                await _cache.SaveAsync(cacheKey, aiRaw);
-                            }
-                        }
-                           
-
-                    }
-                    else
-                    {
-                        var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                        var content = res.Choices?.FirstOrDefault()?.Message?.Content;
-                        chatGptDecisions = JsonSerializer.Deserialize<List<ChatGptDecision>>(content);
-                        if(chatGptDecisions != null)
-                        {
-                            await _cache.SaveAsync(cacheKey, aiRaw);
-                        }
-                    }
-                }
-                catch(Exception ex)
-                {
-                    await _logger.LogErrorAsync($"Error occured in handling mismatch : {ex.Message}:{ex.StackTrace}");
-                    // Fallback: prefer Gemini when AI response not parseable
-                    //chatGptDecisions = sentences.Select(s => new ChatGptDecision
-                    //{
-                    //    SentenceId = s.Id,
-                    //    FinalType = geminiTags.SingleOrDefault(g => g.SentenceId == s.Id)?.InformativeType ?? groqTags.Single(p => p.SentenceId == s.Id).InformativeType,
-                    //    Confidence = 0.9,
-                    //    Reason = "fallback to gemini due to unparsable AI response"
-                    //}).ToList();
-                }
+                tasks.Add(HandleMismatchSentences(sentences, geminiTags, groqTags, chatGptDecisions, batchSize, i));               
             }
-
-            
+            await Task.WhenAll(tasks);
+            tasks.ForEach(async t =>
+            {
+                var d = await t;
+                if(d != null && d.Count>0)
+                {
+                    chatGptDecisions.AddRange(d);
+                }
+            });
         }
 
+
         // 3) Run arbitration engine to produce validated sentences TODO: pass Groq tags when implemented
+
         var validated = new Phase1And2Orchestrator().Execute(sentences, groqTags, geminiTags, chatGptDecisions);
         return new OrchestratorResponse()
         {
@@ -176,6 +119,86 @@ public class Phase1And2OrchestratorService
             IntentScore = await GetIntentScoreInfo(request.PrimaryKeyword),
             KeywordScore = await GetKeywordScore(validated?.ToList(), request)
         };
+    }
+
+    private async Task<List<ChatGptDecision>?> HandleMismatchSentences(List<Sentence>? sentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<PerplexitySentenceTag>? groqTags, List<ChatGptDecision>? chatGptDecisions, int batchSize, int i)
+    {
+        // Build compact arbitration prompt
+        var promptBuilder = new System.Text.StringBuilder();
+        //promptBuilder.AppendLine($"Use this document to generate the required responses. Document : {businessPromt}");
+        promptBuilder.AppendLine("You are an arbiter. For each sentence provide a final informative type, confidence (0-1) and optional reason (JSON array).");
+        promptBuilder.AppendLine("Sentences and tags:");
+        foreach (var s in sentences.Skip(i).Take(batchSize))
+        {
+            var gq = groqTags.SingleOrDefault(x => x.SentenceId == s.Id);
+            var gm = geminiTags.SingleOrDefault(x => x.SentenceId == s.Id);
+
+            promptBuilder.AppendLine($"ID: {s.Id}");
+            promptBuilder.AppendLine($"Text: {s.Text}");
+            promptBuilder.AppendLine($"Groq: {JsonSerializer.Serialize(gq)}");
+            promptBuilder.AppendLine($"Gemini: {JsonSerializer.Serialize(gm)}");
+            promptBuilder.AppendLine();
+        }
+
+        var prompt = promptBuilder.ToString();
+        prompt += $" Dont invent any new informativeType.... i am providing you the list of values.... anything else will be Uncertain. even with such information you have already provided wrong values...Return a JSON array where each element is an object with properties: " +
+                        "\"SentenceId\" (string),\"\"Confidence\" (double),\"Reason\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
+                        "\"ClaimsCitation\" (boolean).If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType..... never ever ever add any value except from the list. Reason is string not json array. The response choices[0].message.Content is not coming correctly it should be proper json";
+
+        string aiRaw = string.Empty;
+        var cacheKey = _cache.ComputeRequestKey(prompt, "ChatGptArbitration");
+        var cached = await _cache.GetAsync(cacheKey);
+        if (cached != null)
+            aiRaw = cached;
+        else
+        {
+            aiRaw = await _openAi.CompleteAsync(prompt);
+
+
+        }
+
+        try
+        {
+            if (chatGptDecisions != null && chatGptDecisions.Any())
+            {
+                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (res != null)
+                {
+                    var content = res.Choices?.FirstOrDefault()?.Message?.Content;
+                    chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatGptDecision>>(content));
+                    if (chatGptDecisions != null)
+                    {
+                        await _cache.SaveAsync(cacheKey, aiRaw);
+                    }
+                }
+
+
+            }
+            else
+            {
+                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var content = res.Choices?.FirstOrDefault()?.Message?.Content;
+                chatGptDecisions = JsonSerializer.Deserialize<List<ChatGptDecision>>(content);
+                if (chatGptDecisions != null)
+                {
+                    await _cache.SaveAsync(cacheKey, aiRaw);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in handling mismatch : {ex.Message}:{ex.StackTrace}");
+            // Fallback: prefer Gemini when AI response not parseable
+            //chatGptDecisions = sentences.Select(s => new ChatGptDecision
+            //{
+            //    SentenceId = s.Id,
+            //    FinalType = geminiTags.SingleOrDefault(g => g.SentenceId == s.Id)?.InformativeType ?? groqTags.Single(p => p.SentenceId == s.Id).InformativeType,
+            //    Confidence = 0.9,
+            //    Reason = "fallback to gemini due to unparsable AI response"
+            //}).ToList();
+        }
+
+        return chatGptDecisions;
     }
 
     public async Task<double> GetKeywordScore(List<ValidatedSentence> validated, SeoRequest request)

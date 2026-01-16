@@ -90,28 +90,14 @@ You must apply these exact definitions for every sentence:
     - **Unique**: Proprietary, novel information exclusive to the company.
     - **False**: Proven incorrect information.
 
-6. **Citation Flag** (ClaimsCitation)
-    - Set to **true** ONLY if the sentence contains: 
-        - First-person source (""We observed"", ""We noticed""...)
-        - Third-person mention (""According to..."", ""As per""...)
-        - Hyperlinked text (a word or phrase linked to an external source).
-    - **Default: false**.
 
-7. **Grammar Flag** (IsGrammaticallyCorrect)
-    - **false** if the sentence containing grammar errors (tense, structure, agreement, typos).
-    - **Default: true**.
-
-8. **Pronoun Flag** (HasPronoun)
-    - **true** if the sentence contains personal (we, you), demonstrative (this, that), or relative pronouns.
-    - **Default: false**.
-
-9. **ClaritySynthesisType** (ClaritySynthesisType)
+6. **ClaritySynthesisType** (ClaritySynthesisType)
     - **Focused**: Sentence is concise, uses active voice, and contains one main idea or fact with minimal modifiers or introductory phrases. 
     - **ModerateComplexity**: Sentence is compound or complex (multiple clauses) but remains grammatically sound and clear; may contain necessary technical jargon or modifiers.
     - **LowClarity**: Sentence contains excessive filler, redundant phrasing, highly ambiguous pronouns, or an unnecessary quantity of modifiers/adjectives (low signal-to-noise ratio).
     - **UnIndexable**: Sentence is purely transitional, a rhetorical device, or grammatically incomplete noise (e.g., ""So, as we can see here, let's look at this fantastic new thing we have."").(Default)
 
-10. **FactRetrievalType** (FactRetrievalType)
+7. **FactRetrievalType** (FactRetrievalType)
     - **VerifiableIsolated**: Sentence contains one or more clear, discrete, and verifiable facts or entities (e.g., a number, a definition, a specific name) and is structured to serve as a direct answer.
     - **ContexualMixed**: Sentence contains verifiable facts but also mixes in opinions, predictions, or requires significant context to be true; facts are not cleanly separated.
     - **Unverifiable**: Sentence is purely opinion, prediction, or a generic, unquantifiable claim (e.g., ""We believe this is the best solution on the market"").
@@ -122,6 +108,11 @@ You must apply these exact definitions for every sentence:
 - **No Markdown**: Return ONLY a raw JSON array. No ```json tags, no intro, no outro.
 -  Info Quality is never Uncertain. Why are you returning Uncertain? Please check the response must be as per this document
 
+**Constraint**
+Never use any enum values other that provided in the prompt. you have returned InformativeType = Declarative which is utter nonsense
+Always recheck the enum values before returning the response.
+Recheck all the enum values used with the ones provided in the prompt.I am getting wrong response again and again.
+
 ## Response Schema
 [
   {
@@ -131,9 +122,6 @@ You must apply these exact definitions for every sentence:
     ""Voice"": ""Enum"",
     ""InformativeType"": ""Enum"",
     ""InfoQuality"": ""Enum"",
-    ""ClaimsCitation"": boolean,
-    ""IsGrammaticallyCorrect"": boolean,
-    ""HasPronoun"": boolean,
     ""ClaritySynthesisType"":""Enum"",
     ""FactRetrievalType"":""Enum""
   }
@@ -153,27 +141,28 @@ Phase 1 – Parallel Sentence Tagging: read the XML, map each sentence to its 
 Return ONLY valid JSON.
 Do NOT use markdown.
 Do NOT wrap output in ```json.
-If output exceeds limits, STOP and return {""status"":""partial""}.
 
 **Taxonomies**  
+1. InformativeType – Fact, Statistic, Definition, Claim, Observation, Opinion, Prediction, Suggestion, Question, Transition, Filler, Uncertain.  
+2. **Citation Flag** (ClaimsCitation)
+    - Set to **true** ONLY if the sentence contains: 
+        - First-person source (""We observed"", ""We noticed""...)
+        - Third-person mention (""According to..."", ""As per""...)
+        - Hyperlinked text (a word or phrase linked to an external source).
+    - **Default: false**.
 
-1. FunctionalType – Declarative, Interrogative, Imperative, Exclamatory.  
-2. Structure – Simple, Compound, Complex, CompoundComplex, Fragment.  
-3. Voice – Active (default), Passive.  
-4. InformativeType – Fact, Statistic, Definition, Claim, Observation, Opinion, Prediction, Suggestion, Question, Transition, Filler, Uncertain.  
-5. InfoQuality – WellKnown, PartiallyKnown, Derived, Unique, False *(never “Uncertain”).*  
+3. **Grammar Flag** (IsGrammaticallyCorrect)
+    - **false** if the sentence containing grammar errors (tense, structure, agreement, typos).
+    - **Default: true**.
 
-**Binary Flags**  
-
-- ClaimsCitation – true if the sentence contains a first‑person source, a third‑person citation, or a hyperlink.  
-- IsGrammaticallyCorrect – false on any typo, tense shift, or punctuation error.  
-- HasPronoun – true if any personal, demonstrative, or relative pronoun appears.
-
+4. **Pronoun Flag** (HasPronoun)
+    - **true** if the sentence contains personal (we, you), demonstrative (this, that), or relative pronouns.
+    - **Default: false**.
 **Constraints**  
 
 - Do not verify facts; tag purely on linguistic form.  
 - Return **only** a raw JSON array (no markdown, no intro/outro).  
-InfoQuality is never Uncertain. Never return Uncertain for InfoQuality field
+Default value of InformativeType is Uncertain.
 
 **Response Schema**  
 
@@ -181,14 +170,10 @@ InfoQuality is never Uncertain. Never return Uncertain for InfoQuality field
   {
     ""SentenceId"": ""S1"",
     ""Sentence"": ""raw text"",
-    ""FunctionalType"": ""Enum"",
-    ""Structure"": ""Enum"",
-    ""Voice"": ""Enum"",
     ""InformativeType"": ""Enum"",
-    ""InfoQuality"": ""Enum"",
-    ""ClaimsCitation"": boolean,
-    ""IsGrammaticallyCorrect"": boolean,
-    ""HasPronoun"": boolean
+""ClaimsCitation"": boolean,
+""IsGrammaticallyCorrect"": boolean,
+""HasPronoun"": boolean,
   },
   …
 ]

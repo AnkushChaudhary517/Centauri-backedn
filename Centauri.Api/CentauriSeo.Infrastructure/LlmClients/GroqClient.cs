@@ -2,6 +2,7 @@
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
+using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,7 @@ public class GroqClient
     private readonly ILlmCacheService _cache;
     private readonly string _apiKey;
     private readonly Uri _baseUri;
+    private readonly FileLogger _logger;
 
     public GroqClient(HttpClient http, ILlmCacheService cache)
     {
@@ -30,6 +32,7 @@ public class GroqClient
         _cache = cache;
         _apiKey = _http.DefaultRequestHeaders.Authorization?.Parameter ?? string.Empty;
         _baseUri = _http.BaseAddress ?? new Uri("https://api.groq.com");
+        _logger = new FileLogger();
     }
 
     // Low-level analyze (kept for compatibility)
@@ -48,25 +51,13 @@ public class GroqClient
         if (!string.IsNullOrWhiteSpace(_apiKey))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        // Build chat/completions request body (OpenAI-compatible)
-        var systemInstruction = $"use this document for reference. Document : {systemRequirement}.\n Dont invent any new informativeType.... i am providing you the list of values.... anything else will be Uncertain. even with such information you have already provided wrong values...Return a JSON array where each element is an object with properties: " +
-                                "\"SentenceId\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
-                                "\"ClaimsCitation\" (boolean).If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType..... never ever ever add any value except from the list";
-
-
-        var prompt = "Response must have same number of sentences as in the request. Default value of InformativeType is Uncertain."+SentenceTaggingPrompts.GroqTagPrompt+"Do not give me that value.Default Value of InformativeType is Uncertain.And Why are you giving wrong value in InformativeType? There is no Example in InformativeType. Use only the provided values." + $"<text>\r\n{payload}\r\n</text>";
-        // Compose user content with indexed sentence IDs so response includes stable IDs
-        //var userContent = string.Join("\n", sentenceList.Select((t, i) => $"S{i + 1}: {t}"));
-        //prompt = "Why are you returning only 4 sentences in json array. I want all the sentences in from json.Response must be json array. Recheck the json format before sending the response. Default value of InformativeType is Uncertain.This document combines an instruction specification for an AI acting as an Expert SEO Content Editor and Linguistic Analyst with a complete SEO analysis report and article focused on the keyword \"fractional CFO cost\". The AI is required to perform parallel sentence tagging by reading XML input containing sentence IDs and tagging each sentence using predefined Level 1 linguistic taxonomies based purely on linguistic form without verifying facts. These taxonomies include FunctionalType, Structure, Voice, InformativeType (defaulting to Uncertain), and InfoQuality (which must never be Uncertain), along with binary flags for claims citation, grammatical correctness, and pronoun usage. The output must strictly be a raw JSON array with no markdown or explanatory text. The document also includes an SEO analysis report with scoring across SEO, AI indexing, authority, plagiarism, and readability, followed by a medium-priority improvement action plan addressing capitalization, punctuation, passive voice, informal language, formatting, and transition issues with original and corrected examples. The article content explains how much a fractional CFO costs in 2025 for startup founders, covering pricing models, cost comparisons, included and excluded services, factors influencing cost, when to hire, how to choose a CFO, red flags, ROI evaluation, and FAQs, with a primarily informational intent and commercial evaluation elements, designed to support AI-driven SEO scoring, content quality analysis, and structured linguistic classification.";
-
-        // prompt = "why the hell are you giving me code? i want json response.Default value of InformativeType is Uncertain. Role: Expert SEO Content Editor & Linguistic Analyst. Task: Phase 1 – Parallel Sentence Tagging: read the XML, map each sentence to its ID (S1, S2, …), and tag it using the Level 1 taxonomies. Taxonomies: FunctionalType – Declarative, Interrogative, Imperative, Exclamatory; Structure – Simple, Compound, Complex, CompoundComplex, Fragment; Voice – Active (default), Passive; InformativeType – Fact, Statistic, Definition, Claim, Observation, Opinion, Prediction, Suggestion, Question, Transition, Filler, Uncertain; InfoQuality – WellKnown, PartiallyKnown, Derived, Unique, False (never Uncertain). Binary Flags: ClaimsCitation – true if the sentence contains a first-person source, a third-person citation, or a hyperlink; IsGrammaticallyCorrect – false on any typo, tense shift, or punctuation error; HasPronoun – true if any personal, demonstrative, or relative pronoun appears. Constraints: Do not verify facts; tag purely on linguistic form; return only a raw JSON array with no markdown and no intro or outro; InfoQuality is never Uncertain and must never be returned as Uncertain; use only the provided enum values; do not invent values; do not give any example values for InformativeType; default value of InformativeType is Uncertain.";
         var requestBody = new
         {
             model = "llama-3.1-8b-instant",
             messages = new[]
             {
                 //new { role = "system", content = prompt },
-                new { role = "user", content =SentenceTaggingPrompts.GeminiSentenceTagPrompt + $"<text>\r\n{payload}\r\n</text>"
+                new { role = "user", content =SentenceTaggingPrompts.GroqTagPrompt + $"<text>\r\n{payload}\r\n</text>"
     }
             },
             temperature = 0.0,
@@ -79,8 +70,9 @@ public class GroqClient
             var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
             rawResponse = await res.Content.ReadAsStringAsync();
         }
-        catch (HttpRequestException)
+        catch (Exception ex)
         {
+           await _logger.LogErrorAsync($"Error occured in AnalyzeAsync : GroqClient : {ex.Message}{ex.StackTrace}");
             //// Network/DNS error — fallback to deterministic local tagging formatted as JSON
             //var fallbackTags = sentenceList.Select((t, i) => new PerplexitySentenceTag
             //{
@@ -125,8 +117,9 @@ public class GroqClient
                 }
             }
         }
-        catch(Exception)
+        catch(Exception ex)
         {
+            await _logger.LogErrorAsync($"Error occured in AnalyzeAsync while parsing content : GroqClient : {ex.Message}{ex.StackTrace}");
             assistantContent = rawResponse; // keep raw if parsing fails
         }
         return assistantContent;
@@ -177,6 +170,7 @@ public class GroqClient
         }
         catch(Exception ex)
         {
+            await _logger.LogErrorAsync($"Error occured in TagArticleAsync : GroqClient : {ex.Message}{ex.StackTrace}");
         }
 
         return new List<PerplexitySentenceTag>();

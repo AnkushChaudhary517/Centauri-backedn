@@ -1,9 +1,11 @@
-﻿using CentauriSeo.Core.Models.Sentences;
+﻿using Amazon.Runtime.Telemetry.Tracing;
+using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using GenerativeAI.Types;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
@@ -13,6 +15,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Xml.Linq;
 using static CentauriSeo.Core.Models.Utilities.SentenceTaggingPrompts;
 
 namespace CentauriSeo.Infrastructure.LlmClients;
@@ -25,16 +28,21 @@ public class GeminiClient
     private readonly string _apiKey;
     private readonly FileLogger _logger;
 
+    private readonly AiCallTracker _aiCallTracker;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
     // Use a stable model version unless you are specifically testing 2.0/2.5 previews
     private const string ModelId = "gemini-2.5-flash";
-
-    public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config)
+    public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config, AiCallTracker aiCallTracker,
+        IHttpContextAccessor httpContextAccessor)
     {
         _http = http;
         _cache = cache;
         _config = config;
         _apiKey = _config["GeminiApiKey"]?.DecodeBase64();
         _logger = new FileLogger();
+        _aiCallTracker = aiCallTracker;
+        _httpContextAccessor = httpContextAccessor;
     }
 
 
@@ -122,6 +130,16 @@ Example:
             await _logger.LogErrorAsync($"Error occured in get section score :  {ex.Message}:{ex.StackTrace}");
         }
         return string.Empty;
+    }
+    public async Task<string> GetLevel1InforForAIIndexing(string primaryKeyword, List<Level1Sentence> sentences)
+    {
+        var req = new {PrimaryKeyword = primaryKeyword, ContentToAnalyze = sentences?.Select(x => new { Text = x.Text, Id = x.Id, InformativeType = x.InformativeType.ToString() }) };
+    var responseContent = await ProcessContent(SentenceTaggingPrompts.CentauriLevel1Prompt, JsonSerializer.Serialize(req));
+        if (!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
+        {
+
+        }
+        return responseContent;
     }
     public async Task<int> GetPlagiarismScore(List<Sentence> sentences)
     {
@@ -244,12 +262,19 @@ Example:
         }
         else
         {
-            return await GenerateSentenceTagsDirect(prompt,xmlData);
+            var res = await GenerateSentenceTagsDirect(prompt, xmlData);
+            return res;
+
         }
     }
 
     private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent)
     {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
         using var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10)};
 
         // Standard GenerateContent request body
@@ -272,28 +297,38 @@ Example:
             }
         };
 
-        var response = await client.PostAsJsonAsync(
-            $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:generateContent?key={_apiKey}",
-            requestBody
+        var result = await _aiCallTracker.TrackAsync(
+            requestBody,
+                async () =>
+                {
+                    var response = await client.PostAsJsonAsync(
+                    $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:generateContent?key={_apiKey}",
+                    requestBody
+                    );
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var error = await response.Content.ReadAsStringAsync();
+                        await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
+                        throw new Exception($"Gemini API Error: {error}");
+                    }
+
+                    var res = await response.Content.ReadAsStringAsync();
+                   return (res, (JsonSerializer.Deserialize<GeminiResponse>(res, options))?.Usage);
+
+                },
+                $"gemini-{ModelId}"
         );
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync();
-            await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
-            throw new Exception($"Gemini API Error: {error}");
-        }
-
-        var jsonResponse = await response.Content.ReadAsStringAsync();
-
         // Extract only the text content from the Gemini response wrapper
-        using var doc = JsonDocument.Parse(jsonResponse);
+        using var doc = JsonDocument.Parse(result);
         return doc.RootElement
             .GetProperty("candidates")[0]
             .GetProperty("content")
             .GetProperty("parts")[0]
             .GetProperty("text")
             .GetString();
+
+
     }
 
     private static string ParseCacheNameFromJson(string jsonResponse)
@@ -404,4 +439,43 @@ Example:
 
         return 0;
     }
+}
+
+public class TokenDetail
+{
+    [JsonPropertyName("modality")]
+    public string Modality { get; set; }
+
+    [JsonPropertyName("tokenCount")]
+    public int TokenCount { get; set; }
+}
+
+
+public class GeminiResponse
+{
+    [JsonPropertyName("usageMetadata")]
+    public GeminiUsage Usage { get; set; }
+}
+public class GeminiUsage
+{
+    [JsonPropertyName("promptTokenCount")]
+    public int PromptTokenCount { get; set; }
+
+    [JsonPropertyName("candidatesTokenCount")]
+    public int CandidatesTokenCount { get; set; }
+
+    [JsonPropertyName("totalTokenCount")]
+    public int TotalTokenCount { get; set; }
+
+    [JsonPropertyName("promptTokensDetails")]
+    public List<TokenDetail> PromptTokensDetails { get; set; }
+
+    [JsonPropertyName("thoughtsTokenCount")]
+    public int ThoughtsTokenCount { get; set; }
+
+    [JsonPropertyName("modelVersion")]
+    public string ModelVersion { get; set; }
+
+    [JsonPropertyName("responseId")]
+    public string ResponseId { get; set; }
 }

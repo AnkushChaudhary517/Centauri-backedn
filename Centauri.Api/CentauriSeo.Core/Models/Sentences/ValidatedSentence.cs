@@ -1,4 +1,5 @@
 ﻿using CentauriSeo.Core.Models.Enums;
+using CentauriSeo.Core.Models.Outputs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,5 +28,9 @@ public class ValidatedSentence
     public bool HasPronoun { get; set; }
     public bool IsGrammaticallyCorrect { get; set; }
     public bool IsPlagiarized { get; set; }
+    public AnswerSentenceFlag AnswerSentenceFlag { get; set; }
+    public EntityConfidenceFlag EntityConfidenceFlag { get; set; }
+    public EntityMentionFlag EntityMentionFlag { get; set; }
+    public string ParagraphId { get; set; } = "";
 }
 

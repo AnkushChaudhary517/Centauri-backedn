@@ -1,4 +1,5 @@
 ﻿using CentauriSeo.Core.Models.Input;
+using CentauriSeo.Core.Models.Outputs;
 using CentauriSeo.Core.Models.Scoring;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
@@ -10,8 +11,9 @@ public static class Level2Engine
 {
     public static Level2Scores Compute(
         SeoRequest request,
-        IReadOnlyList<ValidatedSentence> validated)
+        OrchestratorResponse orchestratorResponse)
     {
+        var validated = orchestratorResponse?.ValidatedSentences;
         if (validated == null)
             return new Level2Scores(); // all zeros
         // Per-document, each Level2 scorer expects the validated sentence map (tags/confidence)
@@ -32,8 +34,14 @@ public static class Level2Engine
             GrammarScore = GrammarScorer.Score(validated),
             VariationScore = VariationScorer.Score(validated),
             PlagiarismScore = PlagiarismScorer.Score(validated),
-            ClaritySynthesisScore = ClaritySynthesisScorer.Score(validated),
-            FactRetrievalScore = FactRetrievalScorer.Score(validated)
+            //ClaritySynthesisScore = ClaritySynthesisScorer.Score(validated),
+            //FactRetrievalScore = FactRetrievalScorer.Score(validated),
+            AnswerBlockDensityScore = AnswerBlockDensityScorer.Score(orchestratorResponse),
+            FactualIsolationScore = FactualIsolationScorer.Score(orchestratorResponse),
+            EntityAlignmentScore = EntityAlignmentScorer.Score(orchestratorResponse),
+            TechnicalClarityScore = TechnicalClarityScorer.Score(orchestratorResponse),
+            SignalToNoiseScore = SignalToNoiseScorer.Score(orchestratorResponse)
+
         };
     }
 }

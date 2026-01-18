@@ -25,20 +25,27 @@ public class GroqClient
     private readonly string _apiKey;
     private readonly Uri _baseUri;
     private readonly FileLogger _logger;
+    private readonly AiCallTracker _aiCallTracker;
 
-    public GroqClient(HttpClient http, ILlmCacheService cache)
+    public GroqClient(HttpClient http, ILlmCacheService cache, AiCallTracker aiCallTracker)
     {
         _http = http;
         _cache = cache;
         _apiKey = _http.DefaultRequestHeaders.Authorization?.Parameter ?? string.Empty;
         _baseUri = _http.BaseAddress ?? new Uri("https://api.groq.com");
         _logger = new FileLogger();
+        _aiCallTracker = aiCallTracker;
     }
 
     // Low-level analyze (kept for compatibility)
     // Sends an OpenAI-compatible chat/completions payload and returns assistant content (machine-parsable JSON expected).
     public async Task<string> AnalyzeAsync(string payload, string systemRequirement)
     {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
         var provider = "groq:analyze";
 
         // Use a short-lived HttpClient with DNS re-resolve as you had before, but reuse request format below.
@@ -67,8 +74,18 @@ public class GroqClient
         string rawResponse = null;
         try
         {
-            var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
-            rawResponse = await res.Content.ReadAsStringAsync();
+            rawResponse = await _aiCallTracker.TrackAsync(
+            requestBody,
+                async () =>
+                {
+                    var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
+                    var r = await res.Content.ReadAsStringAsync();
+                    return (r, (JsonSerializer.Deserialize<GroqUsageResponse>(r,options)).Usage);
+
+                },
+                "groq:llama-3.1-8b-instant"
+            );
+
         }
         catch (Exception ex)
         {
@@ -290,4 +307,37 @@ public class GroqClient
 
         //    return results;
     }
+}
+
+public class GroqUsageDetails
+{
+    [JsonPropertyName("input_tokens")]
+    public int InputTokens { get; set; }
+
+    [JsonPropertyName("output_tokens")]
+    public int OutputTokens { get; set; }
+
+    [JsonPropertyName("total_tokens")]
+    public int TotalTokens { get; set; }
+
+    [JsonPropertyName("compute_time_ms")]
+    public int ComputeTimeMs { get; set; }
+}
+
+public class GroqUsageResponse
+{
+    [JsonPropertyName("requestId")]
+    public string RequestId { get; set; }
+
+    [JsonPropertyName("model")]
+    public string Model { get; set; }
+
+    [JsonPropertyName("usage")]
+    public GroqUsageDetails Usage { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; }
+
+    [JsonPropertyName("timestamp")]
+    public DateTime Timestamp { get; set; }
 }

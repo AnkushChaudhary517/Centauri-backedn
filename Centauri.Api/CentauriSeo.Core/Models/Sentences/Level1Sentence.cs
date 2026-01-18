@@ -1,4 +1,5 @@
 ﻿using CentauriSeo.Core.Models.Enums;
+using CentauriSeo.Core.Models.Outputs;
 
 namespace CentauriSeo.Core.Models.Utilities
 {
@@ -19,5 +20,4 @@ namespace CentauriSeo.Core.Models.Utilities
         public InfoQuality InfoQuality { get; init; }
         public bool IsPlagiarized { get; init; }
     }
-
 }

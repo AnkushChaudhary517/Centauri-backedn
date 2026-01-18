@@ -221,7 +221,7 @@ public class SeoController : ControllerBase
         }).ToList();
 
         // --- Compute scores (scorers will internally respect missing primary_keyword where required) ---
-        var l2 = Level2Engine.Compute(request, orchestratorResponse?.ValidatedSentences);
+        var l2 = Level2Engine.Compute(request, orchestratorResponse);
 
         l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
         l2.SectionScore =   orchestratorResponse?.SectionScore ?? 1.0;
@@ -239,7 +239,7 @@ public class SeoController : ControllerBase
         {
             UserVisible = new UserVisibleFinal()
             {
-                AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore),
+                AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore * 10),
                 SeoScore = Math.Round(response.Level4Scores.CentauriSeoScore),
                 EeatScore = Math.Round(response.Level3Scores.EeatScore),
                 ReadabilityScore = Math.Round(response.Level3Scores.ReadabilityScore * 10),

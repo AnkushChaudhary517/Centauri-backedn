@@ -2,6 +2,7 @@ using Amazon.DynamoDBv2;
 using Amazon.S3;
 using Centauri_Api.Impl;
 using Centauri_Api.Interface;
+using Centauri_Api.Middleware;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
 using CentauriSeo.Core.Models.Utilities;
@@ -17,7 +18,11 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddSwaggerGen();
+builder.Services.AddAWSService<IAmazonDynamoDB>();
+builder.Services.AddSingleton<AiUsageRepository>();
+builder.Services.AddSingleton<AiCallTracker>();
 
 // CORS - allow React dev origin by default, configurable via appsettings.json
 //var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
@@ -70,7 +75,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddHttpClient<GroqClient>(c =>
 {
     c.BaseAddress = new Uri("https://api.groq.com");
-    var apiKey = builder.Configuration["GroqApiKey"];
+    var apiKey = builder.Configuration["GroqApiKey"]?.DecodeBase64();
     if (!string.IsNullOrWhiteSpace(apiKey))
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 });
@@ -110,7 +115,7 @@ builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();
 
 var app = builder.Build();
-
+app.UseMiddleware<UserContextMiddleware>();
 // Ensure database created (simple and safe)
 //using (var scope = app.Services.CreateScope())
 //{

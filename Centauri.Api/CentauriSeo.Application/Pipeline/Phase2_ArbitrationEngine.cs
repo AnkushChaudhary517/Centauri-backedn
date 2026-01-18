@@ -61,15 +61,17 @@ public static class Phase2_ArbitrationEngine
             Voice = g.Voice,
             HasCitation = p.ClaimsCitation,
             Confidence = confidence,
-            IsGrammaticallyCorrect = g.IsGrammaticallyCorrect,
+            IsGrammaticallyCorrect = p.IsGrammaticallyCorrect,
             HasPronoun = p.HasPronoun,
             IsPlagiarized = g.IsPlagiarized,
             InfoQuality = g.InfoQuality,
             FunctionalType = g.FunctionalType,
              HtmlTag = g.HtmlTag,
-             ClaritySynthesisType = g.ClaritySynthesisType,
-             FactRetrievalType = g.FactRetrievalType,
-             Grammar = p.IsGrammaticallyCorrect ? "Correct" : "Incorrect"
+             //ClaritySynthesisType = g.ClaritySynthesisType,
+             //FactRetrievalType = g.FactRetrievalType,
+             Grammar = p.IsGrammaticallyCorrect ? "Correct" : "Incorrect",
+             ParagraphId = g.ParagraphId,
+             
         };
     }
 }

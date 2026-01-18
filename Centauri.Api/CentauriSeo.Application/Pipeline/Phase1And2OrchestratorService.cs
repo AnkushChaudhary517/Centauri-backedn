@@ -117,8 +117,86 @@ public class Phase1And2OrchestratorService
             PlagiarismScore = await _gemini.GetPlagiarismScore(sentences),
             SectionScore = await GetSectionScoreInfo(request.PrimaryKeyword, validated?.ToList()),
             IntentScore = await GetIntentScoreInfo(request.PrimaryKeyword),
-            KeywordScore = await GetKeywordScore(validated?.ToList(), request)
+            KeywordScore = await GetKeywordScore(validated?.ToList(), request),
+            AnswerPositionIndex = await GetAnswerPositionIndex(validated?.ToList(), request)
         };
+    }
+
+    private async Task<AnswerPositionIndex> GetAnswerPositionIndex(List<ValidatedSentence>? validatedSentences, SeoRequest request)
+    {
+        if (validatedSentences == null || validatedSentences.Count == 0)
+            return new AnswerPositionIndex()
+            {
+                FirstAnswerSentenceId = null,
+                PositionScore = 0.0
+            };
+        try
+        {
+            var res = await _gemini.GetLevel1InforForAIIndexing(request.PrimaryKeyword, validatedSentences.Select(vs => new Level1Sentence()
+            {
+                Id = vs.Id,
+                Text = vs.Text
+            }).ToList());
+
+            var deserialized = JsonSerializer.Deserialize<AiIndexinglevel1Response>(res, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (deserialized != null)
+            {
+                validatedSentences.ForEach(vs =>
+                {
+                    if(vs.InformativeType == Core.Models.Enums.InformativeType.Fact ||
+                            vs.InformativeType == Core.Models.Enums.InformativeType.Claim ||
+                            vs.InformativeType == Core.Models.Enums.InformativeType.Definition)
+                    {
+                        var s = deserialized.Sentences.FirstOrDefault(ds => ds.Id == vs.Id && ds.Text == vs.Text);
+                        if (s != null)
+                        {
+                            vs.AnswerSentenceFlag = s.AnswerSentenceFlag;
+                            vs.EntityConfidenceFlag = s.EntityConfidenceFlag;
+                            vs.EntityMentionFlag = s.EntityMentionFlag;
+                        }
+                        else
+                        {
+
+                        }
+                    }
+                    else
+                    {
+                        vs.AnswerSentenceFlag = new AnswerSentenceFlag() { Value=0,Reason=string.Empty };
+                        vs.EntityMentionFlag = new EntityMentionFlag() { Entities = null, EntityCount =0, Value = 0 };
+                        vs.EntityConfidenceFlag = new EntityConfidenceFlag() { Value = 0 };
+                    }
+                        
+
+                });
+                var pScore = validatedSentences.IndexOf(validatedSentences.Where(x => x.Id == deserialized.AnswerPositionIndex.FirstAnswerSentenceId).FirstOrDefault());
+                var percent = (pScore / validatedSentences.Count)*100;
+                switch(percent)
+                {
+                    case <= 5:
+                        deserialized.AnswerPositionIndex.PositionScore = 1;
+                        break;
+                    case <= 10:
+                        deserialized.AnswerPositionIndex.PositionScore = 0.75;
+                        break;
+                    case <= 20:
+                        deserialized.AnswerPositionIndex.PositionScore = 0.5;
+                        break;
+                    case <= 30:
+                        deserialized.AnswerPositionIndex.PositionScore = .25;
+                        break;
+                    default:
+                        deserialized.AnswerPositionIndex.PositionScore = 0.0;
+                        break;
+                }
+                return deserialized?.AnswerPositionIndex;
+            }
+        }
+        catch(Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in getting answer position index : {ex.Message}:{ex.StackTrace}");
+        }
+
+        return new AnswerPositionIndex() {FirstAnswerSentenceId = null, PositionScore = 0.0 };
     }
 
     private async Task<List<ChatGptDecision>?> HandleMismatchSentences(List<Sentence>? sentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<PerplexitySentenceTag>? groqTags, List<ChatGptDecision>? chatGptDecisions, int batchSize, int i)

@@ -13,6 +13,11 @@ public class Level2Scores
     public double GrammarScore { get; init; }
     public double VariationScore { get; init; }
     public double PlagiarismScore { get; set; }
-    public double FactRetrievalScore { get; init; }
-    public double ClaritySynthesisScore { get; init; }
+    //public double FactRetrievalScore { get; init; }
+    //public double ClaritySynthesisScore { get; init; }
+    public double FactualIsolationScore { get; set; }
+    public double AnswerBlockDensityScore { get; set; }
+    public double EntityAlignmentScore { get; set; }
+    public double SignalToNoiseScore { get; set; }
+    public double TechnicalClarityScore { get; set; }
 }

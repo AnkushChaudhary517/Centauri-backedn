@@ -14,5 +14,24 @@ namespace CentauriSeo.Core.Models.Outputs
         public double SectionScore { get; set; }
         public double IntentScore { get; set; }
         public double KeywordScore { get; set; }
+        public AnswerPositionIndex AnswerPositionIndex { get; set; }
     }
+
+    public class AnswerSentenceFlag {
+        public int Value { get; set; }
+        public string  Reason { get; set; }
+    }
+    public class EntityMentionFlag {
+        public int Value { get; set; }
+        public int EntityCount { get; set; }
+        public List<string> Entities { get; set; } = new List<string>();
+    }
+    public class EntityConfidenceFlag {
+        public int Value { get; set; }
+    }
+    public class AnswerPositionIndex {
+        public string? FirstAnswerSentenceId { get; set; }
+        public double PositionScore { get; set; } // we will calculate this based on the position of the first answer sentence
+    }
+
 }

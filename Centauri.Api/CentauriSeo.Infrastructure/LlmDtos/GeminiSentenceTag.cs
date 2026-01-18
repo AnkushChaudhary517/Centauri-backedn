@@ -12,10 +12,11 @@ public class GeminiSentenceTag
     public InfoQuality InfoQuality { get; set; }
     public FunctionalType FunctionalType { get; set; }
     public InformativeType InformativeType { get; set; }
-    public FactRetrievalType FactRetrievalType { get; set; }
-    public ClaritySynthesisType ClaritySynthesisType { get; set; }
+    //public FactRetrievalType FactRetrievalType { get; set; }
+    //public ClaritySynthesisType ClaritySynthesisType { get; set; }
     public bool ClaimsCitation { get; set; }
     public bool IsGrammaticallyCorrect { get; set; }
     public bool HasPronoun { get; set; }
     public bool IsPlagiarized { get; set; }
+    public string ParagraphId { get; set; } = "";
 }

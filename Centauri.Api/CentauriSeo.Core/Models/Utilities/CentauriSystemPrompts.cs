@@ -30,15 +30,70 @@ Perform Phase 1: Track B (Parallel Sentence Tagging). You must analyze the provi
     - **HtmlTag**: Identify the specific HTML tag that wraps or contains the current sentence.
     - **Examples**: ""H1"", ""H2"", ""H3"", ""H4"", ""p"", ""li"", ""td"", ""a"", ""blockquote"", ""pre"",""img"" etc.
     - If the input is plain text and no tag is present, default to ""p"".
+2. **Paragraph Identification** (paragraphId)
+    - **paragraphId**: Assign a unique paragraph identifier in the format ""P<n>"" where <n> is a sequential number starting from 1 for each distinct paragraph in the input text.
+    - A paragraph is defined as a block of text separated by line breaks or HTML paragraph tags.
+    - Sentences within the same paragraph share the same paragraphId.
 ## Response Schema
 [
   {
     ""SentenceId"": ""S1"",
     ""Sentence"": ""raw text"",
-    ""HtmlTag"": ""string""
+    ""HtmlTag"": ""string"",
+    ""paragraphId"": ""P<n>""
   }
 ]
 
+";
+
+        public const string CentauriLevel1Prompt = @"
+### ROLE
+You are an expert Linguistic Analyst and SEO Data Architect for the Centauri Scoring System. Your task is to perform Level 1 analysis on a set of sentences.
+
+
+### RULES & TAXONOMY
+
+#### 1. Answer Sentence Flag (answer_sentence_flag)
+A sentence is marked as an Answer Sentence (Value: 1) ONLY if all 2 conditions are met:
+- **Condition 1 (Intent):** Directly answers 'What', 'How', or 'Why' of the Primary Keyword. (Supporting or meta-text = 0).
+- **Condition 2 (Self-Contained):** Meaning must be clear without pronouns (This, That, These) or forward references.
+- **Examples:** - ""An AI content checker evaluates originality..."" (1 - Direct Definition)
+  - ""This helps teams scale..."" (0 - Pronoun dependency)
+
+#### 2. Answer Position Index (answer_position_index)
+- **first_answer_sentence_id:** The ID (e.g., S1) of the first sentence where flag = 1.
+
+#### 3. Entity Mention Flag (entity_mention_flag)
+- **value:** 1 if at least one valid entity is present.
+- **entity_count:** Count distinct entities from these categories: [Product/Tool, Standard/Spec, Technical Concept, Organization, Metric/Framework].
+- **Exclusions:** Generic nouns (""the platform""), pronouns, internal sections.
+- **Examples:** ""Google Analytics tracks user behavior."" (Value: 1, Count: 1)
+
+#### 4. Entity Confidence Flag (entity_confidence_flag)
+*Dependency: Only evaluate if entity_mention_flag.value = 1.*
+- **Value 0 (Hedged/Uncertain):** Contains modal verbs (might, could, may), uncertainty phrases (likely, possibly), or soft framing (aims to, helps with).
+- **Value 1 (Confident):** Direct declarative statements in present/past tense without qualification.
+- **Examples:** ""GPT-4 might improve quality."" (0 - ""might"") vs ""GPT-4 processes tokens."" (1 - Declarative).
+
+### OUTPUT SCHEMA
+Return ONLY a valid JSON object with this structure:
+{
+  ""sentences"": [
+    {
+      ""id"": ""S1"", (this must be same as input Id)
+      ""text"": ""..."",
+      ""answerSentenceFlag"": { ""value"": 0|1, ""reason"": ""string"" },
+      ""entityMentionFlag"": { ""value"": 0|1, ""entity_count"": 0, ""entities"": [] },
+      ""entityConfidenceFlag"": { ""value"": 0|1 }
+    }
+  ],
+  ""answerPositionIndex"": {
+    ""firstAnswerSentenceId"": ""S<n>|null""
+  }
+}
+
+
+### PRIMARY KEYWORD and CONTENT TO ANALYZE will be passed in the user text.
 ";
 
         public const string GeminiSentenceTagPrompt = @"
@@ -96,13 +151,6 @@ You must apply these exact definitions for every sentence:
     - **ModerateComplexity**: Sentence is compound or complex (multiple clauses) but remains grammatically sound and clear; may contain necessary technical jargon or modifiers.
     - **LowClarity**: Sentence contains excessive filler, redundant phrasing, highly ambiguous pronouns, or an unnecessary quantity of modifiers/adjectives (low signal-to-noise ratio).
     - **UnIndexable**: Sentence is purely transitional, a rhetorical device, or grammatically incomplete noise (e.g., ""So, as we can see here, let's look at this fantastic new thing we have."").(Default)
-
-7. **FactRetrievalType** (FactRetrievalType)
-    - **VerifiableIsolated**: Sentence contains one or more clear, discrete, and verifiable facts or entities (e.g., a number, a definition, a specific name) and is structured to serve as a direct answer.
-    - **ContexualMixed**: Sentence contains verifiable facts but also mixes in opinions, predictions, or requires significant context to be true; facts are not cleanly separated.
-    - **Unverifiable**: Sentence is purely opinion, prediction, or a generic, unquantifiable claim (e.g., ""We believe this is the best solution on the market"").
-    - **NotFactual**: Sentence is a question, transition, or filler with zero information that an AI could extract or verify (e.g., ""Now, how about that?""). (Default)
-
 ## Execution Constraints
 - **Blind Analysis**: Do not verify truth or fetch web data. Tag purely on linguistic structure.
 - **No Markdown**: Return ONLY a raw JSON array. No ```json tags, no intro, no outro.
@@ -122,8 +170,7 @@ Recheck all the enum values used with the ones provided in the prompt.I am getti
     ""Voice"": ""Enum"",
     ""InformativeType"": ""Enum"",
     ""InfoQuality"": ""Enum"",
-    ""ClaritySynthesisType"":""Enum"",
-    ""FactRetrievalType"":""Enum""
+    ""ClaritySynthesisType"":""Enum""
   }
 ]
 

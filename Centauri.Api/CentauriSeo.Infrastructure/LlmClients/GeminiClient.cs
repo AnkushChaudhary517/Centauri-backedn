@@ -134,13 +134,53 @@ Example:
     public async Task<string> GetLevel1InforForAIIndexing(string primaryKeyword, List<Level1Sentence> sentences)
     {
         var req = new {PrimaryKeyword = primaryKeyword, ContentToAnalyze = sentences?.Select(x => new { Text = x.Text, Id = x.Id, InformativeType = x.InformativeType.ToString() }) };
-    var responseContent = await ProcessContent(SentenceTaggingPrompts.CentauriLevel1Prompt, JsonSerializer.Serialize(req));
-        if (!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
-        {
-
-        }
+        var start = DateTime.Now;
+        var responseContent = await ProcessContent(SentenceTaggingPrompts.CentauriLevel1PromptConcise, JsonSerializer.Serialize(req));
+        var end = DateTime.Now;
         return responseContent;
     }
+
+    public async Task<List<string>> GetLevel1InforForAIIndexing(
+    string primaryKeyword,
+    List<Level1Sentence> sentences,
+    int chunkSize = 25)
+    {
+        if (sentences == null || sentences.Count == 0)
+            return new List<string>();
+
+        var results = new List<string>();
+
+        var start = DateTime.Now;
+        var chunks = sentences
+            .Select((sentence, index) => new { sentence, index })
+            .GroupBy(x => x.index / chunkSize)
+            .Select(g => g.Select(x => x.sentence).ToList());
+
+        var tasks = new List<Task<string>>();
+        foreach (var chunk in chunks)
+        {
+            var req = new
+            {
+                PrimaryKeyword = primaryKeyword,
+                ContentToAnalyze = chunk.Select(x => new
+                {
+                    Text = x.Text,
+                    Id = x.Id,
+                    InformativeType = x.InformativeType.ToString()
+                })
+            };
+
+            tasks.Add(ProcessContent(
+                SentenceTaggingPrompts.CentauriLevel1PromptConcise,
+                JsonSerializer.Serialize(req))); 
+        }
+
+        var responses = await Task.WhenAll(tasks);
+        results.AddRange(responses);
+        var end = DateTime.Now;
+        return results;
+    }
+
     public async Task<int> GetPlagiarismScore(List<Sentence> sentences)
     {
         try
@@ -164,26 +204,23 @@ Example:
                 var p = copiedCount * 100 / sentences.Count;
                 if(p>20)
                 {
-                    var hugeCacheKey = _cache.ComputeRequestKey(JsonSerializer.Serialize(sentences),"hugeCacheKey");
-                    responseContent = await _cache.GetAsync(hugeCacheKey);
-                    if(string.IsNullOrEmpty(responseContent))
+                    uniqueCount = 0;
+                    var start = DateTime.Now;
+                    var responseContenListt = await ProcessContentInChunksAsync(prompt, sentences, 50);
+                    var end = DateTime.Now;
+                    responseContenListt?.ForEach(responseContent =>
                     {
-                        responseContent = await ProcessContent(prompt, JsonSerializer.Serialize(sentences));
-                        if(!string.IsNullOrEmpty(responseContent))
+                        if (!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
                         {
-                            await _cache.SaveAsync(hugeCacheKey, responseContent);
+                            using var doc2 = JsonDocument.Parse(responseContent);
+                            uniqueCount += doc2.RootElement
+                        .GetProperty("unique_sentence_count")
+                        .GetInt32();                            
                         }
-                    }
-                    
-                    if (!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
-                    {
-                        using var doc2 = JsonDocument.Parse(responseContent); 
-                        uniqueCount = doc2.RootElement
-                    .GetProperty("unique_sentence_count")
-                    .GetInt32();
-                        copiedCount = sentences.Count - uniqueCount;
-                        p = (int)Math.Ceiling((copiedCount * 100.0) / sentences.Count);
-                    }
+                    });
+                    copiedCount = sentences.Count - uniqueCount;
+                    p = (int)Math.Ceiling((copiedCount * 100.0) / sentences.Count);
+
                 }
                 return p;
             }
@@ -194,6 +231,31 @@ Example:
         }
         return 0;
     }
+
+    public async Task<List<string>> ProcessContentInChunksAsync(string prompt, List<Sentence> sentences, int chunkSize = 25)
+    {
+        if (sentences == null || !sentences.Any())
+            return new List<string>();
+
+        // Split sentences into chunks
+        List<Task<string>> tasks = new List<Task<string>>();
+        for (int i = 0; i < sentences.Count; i += chunkSize)
+        {
+            var chunk = sentences.Skip(i).Take(chunkSize).ToList();
+
+            // Serialize only the chunk
+            var chunkPayload = JsonSerializer.Serialize(chunk);
+
+            // Call the AI
+            tasks.Add(ProcessContent(prompt, chunkPayload));
+
+        }
+
+        var res = await Task.WhenAll(tasks);
+
+        return res?.ToList();
+    }
+
 
     public async Task<IReadOnlyList<GeminiSentenceTag>> TagArticleAsync(string prompt, string xmlContent, string cacheKeySuffix)
     {

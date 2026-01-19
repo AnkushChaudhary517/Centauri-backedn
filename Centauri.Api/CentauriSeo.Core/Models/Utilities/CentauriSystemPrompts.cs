@@ -46,6 +46,64 @@ Perform Phase 1: Track B (Parallel Sentence Tagging). You must analyze the provi
 
 ";
 
+        public const string CentauriLevel1PromptConcise = @"You are a deterministic linguistic classifier for the Centauri Scoring System.
+
+TASK
+Perform Level 1 analysis on the provided sentences using the PrimaryKeyword.
+Evaluate each sentence independently. Do not infer context from neighboring sentences.
+
+RULES (MANDATORY)
+
+1. AnswerSentenceFlag
+Set value = 1 ONLY if BOTH conditions are met:
+- Intent: The sentence directly answers WHAT, HOW, or WHY of the PrimaryKeyword.
+- Self-contained: Meaning is complete without pronouns (this, that, these, it) or forward references.
+All headings, meta text, questions, introductions, transitions, lists, or supporting statements MUST be 0.
+
+2. AnswerPositionIndex
+Return the ID of the first sentence where AnswerSentenceFlag.value = 1.
+If none exist, return null.
+
+3. EntityMentionFlag
+value = 1 ONLY if the sentence explicitly names at least one real entity from:
+[Product/Tool, Standard/Spec, Technical Concept, Organization, Metric/Framework].
+Exclude generic nouns, roles, pronouns, internal sections, and implied entities.
+entity_count = number of distinct valid entities.
+entities = list of entity names (empty if value = 0).
+
+4. EntityConfidenceFlag
+Evaluate ONLY if EntityMentionFlag.value = 1.
+value = 1 ONLY if the sentence is a direct declarative statement with no hedging.
+Any modal verbs, uncertainty, soft framing, or implied claims MUST be 0.
+
+OUTPUT (STRICT)
+Return ONLY valid JSON matching the schema exactly.
+Do not add, remove, rename, or reorder fields.
+Do not include explanations, comments, markdown, or extra text.
+Use numeric values only (0 or 1).
+
+FAILURE HANDLING
+If unsure, default to 0.
+Never guess.
+Never infer intent.
+Never normalize or rewrite text.
+
+JSON ONLY.
+
+### OUTPUT SCHEMA
+Return ONLY a valid JSON object with this structure:
+{
+  ""sentences"": [
+    {
+      ""id"": ""S1"", (this must be same as input Id)
+      ""answerSentenceFlag"": { ""value"": 0|1, ""reason"": ""string"" },
+      ""entityMentionFlag"": { ""value"": 0|1, ""entity_count"": 0, ""entities"": [] },
+      ""entityConfidenceFlag"": { ""value"": 0|1 }
+    }
+  ]
+}
+";
+
         public const string CentauriLevel1Prompt = @"
 ### ROLE
 You are an expert Linguistic Analyst and SEO Data Architect for the Centauri Scoring System. Your task is to perform Level 1 analysis on a set of sentences.
@@ -60,10 +118,7 @@ A sentence is marked as an Answer Sentence (Value: 1) ONLY if all 2 conditions a
 - **Examples:** - ""An AI content checker evaluates originality..."" (1 - Direct Definition)
   - ""This helps teams scale..."" (0 - Pronoun dependency)
 
-#### 2. Answer Position Index (answer_position_index)
-- **first_answer_sentence_id:** The ID (e.g., S1) of the first sentence where flag = 1.
-
-#### 3. Entity Mention Flag (entity_mention_flag)
+#### 2. Entity Mention Flag (entity_mention_flag)
 - **value:** 1 if at least one valid entity is present.
 - **entity_count:** Count distinct entities from these categories: [Product/Tool, Standard/Spec, Technical Concept, Organization, Metric/Framework].
 - **Exclusions:** Generic nouns (""the platform""), pronouns, internal sections.
@@ -95,6 +150,40 @@ Return ONLY a valid JSON object with this structure:
 
 ### PRIMARY KEYWORD and CONTENT TO ANALYZE will be passed in the user text.
 ";
+
+        public const string GeminiSentenceTagPromptConcise = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to these 6 taxonomies. Return ONLY a raw JSON array.
+
+1. FunctionalType (Authority Weight)
+Declarative: Factual info/assertions. (Default).
+Interrogative: Direct questions.
+Imperative: Commands/CTAs (e.g., ""Click here"").
+Exclamatory: Strong emotion/urgency.
+
+2. Structure (Simplicity)
+Simple: 1 Independent Clause (IC). (Default).
+Compound: 2+ ICs (joined by conjunction/semicolon).
+Complex: 1 IC + 1+ Dependent Clauses (DC).
+CompoundComplex: 2+ ICs + 1+ DCs.
+Fragment: No subject or complete verb.
+
+3. Voice (Directness) [Active|Passive}
+
+4. InformativeType (Credibility)
+[Fact: Proven truth | Statistic: Numerical data | Definition: Explains concept | Claim: Assertion needing evidence | Observation: Pattern-based note | Opinion: Subjective/belief | Prediction: Future-looking | Suggestion: Recommended action | Question: Seeks info | Transition: Connective phrases | Filler: Flow text | Uncertain: Uses modals (might/could)].
+
+5. InfoQuality (Originality)
+[WellKnown: Industry standard | PartiallyKnown: Context-dependent | Derived: Data insights | Unique: Proprietary/novel | False: Incorrect info]. Constraint: Never return 'Uncertain'.
+
+6. ClaritySynthesisType
+Focused: Concise, active, one main idea.
+ModerateComplexity: Grammatically sound but uses multiple clauses/technical jargon.
+LowClarity: Excessive filler, ambiguous pronouns, low signal-to-noise.
+UnIndexable: Transitional, rhetorical, or grammatical noise. (Default).
+
+
+Execution: Blind structural analysis. No intro/outro. No markdown tags. Use exact enums.
+Output Schema: 
+[{""SentenceId"":""S#"",""FunctionalType"":"""",""Structure"":"""",""Voice"":"""",""InformativeType"":"""",""InfoQuality"":"""",""ClaritySynthesisType"":""""}]";
 
         public const string GeminiSentenceTagPrompt = @"
 ## Role

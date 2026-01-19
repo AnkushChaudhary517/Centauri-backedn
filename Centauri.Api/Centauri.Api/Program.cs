@@ -115,6 +115,7 @@ builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();
 
 var app = builder.Build();
+app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<UserContextMiddleware>();
 // Ensure database created (simple and safe)
 //using (var scope = app.Services.CreateScope())

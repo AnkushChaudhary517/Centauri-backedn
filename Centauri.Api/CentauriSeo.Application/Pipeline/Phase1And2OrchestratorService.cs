@@ -14,6 +14,7 @@ using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -43,6 +44,41 @@ public class Phase1And2OrchestratorService
         _logger = new FileLogger();
     }
 
+    public async Task<(IReadOnlyList<GeminiSentenceTag>, IReadOnlyList<PerplexitySentenceTag>)> ParallelTaggingAsync(List<Sentence> sentences)
+    {
+        // 1. Prepare chunks
+        int chunkSize = 50;
+        var chunks = sentences.Chunk(chunkSize).ToList();
+
+        // 2. Initialize Task lists for both providers
+        var geminiTasks = new List<Task<IReadOnlyList<GeminiSentenceTag>>>();
+        var groqTasks = new List<Task<IReadOnlyList<PerplexitySentenceTag>>>();
+
+        // 3. Fire all requests immediately without awaiting
+        foreach (var chunk in chunks)
+        {
+            var minifiedJson = JsonSerializer.Serialize(chunk);
+
+            // Start Gemini task and add to list
+            geminiTasks.Add(_gemini.TagArticleAsync(
+                SentenceTaggingPrompts.GeminiSentenceTagPrompt,
+                minifiedJson,
+                "gemini:tagging"
+            ));
+
+            // Start Groq task and add to list
+            groqTasks.Add(_groq.TagSentencesAsync(minifiedJson, string.Empty));
+        }
+        var startTime = DateTime.UtcNow;
+        // 4. Await everything at once (Total parallelism)
+        await Task.WhenAll(geminiTasks.Cast<Task>().Concat(groqTasks));
+        var endTime = DateTime.UtcNow;
+        // 5. Aggregate the results using SelectMany
+        var allGeminiResults = geminiTasks.SelectMany(t => t.Result).ToList();
+        var allGroqResults = groqTasks.SelectMany(t => t.Result).ToList();
+        return (allGeminiResults, allGroqResults);
+    }
+
     // Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
     // then returns the validated sentence map using the existing Phase2_ArbitrationEngine.Execute flow.
     public async Task<OrchestratorResponse> RunAsync(SeoRequest request)
@@ -50,15 +86,15 @@ public class Phase1And2OrchestratorService
         //var sentences = Phase0_InputParser.Parse(article);
         var sentenceTagging = (await _gemini.TagArticleAsync(SentenceTaggingPrompts.SentenceTaggingPrompt, request.Article.Raw, "gemini:tagging:level1")).ToList();
         var sentences = sentenceTagging?.Select(s => new Sentence(s.SentenceId, s.Sentence,0) ).ToList();
-        var userContent = JsonSerializer.Serialize(sentences);
+        //var userContent = JsonSerializer.Serialize(sentences);
 
 
-        var geminiTask = _gemini.TagArticleAsync(SentenceTaggingPrompts.GeminiSentenceTagPrompt, userContent, "gemini:tagging");
-        var groqTask = _groq.TagSentencesAsync(userContent,string.Empty);       
-        await Task.WhenAll(geminiTask, groqTask);
+        //var geminiTask = _gemini.TagArticleAsync(SentenceTaggingPrompts.GeminiSentenceTagPrompt, userContent, "gemini:tagging");
+        //var groqTask = _groq.TagSentencesAsync(userContent,string.Empty);       
+        //await Task.WhenAll(geminiTask, groqTask);
 
-
-        var geminiTags = await geminiTask;
+        (var geminiTags, var groqTags) = await ParallelTaggingAsync(sentences);
+        //var geminiTags = await geminiTask;
         geminiTags?.ToList()?.ForEach(g =>
         {
             var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
@@ -66,7 +102,7 @@ public class Phase1And2OrchestratorService
             g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
         });
 
-        var groqTags = await groqTask;
+        //var groqTags = await groqTask;
         groqTags?.ToList()?.ForEach(g =>
         {
             var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
@@ -132,64 +168,74 @@ public class Phase1And2OrchestratorService
             };
         try
         {
-            var res = await _gemini.GetLevel1InforForAIIndexing(request.PrimaryKeyword, validatedSentences.Select(vs => new Level1Sentence()
+
+            var aiIndexingResponse = new AiIndexinglevel1Response();
+            var resList = await _gemini.GetLevel1InforForAIIndexing(request.PrimaryKeyword, validatedSentences.Select(vs => new Level1Sentence()
             {
                 Id = vs.Id,
                 Text = vs.Text
-            }).ToList());
-
-            var deserialized = JsonSerializer.Deserialize<AiIndexinglevel1Response>(res, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (deserialized != null)
+            }).ToList(),100);
+            resList?.ForEach(res =>
             {
-                validatedSentences.ForEach(vs =>
+                var deserialized = JsonSerializer.Deserialize<AiIndexinglevel1Response>(res, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if(deserialized?.Sentences != null && deserialized.Sentences.Count>0)
                 {
-                    if(vs.InformativeType == Core.Models.Enums.InformativeType.Fact ||
-                            vs.InformativeType == Core.Models.Enums.InformativeType.Claim ||
-                            vs.InformativeType == Core.Models.Enums.InformativeType.Definition)
-                    {
-                        var s = deserialized.Sentences.FirstOrDefault(ds => ds.Id == vs.Id && ds.Text == vs.Text);
-                        if (s != null)
-                        {
-                            vs.AnswerSentenceFlag = s.AnswerSentenceFlag;
-                            vs.EntityConfidenceFlag = s.EntityConfidenceFlag;
-                            vs.EntityMentionFlag = s.EntityMentionFlag;
-                        }
-                        else
-                        {
+                    aiIndexingResponse.Sentences.AddRange(deserialized.Sentences);
+                }
+            });
 
-                        }
+
+            validatedSentences.ForEach(vs =>
+            {
+                if (vs.InformativeType == Core.Models.Enums.InformativeType.Fact ||
+                        vs.InformativeType == Core.Models.Enums.InformativeType.Claim ||
+                        vs.InformativeType == Core.Models.Enums.InformativeType.Definition)
+                {
+                    var s = aiIndexingResponse.Sentences.FirstOrDefault(ds => ds.Id == vs.Id);
+                    if (s != null)
+                    {
+                        vs.AnswerSentenceFlag = s.AnswerSentenceFlag;
+                        vs.EntityConfidenceFlag = s.EntityConfidenceFlag;
+                        vs.EntityMentionFlag = s.EntityMentionFlag;
                     }
                     else
                     {
-                        vs.AnswerSentenceFlag = new AnswerSentenceFlag() { Value=0,Reason=string.Empty };
-                        vs.EntityMentionFlag = new EntityMentionFlag() { Entities = null, EntityCount =0, Value = 0 };
+                        vs.AnswerSentenceFlag = new AnswerSentenceFlag() { Value = 0, Reason = string.Empty };
+                        vs.EntityMentionFlag = new EntityMentionFlag() { Entities = null, EntityCount = 0, Value = 0 };
                         vs.EntityConfidenceFlag = new EntityConfidenceFlag() { Value = 0 };
                     }
-                        
-
-                });
-                var pScore = validatedSentences.IndexOf(validatedSentences.Where(x => x.Id == deserialized.AnswerPositionIndex.FirstAnswerSentenceId).FirstOrDefault());
-                var percent = (pScore / validatedSentences.Count)*100;
-                switch(percent)
-                {
-                    case <= 5:
-                        deserialized.AnswerPositionIndex.PositionScore = 1;
-                        break;
-                    case <= 10:
-                        deserialized.AnswerPositionIndex.PositionScore = 0.75;
-                        break;
-                    case <= 20:
-                        deserialized.AnswerPositionIndex.PositionScore = 0.5;
-                        break;
-                    case <= 30:
-                        deserialized.AnswerPositionIndex.PositionScore = .25;
-                        break;
-                    default:
-                        deserialized.AnswerPositionIndex.PositionScore = 0.0;
-                        break;
                 }
-                return deserialized?.AnswerPositionIndex;
+                else
+                {
+                    vs.AnswerSentenceFlag = new AnswerSentenceFlag() { Value = 0, Reason = string.Empty };
+                    vs.EntityMentionFlag = new EntityMentionFlag() { Entities = null, EntityCount = 0, Value = 0 };
+                    vs.EntityConfidenceFlag = new EntityConfidenceFlag() { Value = 0 };
+                }
+            });
+
+            var firstAnswerSentenceId = aiIndexingResponse.AnswerPositionIndex.FirstAnswerSentenceId;
+            var finalAnswer = 0.0;
+            var pScore = validatedSentences.IndexOf(validatedSentences.Where(x => x.Id == firstAnswerSentenceId).FirstOrDefault());
+            var percent = ((double)pScore / validatedSentences.Count) * 100;
+            switch (percent)
+            {
+                case <= 5:
+                    finalAnswer = 1;
+                    break;
+                case <= 10:
+                    finalAnswer = 0.75;
+                    break;
+                case <= 20:
+                    finalAnswer = 0.5;
+                    break;
+                case <= 30:
+                    finalAnswer = .25;
+                    break;
+                default:
+                    finalAnswer = 0.0;
+                    break;
             }
+            return new AnswerPositionIndex() { FirstAnswerSentenceId = firstAnswerSentenceId, PositionScore = finalAnswer };
         }
         catch(Exception ex)
         {

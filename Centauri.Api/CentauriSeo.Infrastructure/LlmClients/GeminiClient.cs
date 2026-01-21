@@ -264,6 +264,14 @@ Example:
             PropertyNameCaseInsensitive = true,
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
+
+        var request_article_cache_key = _cache.ComputeRequestKey(xmlContent, "article:content:huge");
+        var cached_article_key = await _cache.GetAsync(request_article_cache_key);
+        //if(cached_article_key == null)
+        //{
+        //    cached_article_key = await CreateHugeContentCache(xmlContent, _apiKey);
+        //    await _cache.SaveAsync(request_article_cache_key, cached_article_key);
+        //}
         var cacheKey = _cache.ComputeRequestKey(xmlContent, cacheKeySuffix);
         var cachedResponse = await _cache.GetAsync(cacheKey);
         if (cachedResponse != null)
@@ -272,7 +280,7 @@ Example:
         }
         try
         {
-            var responseContent = await ProcessContent(prompt, xmlContent);
+            var responseContent = await ProcessContent(prompt, xmlContent,false, cached_article_key);
             var res = JsonSerializer.Deserialize<List<GeminiSentenceTag>>(responseContent, options);
             if (res != null)
             {
@@ -293,7 +301,7 @@ Example:
         return await ProcessContent(CentauriSystemPrompts.RecommendationsPrompt, article);
     }
 
-    public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false)
+    public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null)
     {
         if(cachePrompt)
         {
@@ -303,27 +311,22 @@ Example:
             if (string.IsNullOrEmpty(cacheName))
             {
                 // STEP A: Create Cache
-                var cacheResult = await CreateHugeContentCache(prompt, _apiKey);
-                cacheName = ParseCacheNameFromJson(cacheResult);
+                cacheName = await CreateHugeContentCache(prompt, _apiKey);
                 if (!string.IsNullOrEmpty(cacheName))
                 {
                     await _cache.SaveAsync(cacheKey, cacheName);
                 }
             }
 
-            var r = await GetAnalysisFromCache(_apiKey, cacheName, xmlData);
-            using var doc = JsonDocument.Parse(r);
-            return doc.RootElement
-                .GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text")
-                .GetString().Replace("```json", "")
-                    .Replace("```", "")
-                    .Trim();
+            return await GetAnalysisFromCache(_apiKey, cacheName, xmlData);
         }
         else
         {
+            if (!string.IsNullOrEmpty(cachedArticleKey))
+            {
+                var r = await GetAnalysisFromCache(_apiKey, cachedArticleKey, prompt);
+                return r;
+            }
             var res = await GenerateSentenceTagsDirect(prompt, xmlData);
             return res;
 
@@ -338,6 +341,12 @@ Example:
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
         using var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10)};
+
+        int estimatedSentenceCount = (xmlContent.Length / 90) + 1;
+        int calculatedMaxTokens = estimatedSentenceCount * 220; // 220 for safety margin
+
+        // Limit check: Gemini models ki apni limits hoti hain (e.g. 8k for Flash output)
+       // calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 1000, 8192);
 
         // Standard GenerateContent request body
         var requestBody = new
@@ -355,7 +364,9 @@ Example:
         },
             generationConfig = new
             {
-                response_mime_type = "application/json" // Forces Gemini to return valid JSON
+                response_mime_type = "application/json", // Forces Gemini to return valid JSON
+                //maxOutputTokens = calculatedMaxTokens,
+                temperature = 0.1
             }
         };
 
@@ -414,17 +425,23 @@ Example:
 
     public static async Task<string> GetAnalysisFromCache(string apiKey, string cacheName, string userContent)
     {
-        var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10)};
+        var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
+
         var generateRequest = new
         {
-            cached_content = cacheName, // Use the ID returned from the creation step
+            cached_content = cacheName,
             contents = new[]
             {
             new {
                 role = "user",
                 parts = new[] { new { text = userContent } }
             }
-        }
+        },
+            // YEH SECTION ADD KIYA HAI: Markdown hatane ke liye
+            generation_config = new
+            {
+                response_mime_type = "application/json"
+            }
         };
 
         var response = await client.PostAsJsonAsync(
@@ -432,7 +449,16 @@ Example:
             generateRequest
         );
 
-        return await response.Content.ReadAsStringAsync();
+        var jsonResponse = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(jsonResponse);
+        return doc.RootElement
+            .GetProperty("candidates")[0]
+            .GetProperty("content")
+            .GetProperty("parts")[0]
+            .GetProperty("text")
+            .GetString().Replace("```json", "")
+                .Replace("```", "")
+                .Trim();
     }
 
     public static async Task<string> CreateHugeContentCache(string systemInstruction, string apiKey)
@@ -464,8 +490,9 @@ Example:
         );
 
         var result = await response.Content.ReadAsStringAsync();
+        var cacheName = ParseCacheNameFromJson(result);
         // This returns a JSON containing the "name" (e.g., "cachedContents/abcdef123")
-        return result;
+        return cacheName;
     }
 
     public static async Task<int> GetTokenCount(string apiKey, string prompt, string xmlContent)

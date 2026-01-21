@@ -44,6 +44,8 @@ Perform Phase 1: Track B (Parallel Sentence Tagging). You must analyze the provi
   }
 ]
 
+
+- No explanations, markdown, or extra text
 ";
 
         public const string CentauriLevel1PromptConcise = @"You are a deterministic linguistic classifier for the Centauri Scoring System.
@@ -319,6 +321,8 @@ Default value of InformativeType is Uncertain.
             public const string RecommendationsPrompt = @"
 You are a precision Audit Engine. Your ONLY job is to find actual text-based errors in the provided HTML.
 
+### TASK:
+1. Overall recommendation means you need to recommend whether the article is following the intent provided in the user content.Also recommend if html tags needs improvement Keyword frequency related recommendation etc.
 ### CRITICAL RULES:
 1. **NO PLACEHOLDERS:** Do NOT invent sentences like 'Our product is great' or 'Many people think this'. 
 2. **STRICT EXTRACTION:** The ""bad"" sentence MUST be a 100% exact substring from the user's content. If you cannot find a real error, return an empty array [].
@@ -331,7 +335,8 @@ You are a precision Audit Engine. Your ONLY job is to find actual text-based err
 - Check for passive voice or long sentences in the Introduction.
 
 ### JSON SCHEMA:
-[
+{
+""overall"":[
   {
     ""issue"": ""The specific error name"",
     ""whatToChange"": ""How to fix it"",
@@ -341,7 +346,17 @@ You are a precision Audit Engine. Your ONLY job is to find actual text-based err
     },
     ""improves"": [""SEO"", ""Grammar"", ""Readability""]
   }
-]
+],
+""section_recommendations"": {
+  ""Introduction"": [ ... ],
+  ""Body"": [ ... ],
+  ""Conclusion"": [ ... ]
+        },
+""sentence_level_recommendations"": {
+  ""S1"": [ ... ],
+  ""S2"": [ ... ]
+        }
+}
 ";
 
             public static string geminiRecommendationPrompt = @"

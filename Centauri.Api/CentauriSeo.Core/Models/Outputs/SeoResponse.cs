@@ -1,7 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using CentauriSeo.Core.Models.Scoring;
 using CentauriSeo.Core.Models.Sentences;
-using CentauriSeo.Core.Models.Scoring;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace CentauriSeo.Core.Models.Output;
 
@@ -27,7 +29,7 @@ public class SeoResponse
 
     public Diagnostics Diagnostics { get; set; } = new();
 
-    public List<Recommendation> Recommendations { get; set; } = new();
+    public List<RecommendationsResponse> Recommendations { get; set; } = new();
 
     // Backwards-compatible properties
     public Level2Scores Level2Scores { get; set; } = new();
@@ -170,6 +172,12 @@ public class TopIssue
     public List<string> Impact { get; set; } = new();
 }
 
+public class RecommendationsResponse
+{
+    public List<Recommendation> Overall { get; set; } = new();
+    public Dictionary<string, List<Recommendation>> SectionRecommendations { get; set; } = new();
+    public Dictionary<string, List<Recommendation>> SentenceLevelRecommendations { get; set; } = new();
+}
 public class Recommendation
 {
     public string Issue { get; set; } = "";

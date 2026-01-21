@@ -22,18 +22,22 @@ namespace CentauriSeoBackend.Controllers;
 public class SeoController : ControllerBase
 {
     private readonly Phase1And2OrchestratorService _orchestrator;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public SeoController(Phase1And2OrchestratorService orchestrator)
+    public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor)
     {
         _orchestrator = orchestrator;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
+        var ctx = _httpContextAccessor.HttpContext;
+        var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
         var response = new SeoResponse
         {
-            RequestId = Guid.NewGuid().ToString()
+            RequestId = correlationId
         };
         var topIssues = new List<TopIssue>();
 
@@ -254,7 +258,7 @@ public class SeoController : ControllerBase
         };
         // Populate recommended quick diagnostics/recommendations (legacy)
         var list = level1?.ToList();
-        _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, JsonSerializer.Deserialize<List<Level1Sentence>>(JsonSerializer.Serialize(level1)));
+        _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, JsonSerializer.Deserialize<List<ValidatedSentence>>(JsonSerializer.Serialize(orchestratorResponse.ValidatedSentences)));
         //response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
 
         // --- Final input_integrity.status per document rules ---
@@ -280,8 +284,9 @@ public class SeoController : ControllerBase
 
 
     [HttpPost("recommendations")]
-    public async Task<ActionResult<RecommendationResponse>> GetRecommendations([FromBody] SeoRequest request)
+    public async Task<ActionResult<RecommendationResponseDTO>> GetRecommendations([FromBody] SeoRequest request)
     {
+        var correlationId = _httpContextAccessor?.HttpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
         // Basic input validation
         if (request == null || string.IsNullOrWhiteSpace(request.Article.Raw))
         {
@@ -289,6 +294,7 @@ public class SeoController : ControllerBase
         }
         // Generate recommendations using the TextAnalysisHelper
         var recommendations = await _orchestrator.GetRecommendationResponseAsync(request.Article.Raw);
+        recommendations.RequestId = correlationId;
         return Ok(recommendations);
     }
 }

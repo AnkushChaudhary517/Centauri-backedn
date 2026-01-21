@@ -175,8 +175,8 @@ public class TopIssue
 public class RecommendationsResponse
 {
     public List<Recommendation> Overall { get; set; } = new();
-    public Dictionary<string, List<Recommendation>> SectionRecommendations { get; set; } = new();
-    public Dictionary<string, List<Recommendation>> SentenceLevelRecommendations { get; set; } = new();
+    public List<Recommendation> SectionLevel { get; set; } = new();
+    public List<Recommendation> SentenceLevel { get; set; } = new();
 }
 public class Recommendation
 {

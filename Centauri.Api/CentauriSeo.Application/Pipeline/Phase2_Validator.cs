@@ -11,7 +11,7 @@ public static class Phase2_Validator
         Sentence sentence,
         PerplexitySentenceTag perplexity,
         GeminiSentenceTag gemini,
-        ChatGptDecision? chatGpt = null)
+        ChatgptGeminiSentenceTag? chatGpt = null)
     {
         // Delegate to the central arbitration engine which implements the document rules.
         return Phase2_ArbitrationEngine.Arbitrate(sentence, perplexity, gemini, chatGpt);

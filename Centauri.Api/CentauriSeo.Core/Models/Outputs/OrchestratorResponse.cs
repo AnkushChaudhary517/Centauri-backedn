@@ -15,6 +15,7 @@ namespace CentauriSeo.Core.Models.Outputs
         public double IntentScore { get; set; }
         public double KeywordScore { get; set; }
         public AnswerPositionIndex AnswerPositionIndex { get; set; }
+        public List<Section> Sections { get; set; } = new List<Section>();
     }
 
     public class AnswerSentenceFlag {

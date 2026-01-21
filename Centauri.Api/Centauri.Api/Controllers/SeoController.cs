@@ -64,7 +64,9 @@ public class SeoController : ControllerBase
         // Meta title/description/url presence and URL validity
         input.Received.MetaTitlePresent = !string.IsNullOrWhiteSpace(request?.MetaTitle);
         input.Received.MetaTitle = request.MetaTitle;
+        input.Received.MetaDescriptionPresent = !string.IsNullOrWhiteSpace(request?.MetaDescription);
         input.Received.MetaDescription = request.MetaDescription;
+        input.Received.UrlPresent = !string.IsNullOrWhiteSpace(request.Url);
         input.Received.Url = request.Url;
         input.Received.PrimaryKeyword = request.PrimaryKeyword;
         input.Received.SecondaryKeywords = (request.SecondaryKeywords != null) ? JsonSerializer.Serialize(request.SecondaryKeywords) : null;
@@ -258,7 +260,7 @@ public class SeoController : ControllerBase
         };
         // Populate recommended quick diagnostics/recommendations (legacy)
         var list = level1?.ToList();
-        _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, JsonSerializer.Deserialize<List<ValidatedSentence>>(JsonSerializer.Serialize(orchestratorResponse.ValidatedSentences)));
+        _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, orchestratorResponse.ValidatedSentences.ToList(),orchestratorResponse.Sections);
         //response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
 
         // --- Final input_integrity.status per document rules ---

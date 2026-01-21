@@ -13,17 +13,25 @@ public class Phase1And2Orchestrator
         IReadOnlyList<Sentence> sentences,
         IReadOnlyList<PerplexitySentenceTag> perplexity,
         IReadOnlyList<GeminiSentenceTag> gemini,
-        IReadOnlyList<ChatGptDecision>? chatGpt = null)
+        IReadOnlyList<ChatgptGeminiSentenceTag>? chatGpt = null)
     {
         var result = new List<ValidatedSentence>();
 
         foreach (var s in sentences)
         {
-            var p = perplexity.FirstOrDefault(x => x.SentenceId == s.Id);
-            var g = gemini.FirstOrDefault(x => x.SentenceId == s.Id);
-            var ai = chatGpt?.SingleOrDefault(x => x.SentenceId == s.Id);
-            if(p!= null && g != null)
-                result.Add(Phase2_ArbitrationEngine.Arbitrate(s, p, g, ai));
+            try
+            {
+                var p = perplexity.FirstOrDefault(x => x.SentenceId == s.Id);
+                var g = gemini.FirstOrDefault(x => x.SentenceId == s.Id);
+                var ai = chatGpt?.SingleOrDefault(x => x.SentenceId == s.Id);
+                if (p != null && g != null)
+                    result.Add(Phase2_ArbitrationEngine.Arbitrate(s, p, g, ai));
+            }
+            catch (Exception ex)
+            {
+                
+            }
+
         }
 
         return result;

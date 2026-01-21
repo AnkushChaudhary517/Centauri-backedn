@@ -11,6 +11,7 @@ namespace CentauriSeo.Core.Models.Sentences;
 public class ValidatedSentence
 {
     public string Id { get; set; } = "";
+    public string SectionId { get; set; } = "";
     public string Text { get; set; } = "";
     public string Grammar { get; set; } = "";
     public string HtmlTag { get; set; } = "";
@@ -32,5 +33,12 @@ public class ValidatedSentence
     public EntityConfidenceFlag EntityConfidenceFlag { get; set; }
     public EntityMentionFlag EntityMentionFlag { get; set; }
     public string ParagraphId { get; set; } = "";
+}
+
+public class Section
+{
+    public string Id { get; set; }
+    public List<string> SentenceIds { get; set; } = new List<string>();
+    public string SectionText { get; set; }
 }
 

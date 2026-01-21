@@ -20,3 +20,13 @@ public class GeminiSentenceTag
     public bool IsPlagiarized { get; set; }
     public string ParagraphId { get; set; } = "";
 }
+
+public class ChatgptGeminiSentenceTag
+{
+    public string SentenceId { get; set; } = "";
+    public SentenceStructure Structure { get; set; }
+    public VoiceType Voice { get; set; }
+    public FunctionalType FunctionalType { get; set; }
+    public InformativeType InformativeType { get; set; }
+    public double Confidence { get; set; }
+}

@@ -12,10 +12,18 @@ public static class Phase2_ArbitrationEngine
         Sentence sentence,
         PerplexitySentenceTag p,
         GeminiSentenceTag g,
-        ChatGptDecision? aiDecision)
+        ChatgptGeminiSentenceTag? aiDecision)
     {
         InformativeType finalType;
         double confidence = 0.7;
+
+        FunctionalType functionalType = g.FunctionalType;
+        if(p.FunctionalType != g.FunctionalType && aiDecision?.FunctionalType != null)
+          functionalType = aiDecision.FunctionalType;
+
+        VoiceType voiceType = g.Voice;
+        if (p.Voice != g.Voice && aiDecision?.Voice != null)
+            voiceType = aiDecision.Voice;
 
         // Rule 1: Statistic must contain number
         if ((p.InformativeType == InformativeType.Statistic ||
@@ -44,7 +52,7 @@ public static class Phase2_ArbitrationEngine
         // Rule 4: AI arbitration fallback
         else if (aiDecision != null)
         {
-            finalType = aiDecision.FinalType;
+            finalType = aiDecision.InformativeType;
             confidence = aiDecision.Confidence;
         }
         else
@@ -58,14 +66,14 @@ public static class Phase2_ArbitrationEngine
             Text = sentence.Text,
             InformativeType = finalType,
             Structure = g.Structure,
-            Voice = g.Voice,
+            Voice = voiceType,
             HasCitation = p.ClaimsCitation,
             Confidence = confidence,
             IsGrammaticallyCorrect = p.IsGrammaticallyCorrect,
             HasPronoun = p.HasPronoun,
             IsPlagiarized = g.IsPlagiarized,
             InfoQuality = g.InfoQuality,
-            FunctionalType = g.FunctionalType,
+            FunctionalType = functionalType,
              HtmlTag = g.HtmlTag,
              //ClaritySynthesisType = g.ClaritySynthesisType,
              //FactRetrievalType = g.FactRetrievalType,

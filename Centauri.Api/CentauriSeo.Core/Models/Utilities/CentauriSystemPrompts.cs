@@ -51,54 +51,42 @@ Perform Phase 1: Track B (Parallel Sentence Tagging). You must analyze the provi
         public const string CentauriLevel1PromptConcise = @"You are a deterministic linguistic classifier for the Centauri Scoring System.
 
 TASK
-Perform Level 1 analysis on the provided sentences using the PrimaryKeyword.
-Evaluate each sentence independently. Do not infer context from neighboring sentences.
+Perform Level 1 analysis on each sentence independently using PrimaryKeyword. Do not use context from neighboring sentences.
 
 RULES (MANDATORY)
 
 1. AnswerSentenceFlag
-Set value = 1 ONLY if BOTH conditions are met:
-- Intent: The sentence directly answers WHAT, HOW, or WHY of the PrimaryKeyword.
-- Self-contained: Meaning is complete without pronouns (this, that, these, it) or forward references.
-All headings, meta text, questions, introductions, transitions, lists, or supporting statements MUST be 0.
+Set value = 1 only if BOTH are true:
+- Intent: sentence directly answers WHAT, HOW, or WHY of PrimaryKeyword.
+- Self-contained: meaning complete without pronouns (this, that, these, it) or forward references.
+All headings, meta text, questions, intros, transitions, lists, or supporting statements = 0.
 
 2. AnswerPositionIndex
-Return the ID of the first sentence where AnswerSentenceFlag.value = 1.
-If none exist, return null.
+Return the ID of the first sentence where AnswerSentenceFlag.value = 1. Return null if none.
 
 3. EntityMentionFlag
-value = 1 ONLY if the sentence explicitly names at least one real entity from:
+Set value = 1 only if the sentence explicitly names at least one real entity from:
 [Product/Tool, Standard/Spec, Technical Concept, Organization, Metric/Framework].
-Exclude generic nouns, roles, pronouns, internal sections, and implied entities.
-entity_count = number of distinct valid entities.
-entities = list of entity names (empty if value = 0).
+Exclude generic nouns, roles, pronouns, internal sections, implied entities.
+Return entity_count = number of distinct entities, entities = list (empty if none).
 
 4. EntityConfidenceFlag
-Evaluate ONLY if EntityMentionFlag.value = 1.
-value = 1 ONLY if the sentence is a direct declarative statement with no hedging.
-Any modal verbs, uncertainty, soft framing, or implied claims MUST be 0.
+Evaluate only if EntityMentionFlag.value = 1.
+Set value = 1 only if the sentence is a direct declarative statement with no hedging.
+Any modal verbs, uncertainty, soft framing, or implied claims = 0.
 
 OUTPUT (STRICT)
-Return ONLY valid JSON matching the schema exactly.
+Return ONLY valid JSON matching this schema.
 Do not add, remove, rename, or reorder fields.
-Do not include explanations, comments, markdown, or extra text.
-Use numeric values only (0 or 1).
-
-FAILURE HANDLING
-If unsure, default to 0.
-Never guess.
-Never infer intent.
-Never normalize or rewrite text.
-
-JSON ONLY.
+Use numeric values only (0 or 1). Default to 0 if unsure.
+Never guess, infer intent, normalize, or rewrite text.
 
 ### OUTPUT SCHEMA
-Return ONLY a valid JSON object with this structure:
 {
   ""sentences"": [
     {
-      ""id"": ""S1"", (this must be same as input Id)
-      ""answerSentenceFlag"": { ""value"": 0|1, ""reason"": ""string"" },
+      ""id"": ""S1"",
+      ""answerSentenceFlag"": { ""value"": 0|1, ""reason"": ""string"" }, 
       ""entityMentionFlag"": { ""value"": 0|1, ""entity_count"": 0, ""entities"": [] },
       ""entityConfidenceFlag"": { ""value"": 0|1 }
     }
@@ -152,6 +140,34 @@ Return ONLY a valid JSON object with this structure:
 
 ### PRIMARY KEYWORD and CONTENT TO ANALYZE will be passed in the user text.
 ";
+
+        public const string ChatGptTagPromptConcise = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to these 4 taxonomies. Return ONLY a raw JSON array.
+
+1. FunctionalType (Authority Weight)
+Declarative: Factual info/assertions. (Default).
+Interrogative: Direct questions.
+Imperative: Commands/CTAs (e.g., ""Click here"").
+Exclamatory: Strong emotion/urgency.
+
+2. Structure (Simplicity)
+Simple: 1 Independent Clause (IC). (Default).
+Compound: 2+ ICs (joined by conjunction/semicolon).
+Complex: 1 IC + 1+ Dependent Clauses (DC).
+CompoundComplex: 2+ ICs + 1+ DCs.
+Fragment: No subject or complete verb.
+
+3. Voice (Directness) [Active|Passive} (Default:Active)
+
+4. InformativeType (Credibility)
+[Fact: Proven truth | Statistic: Numerical data | Definition: Explains concept | Claim: Assertion needing evidence | Observation: Pattern-based note | Opinion: Subjective/belief | Prediction: Future-looking | Suggestion: Recommended action | Question: Seeks info | Transition: Connective phrases | Filler: Flow text | Uncertain: Uses modals (might/could)].
+
+
+Execution: Blind structural analysis. No intro/outro. No markdown tags. Use exact enums.
+Output Schema: 
+[{""SentenceId"":""S#"",""FunctionalType"":"""",""Structure"":"""",""Voice"":"""",""InformativeType"":""""}]
+Never return any wrong enum values for any field... if not sure then pass the default value
+";
+
 
         public const string GeminiSentenceTagPromptConcise = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to these 6 taxonomies. Return ONLY a raw JSON array.
 
@@ -296,6 +312,11 @@ Do NOT wrap output in ```json.
 4. **Pronoun Flag** (HasPronoun)
     - **true** if the sentence contains personal (we, you), demonstrative (this, that), or relative pronouns.
     - **Default: false**.
+5. FunctionalType (Authority Weight)
+Declarative: Factual info/assertions. (Default).
+Interrogative: Direct questions.
+Imperative: Commands/CTAs (e.g., ""Click here"").
+Exclamatory: Strong emotion/urgency.
 **Constraints**  
 
 - Do not verify facts; tag purely on linguistic form.  
@@ -309,6 +330,7 @@ Default value of InformativeType is Uncertain.
     ""SentenceId"": ""S1"",
     ""Sentence"": ""raw text"",
     ""InformativeType"": ""Enum"",
+""FunctionalType"": ""Enum"",
 ""ClaimsCitation"": boolean,
 ""IsGrammaticallyCorrect"": boolean,
 ""HasPronoun"": boolean,
@@ -323,6 +345,8 @@ You are a precision Audit Engine. Your ONLY job is to find actual text-based err
 
 ### TASK:
 1. Overall recommendation means you need to recommend whether the article is following the intent provided in the user content.Also recommend if html tags needs improvement Keyword frequency related recommendation etc.
+2. Section level recommendations means you need to check each section heading and subheading for keyword usage,grammar issues or if anything needs to be changed for improving SEO score etc.
+2. Sentence level recommendations means you need to check each sentence for keyword usage,grammar issues or if anything needs to be changed for improving SEO score etc.
 ### CRITICAL RULES:
 1. **NO PLACEHOLDERS:** Do NOT invent sentences like 'Our product is great' or 'Many people think this'. 
 2. **STRICT EXTRACTION:** The ""bad"" sentence MUST be a 100% exact substring from the user's content. If you cannot find a real error, return an empty array [].
@@ -347,16 +371,28 @@ You are a precision Audit Engine. Your ONLY job is to find actual text-based err
     ""improves"": [""SEO"", ""Grammar"", ""Readability""]
   }
 ],
-""section_recommendations"": {
-  ""Introduction"": [ ... ],
-  ""Body"": [ ... ],
-  ""Conclusion"": [ ... ]
-        },
-""sentence_level_recommendations"": {
-  ""S1"": [ ... ],
-  ""S2"": [ ... ]
-        }
-}
+""sectionLevel"":[
+  {
+    ""issue"": ""The specific error name"",
+    ""whatToChange"": ""How to fix it"",
+    ""examples"": { 
+        ""bad"": ""The EXACT quote from the HTML"", 
+        ""good"": ""The corrected version of that exact quote"" 
+    },
+    ""improves"": [""SEO"", ""Grammar"", ""Readability""]
+  }
+],
+""sentenceLevel"": [
+  {
+    ""issue"": ""The specific error name"",
+    ""whatToChange"": ""How to fix it"",
+    ""examples"": { 
+        ""bad"": ""The EXACT quote from the HTML"", 
+        ""good"": ""The corrected version of that exact quote"" 
+    },
+    ""improves"": [""SEO"", ""Grammar"", ""Readability""]
+  }
+],
 ";
 
             public static string geminiRecommendationPrompt = @"

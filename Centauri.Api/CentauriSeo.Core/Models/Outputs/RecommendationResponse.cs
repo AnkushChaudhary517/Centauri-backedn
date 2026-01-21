@@ -4,7 +4,7 @@ namespace CentauriSeo.Core.Models.Outputs
 {
     public class RecommendationResponseDTO
     {
-        public List<RecommendationsResponse> Recommendations { get; set; } = new List<RecommendationsResponse>();
+        public RecommendationsResponse Recommendations { get; set; } = new RecommendationsResponse();
         public string Status { get; set; } = "Success";
         public string RequestId { get; set; } = Guid.NewGuid().ToString();
     }

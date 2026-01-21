@@ -119,20 +119,22 @@ public class Phase1And2OrchestratorService
             if (gq == null || gm == null) return true;
             if (gq.InformativeType != gm.InformativeType) return true;
             if (gq.ClaimsCitation != gm.ClaimsCitation) return true;
+            if (gq.Structure != gm.Structure) return true;
+            if (gq.Voice != gm.Voice) return true;
             // voice/structure mismatches handled by Gemini mostly; ignore deterministic detector differences
             return false;
         }).ToList();
 
-        List<ChatGptDecision>? chatGptDecisions = new List<ChatGptDecision>();
+        List<ChatgptGeminiSentenceTag>? chatGptDecisions = new List<ChatgptGeminiSentenceTag>();
        
         if (anyMismatch != null && anyMismatch.Count>0)
         {
 
-            var tasks = new List<Task<List<ChatGptDecision>>>();
+            var tasks = new List<Task<List<ChatgptGeminiSentenceTag>>>();
             var batchSize = 50;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
-                tasks.Add(HandleMismatchSentences(sentences, geminiTags, groqTags, chatGptDecisions, batchSize, i));               
+                tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, groqTags, chatGptDecisions));               
             }
             await Task.WhenAll(tasks);
             tasks.ForEach(async t =>
@@ -156,9 +158,60 @@ public class Phase1And2OrchestratorService
             SectionScore = await GetSectionScoreInfo(request.PrimaryKeyword, validated?.ToList()),
             IntentScore = await GetIntentScoreInfo(request.PrimaryKeyword),
             KeywordScore = await GetKeywordScore(validated?.ToList(), request),
-            AnswerPositionIndex = await GetAnswerPositionIndex(validated?.ToList(), request)
+            AnswerPositionIndex = await GetAnswerPositionIndex(validated?.ToList(), request),
+            Sections = BuildSections(validated?.ToList())
         };
     }
+
+    public static List<Section> BuildSections(List<ValidatedSentence> sentences)
+    {
+        var sections = new List<Section>();
+        Section currentSection = null;
+        int sectionCounter = 1;
+
+        bool IsHeader(string tag) =>
+            tag.Equals("h2", StringComparison.OrdinalIgnoreCase) ||
+            tag.Equals("h3", StringComparison.OrdinalIgnoreCase) ||
+            tag.Equals("h4", StringComparison.OrdinalIgnoreCase);
+
+        foreach (var sentence in sentences)
+        {
+            if (IsHeader(sentence.HtmlTag))
+            {
+                // Close previous section (if any)
+                if (currentSection != null)
+                {
+                    sections.Add(currentSection);
+                }
+
+                // Start new section
+                currentSection = new Section
+                {
+                    Id = $"S{sectionCounter++}",
+                    SectionText = sentence.Text,
+                    SentenceIds = new List<string>()
+                };
+            }
+            else
+            {
+                // Content sentence → attach to current section
+                if (currentSection != null)
+                {
+                    currentSection.SentenceIds.Add(sentence.Id);
+                }
+                // else: content before first header → ignored by definition
+            }
+        }
+
+        // Add last section
+        if (currentSection != null)
+        {
+            sections.Add(currentSection);
+        }
+
+        return sections;
+    }
+
 
     private async Task<AnswerPositionIndex> GetAnswerPositionIndex(List<ValidatedSentence>? validatedSentences, SeoRequest request)
     {
@@ -247,32 +300,19 @@ public class Phase1And2OrchestratorService
         return new AnswerPositionIndex() {FirstAnswerSentenceId = null, PositionScore = 0.0 };
     }
 
-    private async Task<List<ChatGptDecision>?> HandleMismatchSentences(List<Sentence>? sentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<PerplexitySentenceTag>? groqTags, List<ChatGptDecision>? chatGptDecisions, int batchSize, int i)
+    private async Task<List<ChatgptGeminiSentenceTag>?> HandleMismatchSentences(List<GeminiSentenceTag>? mismatchedSentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<PerplexitySentenceTag>? groqTags, List<ChatgptGeminiSentenceTag>? chatGptDecisions)
     {
-        // Build compact arbitration prompt
-        var promptBuilder = new System.Text.StringBuilder();
-        //promptBuilder.AppendLine($"Use this document to generate the required responses. Document : {businessPromt}");
-        promptBuilder.AppendLine("You are an arbiter. For each sentence provide a final informative type, confidence (0-1) and optional reason (JSON array).");
-        promptBuilder.AppendLine("Sentences and tags:");
-        foreach (var s in sentences.Skip(i).Take(batchSize))
-        {
-            var gq = groqTags.SingleOrDefault(x => x.SentenceId == s.Id);
-            var gm = geminiTags.SingleOrDefault(x => x.SentenceId == s.Id);
 
-            promptBuilder.AppendLine($"ID: {s.Id}");
-            promptBuilder.AppendLine($"Text: {s.Text}");
-            promptBuilder.AppendLine($"Groq: {JsonSerializer.Serialize(gq)}");
-            promptBuilder.AppendLine($"Gemini: {JsonSerializer.Serialize(gm)}");
-            promptBuilder.AppendLine();
-        }
+        var mismatchSentences = mismatchedSentences.Select(x => new { x.SentenceId, x.Sentence }).ToList();
 
-        var prompt = promptBuilder.ToString();
-        prompt += $" Dont invent any new informativeType.... i am providing you the list of values.... anything else will be Uncertain. even with such information you have already provided wrong values...Return a JSON array where each element is an object with properties: " +
-                        "\"SentenceId\" (string),\"\"Confidence\" (double),\"Reason\" (string), \"InformativeType\" (one of Fact|Claim|Definition|Opinion|Prediction|Statistic|Observation|Suggestion|Question|Transition|Filler|Uncertain), " +
-                        "\"ClaimsCitation\" (boolean).If a sentence does not clearly fit a category, you MUST use 'Uncertain'. Do not invent new types. ONLY return the JSON array in the assistant response. The InformativeType must be one of the given values , if its not any of them then it should be Uncertain.Why the hell did you add a wrong value in InformativeType..... never ever ever add any value except from the list. Reason is string not json array. The response choices[0].message.Content is not coming correctly it should be proper json";
-
+       
         string aiRaw = string.Empty;
-        var cacheKey = _cache.ComputeRequestKey(prompt, "ChatGptArbitration");
+        var prompt = JsonSerializer.Serialize(new
+        {
+            SystemRequirement = SentenceTaggingPrompts.ChatGptTagPromptConcise,
+            UserContent = mismatchSentences
+        });
+        var cacheKey = _cache.ComputeRequestKey(prompt, "Chatgpt:Arbitration");
         var cached = await _cache.GetAsync(cacheKey);
         if (cached != null)
             aiRaw = cached;
@@ -285,13 +325,21 @@ public class Phase1And2OrchestratorService
 
         try
         {
+            var options = new JsonSerializerOptions
+            {
+                Converters =
+                    {
+                            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) // or null for exact match,
+                    },
+                PropertyNameCaseInsensitive = true
+            };
             if (chatGptDecisions != null && chatGptDecisions.Any())
             {
-                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
                 if (res != null)
                 {
                     var content = res.Choices?.FirstOrDefault()?.Message?.Content;
-                    chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatGptDecision>>(content));
+                    chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content));
                     if (chatGptDecisions != null)
                     {
                         await _cache.SaveAsync(cacheKey, aiRaw);
@@ -302,9 +350,9 @@ public class Phase1And2OrchestratorService
             }
             else
             {
-                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
                 var content = res.Choices?.FirstOrDefault()?.Message?.Content;
-                chatGptDecisions = JsonSerializer.Deserialize<List<ChatGptDecision>>(content);
+                chatGptDecisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
                 if (chatGptDecisions != null)
                 {
                     await _cache.SaveAsync(cacheKey, aiRaw);
@@ -406,17 +454,17 @@ public class Phase1And2OrchestratorService
         }
         return new RecommendationResponseDTO()
         {
-            Recommendations = new List<RecommendationsResponse>(),
+            Recommendations = new RecommendationsResponse(),
             Status = "NotStarted"
         };
     }
 
-    public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(string article, List<ValidatedSentence> level1)
+    public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(string article, List<ValidatedSentence> level1, List<Section> sections)
     {
         int offset = 100;
         var response = new RecommendationResponseDTO()
         {
-            Recommendations = new List<RecommendationsResponse>(),
+            Recommendations = new RecommendationsResponse(),
             Status = "InProgress"
         };
         var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true };
@@ -431,20 +479,32 @@ public class Phase1And2OrchestratorService
         try
         {
             List<Task<RecommendationsResponse>> tasks = new List<Task<RecommendationsResponse>>();
-            for (int i = 0; i < level1.Count; i += offset)
+            var request = JsonSerializer.Serialize(new
             {
-                var chunk = level1.Skip(i).Take(offset).ToList();
-                var level1Sentences = string.Join(" ", chunk.Select(s => new { Text = s.Text, HtmlTag = s.HtmlTag }));
-                tasks.Add(GenerateRecommendationsAsync(level1Sentences));
-                
-            }
-           var res = await Task.WhenAll(tasks);
-            res?.ToList()?.ForEach(r =>
-            {
-                response.Recommendations.Add(r);
+                Sections=sections,
+                Sentences = level1.Select(x => new
+                {
+                    Id = x.Id,
+                    Text = x.Text,
+                    HtmlTag = x.HtmlTag
+                }).ToList()
             });
+            response.Recommendations = await GenerateRecommendationsAsync(JsonSerializer.Serialize(request));
+            
+           // for (int i = 0; i < level1.Count; i += offset)
+           // {
+           //     var chunk = level1.Skip(i).Take(offset).ToList();
+           //     var level1Sentences = string.Join(" ", chunk.Select(s => new { Text = s.Text, HtmlTag = s.HtmlTag }));
+           //     tasks.Add(GenerateRecommendationsAsync(level1Sentences));
 
-            if (response != null && response.Recommendations.Count > 0)
+            // }
+            //var res = await Task.WhenAll(tasks);
+            //res?.ToList()?.ForEach(r =>
+            //{
+            //    response.Recommendations.Add(r);
+            //});
+
+            if (response?.Recommendations?.Overall != null && response.Recommendations.Overall.Count > 0)
             {
                 response.Status = "Completed";
                 await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(response));
@@ -455,7 +515,7 @@ public class Phase1And2OrchestratorService
         catch (Exception ex)
         {
             await _logger.LogErrorAsync($"Error occured in getting full recommendation : {ex.Message}:{ex.StackTrace}");
-            if (response != null && response.Recommendations.Count > 0)
+            if (response?.Recommendations?.Overall != null && response.Recommendations.Overall.Count > 0)
             {
                 response.Status = "Error";
                 await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(response));
@@ -466,11 +526,21 @@ public class Phase1And2OrchestratorService
         return response;
     }
 
+    private object GetSection(List<ValidatedSentence> level1, ValidatedSentence validatedSentence)
+    {
+        return null;
+    }
+
     public async Task<RecommendationsResponse> GenerateRecommendationsAsync(string article)
     {
         try
         {
-            var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true };
+            var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true,
+                Converters =
+                    {
+                            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) // or null for exact match,
+                    },
+            };
             var cacheKey = _cache.ComputeRequestKey(article, "GeminiRecommendations");
             var cached = await _cache.GetAsync(cacheKey);
             if (!string.IsNullOrEmpty(cached))

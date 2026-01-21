@@ -11,6 +11,7 @@ public class PerplexitySentenceTag
     public VoiceType Voice { get; set; }
     public InfoQuality InfoQuality { get; set; }
     public InformativeType InformativeType { get; set; }
+    public FunctionalType FunctionalType { get; set; }
     public bool ClaimsCitation { get; set; }
     public bool IsGrammaticallyCorrect { get; set; }
     public bool HasPronoun { get; set; }

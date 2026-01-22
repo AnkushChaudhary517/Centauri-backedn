@@ -446,24 +446,34 @@ public class Phase1And2OrchestratorService
             }
             while (!done && retryCount < 3)
             {
-                var res = await _gemini.GetSectionScore(keyword, exception);
-                if (!string.IsNullOrEmpty(res))
+                try
                 {
-                    var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
-                    if (sectionScores != null)
+                    var res = await _gemini.GetSectionScore(keyword, exception);
+                    if (!string.IsNullOrEmpty(res))
                     {
-                        await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(sectionScores));
-                        response = sectionScores;
+                        var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
+                        if (sectionScores != null)
+                        {
+                            await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(sectionScores));
+                            response = sectionScores;
 
+                        }
                     }
+                    done = true;
+
                 }
-                done = true;
+                catch(Exception ex)
+                {
+                    await _logger.LogErrorAsync($"Error occured in getting section score response : {ex.Message}:{ex.StackTrace}");
+                    retryCount++;
+                }
+               
             }
             
         }
         catch(Exception ex)
         {
-            retryCount++;
+            
             await _logger.LogErrorAsync($"Error occured in getting section score response : {ex.Message}:{ex.StackTrace}");
         }
         

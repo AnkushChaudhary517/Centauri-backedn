@@ -118,11 +118,11 @@ Example:
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
         var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:SectionScore");
-        var cachedResponse = await _cache.GetAsync(cacheKey);
-        if (cachedResponse != null)
-        {
-            return cachedResponse;
-        }
+        //var cachedResponse = await _cache.GetAsync(cacheKey);
+        //if (cachedResponse != null)
+        //{
+        //    return cachedResponse;
+        //}
         try
         {
             var responseContent = await ProcessContent(systemPrompt, userContent);

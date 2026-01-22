@@ -164,7 +164,7 @@ Fragment: No subject or complete verb.
 
 Execution: Blind structural analysis. No intro/outro. No markdown tags. Use exact enums.
 Output Schema: 
-[{""SentenceId"":""S#"",""FunctionalType"":"""",""Structure"":"""",""Voice"":"""",""InformativeType"":""""}]
+[{""SentenceId"":""S#"",""FunctionalType"":""Enum"",""Structure"":""Enum"",""Voice"":""Enum"",""InformativeType"":""Enum""}]
 Never return any wrong enum values for any field... if not sure then pass the default value
 ";
 

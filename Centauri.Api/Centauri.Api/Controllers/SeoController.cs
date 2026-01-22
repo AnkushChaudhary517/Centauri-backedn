@@ -33,16 +33,138 @@ public class SeoController : ControllerBase
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
-        var ctx = _httpContextAccessor.HttpContext;
-        var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
-        var response = new SeoResponse
+        try
         {
-            RequestId = correlationId
-        };
-        var topIssues = new List<TopIssue>();
+            var ctx = _httpContextAccessor.HttpContext;
+            var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
+            var response = new SeoResponse
+            {
+                RequestId = correlationId
+            };
+            var topIssues = new List<TopIssue>();
+            response.InputIntegrity = EnsureInputIntegrity(request);
+
+            OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request);
+
+            //start recommendations
+            _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, orchestratorResponse?.ValidatedSentences?.ToList(), orchestratorResponse?.Sections);
+
+            var level1 = orchestratorResponse?.ValidatedSentences?.ToList()?.ConvertAll(x => new Level1Sentence()
+            {
+                HasCitation = x.HasCitation,
+                HasPronoun = x.HasPronoun,
+                Id = x.Id,
+                InfoQuality = x.InfoQuality,
+                InformativeType = x.InformativeType,
+                IsGrammaticallyCorrect = x.IsGrammaticallyCorrect,
+                IsPlagiarized = x.IsPlagiarized,
+                Structure = x.Structure,
+                Text = x.Text
+            });
+
+
+            response.Level1.Summary.SentenceCount = level1.Count;
+
+            response.Level1.Summary.StructureDistribution = level1
+                .GroupBy(s => s.Structure.ToString())
+                .ToDictionary(g => g.Key.ToLowerInvariant(), g => g.Count());
+
+            response.Level1.Summary.InformativeTypeDistribution = level1
+                .GroupBy(s => s.InformativeType.ToString())
+                .ToDictionary(g => g.Key.ToLowerInvariant(), g => g.Count());
+
+            response.Level1.Summary.CitationDistribution = new Dictionary<string, int>
+            {
+                ["with_citation"] = level1.Count(s => s.HasCitation),
+                ["without_citation"] = level1.Count(s => !s.HasCitation)
+            };
+
+            response.Level1.Summary.GrammarDistribution = new Dictionary<string, int>
+            {
+                ["correct"] = level1.Count(s => s.IsGrammaticallyCorrect),
+                ["incorrect"] = level1.Count(s => !s.IsGrammaticallyCorrect)
+            };
+
+            response.Level1.SentenceMapIncluded = true;
+            response.Level1.SentenceMap = orchestratorResponse?.ValidatedSentences?.Select(v => new SentenceMapEntry
+            {
+                Id = v.Id,
+                Text = v.Text,
+                FinalTags = new FinalTags
+                {
+                    InformativeType = v.InformativeType.ToString().ToLowerInvariant(),
+                    Citation = v.HasCitation ? "with_citation" : "without_citation",
+                    Structure = v.Structure.ToString().ToLowerInvariant(),
+                    Voice = v.Voice.ToString().ToLowerInvariant(),
+                    Grammar = v.Grammar
+                }
+            }).ToList();
+
+            // --- Compute scores (scorers will internally respect missing primary_keyword where required) ---
+            var l2 = Level2Engine.Compute(request, orchestratorResponse);
+
+            l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
+            l2.SectionScore = orchestratorResponse?.SectionScore ?? 1.0;
+            l2.AuthorityScore *= 10;
+            var l3 = Level3Engine.Compute(l2);
+            var l4 = Level4Engine.Compute(l2, l3);
+
+            // Populate simplified final blocks (detailed population done later in response shaping)
+            response.Level2Scores = l2;
+            response.Level3Scores = l3;
+            response.Level4Scores = l4;
+            response.SeoScore = CentauriSeoScorer.Score(l2, l3, l4);
+
+            response.FinalScores = new FinalScores()
+            {
+                UserVisible = new UserVisibleFinal()
+                {
+                    AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore * 10),
+                    SeoScore = Math.Round(response.Level4Scores.CentauriSeoScore),
+                    EeatScore = Math.Round(response.Level3Scores.EeatScore),
+                    ReadabilityScore = Math.Round(response.Level3Scores.ReadabilityScore * 10),
+                    RelevanceScore = Math.Round(response.Level3Scores.RelevanceScore)
+                }
+            };
+
+            response.Diagnostics = new Diagnostics()
+            {
+                SkippedDueToMissingInputs = response?.InputIntegrity?.SkippedChecks,
+                TopIssues = topIssues
+            };
+
+
+            bool allPresent = response.InputIntegrity.Received.ArticlePresent
+                              && response.InputIntegrity.Received.PrimaryKeywordPresent
+                              && response.InputIntegrity.Received.MetaTitlePresent
+                              && response.InputIntegrity.Received.MetaDescriptionPresent
+                              && response.InputIntegrity.Received.UrlPresent;
+
+            if (!allPresent)
+            {
+                response.InputIntegrity.Status = "partial";
+                response.Status = "partial";
+            }
+            else
+            {
+                response.InputIntegrity.Status = "success";
+                response.Status = "success";
+            }
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
+        }
+        return StatusCode(500, "Internal server error occurred during analysis.");
+    }
+
+    private InputIntegrity EnsureInputIntegrity(SeoRequest request)
+    {
 
         // --- Input integrity initialization ---
-        var input = response.InputIntegrity;
+        InputIntegrity input = new InputIntegrity();
         input.Received = input.Received ?? new ReceivedInputs();
 
         // Article presence (raw mandatory)
@@ -105,12 +227,10 @@ public class SeoController : ControllerBase
         // --- Early failure if article missing ---
         if (!articlePresent)
         {
-            response.Status = "failed";
             input.Status = "failed";
             if (!input.MissingInputs.Contains("article"))
                 input.MissingInputs.Add("article");
             input.Messages.Add("Article missing: processing halted.");
-            return BadRequest(response);
         }
 
         // --- Skipped checks & missing inputs for optional fields per spec ---
@@ -148,142 +268,8 @@ public class SeoController : ControllerBase
             input.Messages.Add("Primary keyword missing: keyword-dependent checks skipped.");
         }
 
-       
-
-        // --- Phase1/2 orchestration (deterministic stub if orchestrator not available) ---
-        OrchestratorResponse orchestratorResponse = null;
-        //IReadOnlyList<ValidatedSentence> validated = null;
-        try
-        {
-            orchestratorResponse = await _orchestrator.RunAsync(request);
-
-        }
-        catch(Exception ex)
-        {
-            await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
-            //validated = level1.Select(l => new ValidatedSentence
-            //{
-            //    Id = l.Id,
-            //    Text = l.Text,
-            //    Grammar = l.IsGrammaticallyCorrect ? "correct" : "incorrect",
-            //    InformativeType = l.InformativeType,
-            //    Structure = l.Structure,
-            //    Voice = l.Voice,
-            //    HasCitation = l.HasCitation,
-            //    Confidence = 1.0
-            //}).ToList();
-        }
-        // --- Phase 0 + Level 1 ---
-        //var l1 = Level1Engine.Analyze(request.Article);
-
-        var level1 = orchestratorResponse?.ValidatedSentences?.ToList()?.ConvertAll(x => new Level1Sentence()
-        {
-            HasCitation = x.HasCitation,
-            HasPronoun = x.HasPronoun,
-            Id = x.Id,
-            InfoQuality = x.InfoQuality,
-            InformativeType = x.InformativeType,
-            IsGrammaticallyCorrect = x.IsGrammaticallyCorrect,
-            IsPlagiarized = x.IsPlagiarized,
-            Structure = x.Structure,
-            Text = x.Text
-        });
-
-        response.Level1.Summary.SentenceCount = level1.Count;
-
-        response.Level1.Summary.StructureDistribution = level1
-            .GroupBy(s => s.Structure.ToString())
-            .ToDictionary(g => g.Key.ToLowerInvariant(), g => g.Count());
-
-        response.Level1.Summary.InformativeTypeDistribution = level1
-            .GroupBy(s => s.InformativeType.ToString())
-            .ToDictionary(g => g.Key.ToLowerInvariant(), g => g.Count());
-
-        response.Level1.Summary.CitationDistribution = new Dictionary<string, int>
-        {
-            ["with_citation"] = level1.Count(s => s.HasCitation),
-            ["without_citation"] = level1.Count(s => !s.HasCitation)
-        };
-
-        response.Level1.Summary.GrammarDistribution = new Dictionary<string, int>
-        {
-            ["correct"] = level1.Count(s => s.IsGrammaticallyCorrect),
-            ["incorrect"] = level1.Count(s => !s.IsGrammaticallyCorrect)
-        };
-
-        response.Level1.SentenceMapIncluded = true;
-        response.Level1.SentenceMap = orchestratorResponse?.ValidatedSentences?.Select(v => new SentenceMapEntry
-        {
-            Id = v.Id,
-            Text = v.Text,
-            FinalTags = new FinalTags
-            {
-                InformativeType = v.InformativeType.ToString().ToLowerInvariant(),
-                Citation = v.HasCitation ? "with_citation" : "without_citation",
-                Structure = v.Structure.ToString().ToLowerInvariant(),
-                Voice = v.Voice.ToString().ToLowerInvariant(),
-                Grammar = v.Grammar
-            }
-        }).ToList();
-
-        // --- Compute scores (scorers will internally respect missing primary_keyword where required) ---
-        var l2 = Level2Engine.Compute(request, orchestratorResponse);
-
-        l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
-        l2.SectionScore =   orchestratorResponse?.SectionScore ?? 1.0;
-        l2.AuthorityScore *= 10;
-        var l3 = Level3Engine.Compute(l2);
-        var l4 = Level4Engine.Compute(l2, l3);
-
-        // Populate simplified final blocks (detailed population done later in response shaping)
-        response.Level2Scores = l2;
-        response.Level3Scores = l3;
-        response.Level4Scores = l4;
-        response.SeoScore = CentauriSeoScorer.Score(l2, l3, l4);
-
-        response.FinalScores = new FinalScores()
-        {
-            UserVisible = new UserVisibleFinal()
-            {
-                AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore * 10),
-                SeoScore = Math.Round(response.Level4Scores.CentauriSeoScore),
-                EeatScore = Math.Round(response.Level3Scores.EeatScore),
-                ReadabilityScore = Math.Round(response.Level3Scores.ReadabilityScore * 10),
-                RelevanceScore = Math.Round(response.Level3Scores.RelevanceScore)
-            }
-        };
-
-        response.Diagnostics = new Diagnostics()
-        {
-            SkippedDueToMissingInputs = input.SkippedChecks,
-            TopIssues = topIssues 
-        };
-        // Populate recommended quick diagnostics/recommendations (legacy)
-        var list = level1?.ToList();
-        _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, orchestratorResponse.ValidatedSentences.ToList(),orchestratorResponse.Sections);
-        //response.Recommendations = TextAnalysisHelper.GenerateRecommendations(l2, l3, l4).ToList();
-
-        // --- Final input_integrity.status per document rules ---
-        bool allPresent = input.Received.ArticlePresent
-                          && input.Received.PrimaryKeywordPresent
-                          && input.Received.MetaTitlePresent
-                          && input.Received.MetaDescriptionPresent
-                          && input.Received.UrlPresent;
-
-        if (!allPresent)
-        {
-            input.Status = "partial";
-            response.Status = "partial";
-        }
-        else
-        {
-            input.Status = "success";
-            response.Status = "success";
-        }
-
-        return Ok(response);
+        return input;
     }
-
 
     [HttpPost("recommendations")]
     public async Task<ActionResult<RecommendationResponseDTO>> GetRecommendations([FromBody] SeoRequest request)

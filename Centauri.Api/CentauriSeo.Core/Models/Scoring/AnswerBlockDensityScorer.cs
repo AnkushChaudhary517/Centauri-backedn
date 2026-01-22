@@ -13,7 +13,7 @@ namespace CentauriSeo.Core.Models.Scoring
     {
         public static double Score(OrchestratorResponse orchestratorResponse)
         {
-            if(!orchestratorResponse.ValidatedSentences.Any(x => x.AnswerSentenceFlag != null && x.AnswerSentenceFlag.Value == 1))
+            if(!orchestratorResponse.ValidatedSentences.Any(x => x.AnswerSentenceFlag == 1))
             {
                 return 0.0;
             }else

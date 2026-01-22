@@ -131,7 +131,7 @@ public class Phase1And2OrchestratorService
         {
 
             var tasks = new List<Task<List<ChatgptGeminiSentenceTag>>>();
-            var batchSize = 50;
+            var batchSize = 5000;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
                 tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, groqTags, chatGptDecisions));               
@@ -255,16 +255,16 @@ public class Phase1And2OrchestratorService
                     }
                     else
                     {
-                        vs.AnswerSentenceFlag = new AnswerSentenceFlag() { Value = 0, Reason = string.Empty };
+                        vs.AnswerSentenceFlag = 0;
                         vs.EntityMentionFlag = new EntityMentionFlag() { Entities = null, EntityCount = 0, Value = 0 };
-                        vs.EntityConfidenceFlag = new EntityConfidenceFlag() { Value = 0 };
+                        vs.EntityConfidenceFlag = 0;
                     }
                 }
                 else
                 {
-                    vs.AnswerSentenceFlag = new AnswerSentenceFlag() { Value = 0, Reason = string.Empty };
+                    vs.AnswerSentenceFlag = 0;
                     vs.EntityMentionFlag = new EntityMentionFlag() { Entities = null, EntityCount = 0, Value = 0 };
-                    vs.EntityConfidenceFlag = new EntityConfidenceFlag() { Value = 0 };
+                    vs.EntityConfidenceFlag = 0;
                 }
             });
 
@@ -314,63 +314,81 @@ public class Phase1And2OrchestratorService
         });
         var cacheKey = _cache.ComputeRequestKey(prompt, "Chatgpt:Arbitration");
         var cached = await _cache.GetAsync(cacheKey);
-        if (cached != null)
-            aiRaw = cached;
-        else
+        var done = false;
+        var excetion = string.Empty;
+        var retryCount = 0;
+        while (!done && retryCount<3)
         {
-            aiRaw = await _openAi.CompleteAsync(prompt);
-
-
-        }
-
-        try
-        {
-            var options = new JsonSerializerOptions
+            if (cached != null)
             {
-                Converters =
+                aiRaw = cached;
+
+            }
+            else
+            {
+                if(!string.IsNullOrEmpty(excetion))
+                {
+                    prompt += $"Exception : this error occred in previous call. Do not repeat the error again and fix the response. : {excetion}.";
+                }
+                aiRaw = await _openAi.CompleteAsync(prompt);
+
+
+            }
+
+
+            try
+            {
+                var options = new JsonSerializerOptions
+                {
+                    Converters =
                     {
                             new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) // or null for exact match,
                     },
-                PropertyNameCaseInsensitive = true
-            };
-            if (chatGptDecisions != null && chatGptDecisions.Any())
-            {
-                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
-                if (res != null)
+                    PropertyNameCaseInsensitive = true
+                };
+                if (chatGptDecisions != null && chatGptDecisions.Any())
                 {
+                    var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
+                    if (res != null)
+                    {
+                        var content = res.Choices?.FirstOrDefault()?.Message?.Content;
+                        chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content));
+                        if (chatGptDecisions != null)
+                        {
+                            await _cache.SaveAsync(cacheKey, aiRaw);
+                        }
+                    }
+
+
+                }
+                else
+                {
+                    var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
                     var content = res.Choices?.FirstOrDefault()?.Message?.Content;
-                    chatGptDecisions.AddRange(JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content));
+                    chatGptDecisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
                     if (chatGptDecisions != null)
                     {
                         await _cache.SaveAsync(cacheKey, aiRaw);
                     }
                 }
-
-
+                done = true;
             }
-            else
+            catch (Exception ex)
             {
-                var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
-                var content = res.Choices?.FirstOrDefault()?.Message?.Content;
-                chatGptDecisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
-                if (chatGptDecisions != null)
-                {
-                    await _cache.SaveAsync(cacheKey, aiRaw);
-                }
+                await _logger.LogErrorAsync($"Error occured in handling mismatch : {ex.Message}:{ex.StackTrace}");
+                excetion = ex.Message;
+                retryCount++;
+                // Fallback: prefer Gemini when AI response not parseable
+                //chatGptDecisions = sentences.Select(s => new ChatGptDecision
+                //{
+                //    SentenceId = s.Id,
+                //    FinalType = geminiTags.SingleOrDefault(g => g.SentenceId == s.Id)?.InformativeType ?? groqTags.Single(p => p.SentenceId == s.Id).InformativeType,
+                //    Confidence = 0.9,
+                //    Reason = "fallback to gemini due to unparsable AI response"
+                //}).ToList();
             }
         }
-        catch (Exception ex)
-        {
-            await _logger.LogErrorAsync($"Error occured in handling mismatch : {ex.Message}:{ex.StackTrace}");
-            // Fallback: prefer Gemini when AI response not parseable
-            //chatGptDecisions = sentences.Select(s => new ChatGptDecision
-            //{
-            //    SentenceId = s.Id,
-            //    FinalType = geminiTags.SingleOrDefault(g => g.SentenceId == s.Id)?.InformativeType ?? groqTags.Single(p => p.SentenceId == s.Id).InformativeType,
-            //    Confidence = 0.9,
-            //    Reason = "fallback to gemini due to unparsable AI response"
-            //}).ToList();
-        }
+        
 
         return chatGptDecisions;
     }
@@ -408,30 +426,47 @@ public class Phase1And2OrchestratorService
     }
     private async Task<SectionScoreResponse> GetSectionScoreResAsync(string keyword)
     {
-        var options = new JsonSerializerOptions
+        var response = new SectionScoreResponse();
+        var retryCount = 0;
+        var done = false;
+        var exception = string.Empty;
+        try
         {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
-        var cacheKey = _cache.ComputeRequestKey(keyword, "SectionScores");
-        var res = await _gemini.GetSectionScore(keyword);
-        var cached = await _cache.GetAsync(cacheKey);
-        SectionScoreResponse response = null;
-        if (cached != null)
-        {
-            response = JsonSerializer.Deserialize<SectionScoreResponse>(cached, options);
-            return response;
-        }
-        if (!string.IsNullOrEmpty(res))
-        {
-            var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
-            if (sectionScores != null)
+            var options = new JsonSerializerOptions
             {
-                await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(sectionScores));
-                response = sectionScores;
-
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+            var cacheKey = _cache.ComputeRequestKey(keyword, "SectionScores");
+            var cached = await _cache.GetAsync(cacheKey);
+            if (cached != null)
+            {
+                response = JsonSerializer.Deserialize<SectionScoreResponse>(cached, options);
+                return response;
             }
+            while (!done && retryCount < 3)
+            {
+                var res = await _gemini.GetSectionScore(keyword, exception);
+                if (!string.IsNullOrEmpty(res))
+                {
+                    var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
+                    if (sectionScores != null)
+                    {
+                        await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(sectionScores));
+                        response = sectionScores;
+
+                    }
+                }
+                done = true;
+            }
+            
         }
+        catch(Exception ex)
+        {
+            retryCount++;
+            await _logger.LogErrorAsync($"Error occured in getting section score response : {ex.Message}:{ex.StackTrace}");
+        }
+        
         return response;
     }
     public async Task<double> GetSectionScoreInfo(string keyword, List<ValidatedSentence> validatedSentences)

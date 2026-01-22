@@ -46,7 +46,7 @@ public class GeminiClient
     }
 
 
-    public async Task<string> GetSectionScore(string keyword)
+    public async Task<string> GetSectionScore(string keyword, string exception = null)
     {
         var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
         string userContent = @"
@@ -54,7 +54,7 @@ Locale: ""en-US""
 
 Steps:
 1. Search Google for the target keyword.
-2. Identify the top 10 organic results (exclude ads, forums, PDFs).
+2. Identify the top 5 organic results (exclude ads, forums, PDFs).
 3. Extract H2, H3, H4 headings from each page.
 4. Return raw headings without rewriting.
 5. Return Intent (The primary intent both for the current keyword and each competitor).
@@ -84,11 +84,11 @@ Output format:
   ""competitors"": [
     {
       ""url"": """",
-      ""headings"": []
-    },
-    ""intent"": """",
+      ""headings"": [],
+       ""intent"": ""Enum"",
+    }    
   ],
-""intent"": """",
+""intent"": ""Enum"",
 ""variants"": []
 }
 
@@ -98,12 +98,19 @@ Example:
   ""competitors"": [
     {
       ""url"": ""https://example.com/best-running-shoes"",
-      ""headings"": [""Top 10 Running Shoes of 2024"" ,""1. Speedster Pro"", ""Features of Speedster Pro"" ]
+      ""headings"": [""Top 10 Running Shoes of 2024"" ,""1. Speedster Pro"", ""Features of Speedster Pro"" ],
+       ""intent"" : ""Commercial""
     }
   ],
+""intent"" : ""Informational""
 ""variants"":[""AI content checking"", ""AI-based content checker"", ""v3""]
 }
 ";
+
+        if(!string.IsNullOrEmpty(exception))
+        {
+            systemPrompt += $"fix this Exception occured in previous request.: {exception}";
+        }
         userContent = @$"Target keyword: ""{ keyword}"" " + userContent;
         var options = new JsonSerializerOptions
         {

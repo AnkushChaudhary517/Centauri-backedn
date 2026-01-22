@@ -86,12 +86,14 @@ Never guess, infer intent, normalize, or rewrite text.
   ""sentences"": [
     {
       ""id"": ""S1"",
-      ""answerSentenceFlag"": { ""value"": 0|1, ""reason"": ""string"" }, 
-      ""entityMentionFlag"": { ""value"": 0|1, ""entity_count"": 0, ""entities"": [] },
-      ""entityConfidenceFlag"": { ""value"": 0|1 }
+      ""answerSentenceFlag"": 0|1, 
+      ""entityMentionFlag"": { ""value"": 0|1(int), ""entity_count"": 0, ""entities"": [] },
+      ""entityConfidenceFlag"": 0|1
     }
   ]
 }
+
+answerSentenceFlag and entityConfidenceFlag are integers (0 or 1). 1 indicates true, 0 indicates false.
 ";
 
         public const string CentauriLevel1Prompt = @"
@@ -102,6 +104,7 @@ You are an expert Linguistic Analyst and SEO Data Architect for the Centauri Sco
 ### RULES & TAXONOMY
 
 #### 1. Answer Sentence Flag (answer_sentence_flag)
+
 A sentence is marked as an Answer Sentence (Value: 1) ONLY if all 2 conditions are met:
 - **Condition 1 (Intent):** Directly answers 'What', 'How', or 'Why' of the Primary Keyword. (Supporting or meta-text = 0).
 - **Condition 2 (Self-Contained):** Meaning must be clear without pronouns (This, That, These) or forward references.
@@ -127,9 +130,9 @@ Return ONLY a valid JSON object with this structure:
     {
       ""id"": ""S1"", (this must be same as input Id)
       ""text"": ""..."",
-      ""answerSentenceFlag"": { ""value"": 0|1, ""reason"": ""string"" },
-      ""entityMentionFlag"": { ""value"": 0|1, ""entity_count"": 0, ""entities"": [] },
-      ""entityConfidenceFlag"": { ""value"": 0|1 }
+      ""answerSentenceFlag"": { ""value"": 0|1(int default 0), ""reason"": ""string"" },
+      ""entityMentionFlag"": { ""value"": 0|1(int default 0), ""entity_count"": 0, ""entities"": [] },
+      ""entityConfidenceFlag"": { ""value"": 0|1 (int default 0)}
     }
   ],
   ""answerPositionIndex"": {
@@ -143,29 +146,53 @@ Return ONLY a valid JSON object with this structure:
 
         public const string ChatGptTagPromptConcise = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to these 4 taxonomies. Return ONLY a raw JSON array.
 
+CRITICAL INSTRUCTION:
+Each taxonomy is INDEPENDENT.
+Values from one taxonomy MUST NEVER appear in another taxonomy field.
+FunctionalType and InformativeType MUST NOT influence each other.
+
+If unsure, ALWAYS use the stated default value.
+
+
 1. FunctionalType (Authority Weight)
 Declarative: Factual info/assertions. (Default).
 Interrogative: Direct questions.
 Imperative: Commands/CTAs (e.g., ""Click here"").
 Exclamatory: Strong emotion/urgency.
 
-2. Structure (Simplicity)
+2. Structure (Simplicity) (type : Enum)
 Simple: 1 Independent Clause (IC). (Default).
 Compound: 2+ ICs (joined by conjunction/semicolon).
 Complex: 1 IC + 1+ Dependent Clauses (DC).
 CompoundComplex: 2+ ICs + 1+ DCs.
 Fragment: No subject or complete verb.
 
-3. Voice (Directness) [Active|Passive} (Default:Active)
 
-4. InformativeType (Credibility)
-[Fact: Proven truth | Statistic: Numerical data | Definition: Explains concept | Claim: Assertion needing evidence | Observation: Pattern-based note | Opinion: Subjective/belief | Prediction: Future-looking | Suggestion: Recommended action | Question: Seeks info | Transition: Connective phrases | Filler: Flow text | Uncertain: Uses modals (might/could)].
+3. Voice (Directness) (type : Enum)
+-Active
+-Passive 
 
+4. InformativeType (Credibility) (type : Enum)
+Allowed values ONLY (closed set — no other values permitted):
+Fact: Proven truth.
+Statistic: Numerical data.
+Definition: Explains a concept.
+Claim: Assertion that requires evidence.
+Observation: Pattern-based note.
+Opinion: Subjective belief.
+Prediction: Future-looking statement.
+Suggestion: Recommended action.
+Question: Seeks information.
+Transition: Connective or bridging phrase.
+Filler: Flow or non-informational text.
+Uncertain: Uses modal uncertainty (might, could, may).
 
 Execution: Blind structural analysis. No intro/outro. No markdown tags. Use exact enums.
-Output Schema: 
-[{""SentenceId"":""S#"",""FunctionalType"":""Enum"",""Structure"":""Enum"",""Voice"":""Enum"",""InformativeType"":""Enum""}]
-Never return any wrong enum values for any field... if not sure then pass the default value
+Output Schema (along with their enum value sets...naver use any outside value if list of values are provided. if their is any confision the use the first value.): 
+[{""SentenceId"":""S#"",""FunctionalType"":[Declarative|Interrogative|Imperative|Exclamatory],""Structure"":[Simple|Compound|Complex|CompoundComplex|Fragment],""Voice"":[Active|Passive],""InformativeType"":[Uncertain|Fact|Statistic|Definition|Claim|Observation|Opinion|Prediction|Suggestion|Question|Transition|Filler]}]
+Never return any wrong enum values for any field... if not sure then pass the default value.
+Do not mix any enum type with others. 
+I have already given you list of values for each property then why are you adding garbage response values?
 ";
 
 

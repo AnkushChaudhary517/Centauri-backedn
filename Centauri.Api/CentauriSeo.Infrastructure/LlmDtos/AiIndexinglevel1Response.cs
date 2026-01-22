@@ -23,7 +23,7 @@ namespace CentauriSeo.Infrastructure.LlmDtos
 
                 for (int i = 0; i < Sentences.Count; i++)
                 {
-                    if (Sentences[i].AnswerSentenceFlag?.Value == 1)
+                    if (Sentences[i].AnswerSentenceFlag == 1)
                     {
                         return new AnswerPositionIndex
                         {

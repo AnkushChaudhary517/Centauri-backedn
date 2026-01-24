@@ -381,7 +381,7 @@ You are a precision Audit Engine. Your ONLY job is to find actual text-based err
 4. **FORMAT:** Return ONLY a valid JSON array.
 
 ### AUDIT FOCUS:
-- Check if the Primary Keyword ('Best CRM for SAAS') is used correctly in headings.
+- Check if the Primary Keyword is used correctly in headings.
 - Check for grammatical mistakes in the actual sentences of the HTML.
 - Check for passive voice or long sentences in the Introduction.
 

@@ -90,6 +90,35 @@ public static List<GeminiSentenceTag> TagArticleComplete(string fullContent)
         int sCount = 1;
         int pCount = 1;
 
+        var matches = tagRegex.Matches(fullContent);
+
+        // ✅ Case 1: No HTML tags → treat entire content as a <p>
+        if (matches.Count == 0)
+        {
+            string raw = NormalizeHtml(fullContent);
+
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                foreach (var sentence in SplitSentencesLossless(raw))
+                {
+                    var clean = sentence.Trim();
+
+                    if (!IsValidSentence(clean))
+                        continue;
+
+                    result.Add(new GeminiSentenceTag
+                    {
+                        SentenceId = $"S{sCount++}",
+                        Sentence = clean,
+                        HtmlTag = "p",
+                        ParagraphId = $"P{pCount}"
+                    });
+                }
+            }
+
+            return result;
+        }
+
         foreach (Match match in tagRegex.Matches(fullContent))
         {
             string tag = match.Groups[1].Value.ToLower();

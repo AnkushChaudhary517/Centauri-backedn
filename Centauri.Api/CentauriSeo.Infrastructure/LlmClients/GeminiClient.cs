@@ -192,12 +192,13 @@ Example:
     {
         try
         {
-            var prompt = @"Do a deep search over internet to check for plagiarism and give Unique number of sentences. list of sentences provided in user content . Response should be json with proper unique_sentence_count (int). No other things must be there.if you cant find correct answer then also response format should be same with unique_sentence_count=0";
+            var prompt = @"List of string sentences is provided in the user content.Check properly. Do a deep and thourough search over internet to check for plagiarism and give Unique number of sentences. list of sentences provided in user content . Response should be json with proper unique_sentence_count (int). No other things must be there.if you cant find correct answer then also response format should be same with unique_sentence_count=0";
             var random = new Random();
             var r = Math.Round(sentences.Count * .1);
-            List<Sentence> random10 = sentences
+            List<string> random10 = sentences
                 .OrderBy(_ => random.Next())
                 .Take((int)r)
+                .Select(x => x.Text)
                 .ToList();
             var responseContent = await ProcessContent(prompt,JsonSerializer.Serialize(random10));
 
@@ -226,7 +227,7 @@ Example:
                         }
                     });
                     copiedCount = sentences.Count - uniqueCount;
-                    p = (int)Math.Ceiling((copiedCount * 100.0) / sentences.Count);
+                    p = (int)Math.Ceiling((copiedCount * 100.0) / (double)sentences.Count);
 
                 }
                 return p;
@@ -248,7 +249,7 @@ Example:
         List<Task<string>> tasks = new List<Task<string>>();
         for (int i = 0; i < sentences.Count; i += chunkSize)
         {
-            var chunk = sentences.Skip(i).Take(chunkSize).ToList();
+            var chunk = sentences.Skip(i).Take(chunkSize).Select(x => x.Text).ToList();
 
             // Serialize only the chunk
             var chunkPayload = JsonSerializer.Serialize(chunk);

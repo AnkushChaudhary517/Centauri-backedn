@@ -4,6 +4,7 @@ using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,7 +40,7 @@ public class GroqClient
 
     // Low-level analyze (kept for compatibility)
     // Sends an OpenAI-compatible chat/completions payload and returns assistant content (machine-parsable JSON expected).
-    public async Task<string> AnalyzeAsync(string payload, string systemRequirement)
+    public async Task<List<PerplexitySentenceTag>> AnalyzeAsync(string payload, string systemRequirement)
     {
         var options = new JsonSerializerOptions
         {
@@ -58,88 +59,86 @@ public class GroqClient
         if (!string.IsNullOrWhiteSpace(_apiKey))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        var requestBody = new
+
+        string rawResponse = null;
+        var retryCount = 0;
+        var isSuccessful = false;
+        var exceptionPlaceholder = "";
+        string assistantContent = rawResponse;
+
+        while (retryCount < 3 && !isSuccessful)
         {
-            model = "llama-3.1-8b-instant",
-            messages = new[]
+
+            try
             {
-                //new { role = "system", content = prompt },
-                new { role = "user", content =SentenceTaggingPrompts.GroqTagPrompt + $"<text>\r\n{payload}\r\n</text>"
+                var requestBody = new
+                {
+                    model = "llama-3.1-8b-instant",
+                    messages = new[]
+        {
+                new { role = "system", content = SentenceTaggingPrompts.GroqRevisedPrompt},
+                new { role = "user", content = payload + (!string.IsNullOrEmpty(exceptionPlaceholder)?exceptionPlaceholder:"")
     }
             },
-            temperature = 0.0,
-            max_tokens = 32000
-        };
-        using var stringContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-        string rawResponse = null;
-        try
-        {
-            rawResponse = await _aiCallTracker.TrackAsync(
-            requestBody,
-                async () =>
+                    temperature = 0.0,
+                    max_tokens = 32000
+                };
+                using var stringContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+                rawResponse = await _aiCallTracker.TrackAsync(
+                requestBody,
+                    async () =>
+                    {
+                        var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
+                        var r = await res.Content.ReadAsStringAsync();
+                        return (r, (JsonSerializer.Deserialize<GroqUsageResponse>(r, options)).Usage);
+
+                    },
+                    "groq:llama-3.1-8b-instant"
+                );
+
+                using var doc = JsonDocument.Parse(rawResponse);
+
+                if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
                 {
-                    var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
-                    var r = await res.Content.ReadAsStringAsync();
-                    return (r, (JsonSerializer.Deserialize<GroqUsageResponse>(r,options)).Usage);
-
-                },
-                "groq:llama-3.1-8b-instant"
-            );
-
-        }
-        catch (Exception ex)
-        {
-           await _logger.LogErrorAsync($"Error occured in AnalyzeAsync : GroqClient : {ex.Message}{ex.StackTrace}");
-            //// Network/DNS error — fallback to deterministic local tagging formatted as JSON
-            //var fallbackTags = sentenceList.Select((t, i) => new PerplexitySentenceTag
-            //{
-            //    SentenceId = $"S{i + 1}",
-            //    InformativeType = InformativeTypeDetector.Detect(t),
-            //    ClaimsCitation = CitationDetector.HasCitation(t)
-            //}).ToList();
-
-            //var fallbackJson = JsonSerializer.Serialize(fallbackTags);
-            //try
-            //{
-            //    await _cache.SaveAsync(key, payload, fallbackJson, provider + ":fallback");
-
-            //}
-            //catch
-            //{
-
-            //}
-            //return fallbackJson;
-        }
-
-        // Extract assistant content from common chat/completions envelope:
-        // { "choices":[ { "message": { "content": "..." } } ] } or { "choices":[ { "text": "..." } ] }
-        string assistantContent = rawResponse;
-        try
-        {
-            using var doc = JsonDocument.Parse(rawResponse);
-            if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
-            {
-                var first = choices[0];
-                if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content))
-                {
-                    assistantContent = content.GetString() ?? rawResponse;
+                    var first = choices[0];
+                    if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content))
+                    {
+                        assistantContent = content.GetString() ?? rawResponse;
+                    }
+                    else if (first.TryGetProperty("text", out var text))
+                    {
+                        assistantContent = text.GetString() ?? rawResponse;
+                    }
+                    else if (first.TryGetProperty("delta", out var delta) && delta.TryGetProperty("content", out var dcontent))
+                    {
+                        assistantContent = dcontent.GetString() ?? rawResponse;
+                    }
                 }
-                else if (first.TryGetProperty("text", out var text))
+                if (!string.IsNullOrWhiteSpace(assistantContent))
                 {
-                    assistantContent = text.GetString() ?? rawResponse;
-                }
-                else if (first.TryGetProperty("delta", out var delta) && delta.TryGetProperty("content", out var dcontent))
-                {
-                    assistantContent = dcontent.GetString() ?? rawResponse;
+                    string json = assistantContent
+                        .Replace("```json", "")
+                        .Replace("```", "")
+                        .Trim();
+                    var start = json.IndexOf("[");
+                    var end = json.LastIndexOf("]");
+                    string inner = "[" + json.Substring(start + 1, end - start - 1) + "]";
+                    json = inner;
+                    var re = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(json, options);
+                    isSuccessful = true;
+                    return re;
+
                 }
             }
+            catch (Exception ex)
+            {
+                exceptionPlaceholder+= ex.Message + " ";
+                retryCount++;
+                await _logger.LogErrorAsync($"Error occured in AnalyzeAsync : GroqClient : {ex.Message}{ex.StackTrace}");
+            }
         }
-        catch(Exception ex)
-        {
-            await _logger.LogErrorAsync($"Error occured in AnalyzeAsync while parsing content : GroqClient : {ex.Message}{ex.StackTrace}");
-            assistantContent = rawResponse; // keep raw if parsing fails
-        }
-        return assistantContent;
+    
+    return null;
     }
 
     public async Task<IReadOnlyList<PerplexitySentenceTag>> TagArticleAsync(string article)
@@ -166,22 +165,10 @@ public class GroqClient
         try
         {
             var apiResponse = await AnalyzeAsync(article, string.Empty);
-            if (!string.IsNullOrWhiteSpace(apiResponse))
+            if (apiResponse != null)
             {
-                string json = apiResponse
-                    .Replace("```json", "")
-                    .Replace("```", "")
-                    .Trim();
-                var start = json.IndexOf("[");
-                var end = json.LastIndexOf("]");
-                string inner = "["+json.Substring(start + 1, end - start - 1)+"]";
-                json = inner;
-                var parsed = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(json, options);
-                if (parsed != null)
-                {
-                    await _cache.SaveAsync(key, JsonSerializer.Serialize(parsed));
-                    return parsed;
-                }
+                await _cache.SaveAsync(key, JsonSerializer.Serialize(apiResponse));
+                return apiResponse;
             }
 
         }

@@ -20,10 +20,10 @@ public static class Level2Engine
         // and/or the Level1 sentence data (InfoQuality/HasCitation/Structure/etc.).
         return new Level2Scores
         {
-            IntentScore = IntentScorer.Score(validated, request?.PrimaryKeyword),
-            SectionScore = SectionScorer.Score(validated, request?.PrimaryKeyword),
-            KeywordScore = KeywordScorer.Score(validated, request?.PrimaryKeyword, request?.SecondaryKeywords,
-                                              request?.MetaTitle, request?.MetaDescription, request?.Url),
+            IntentScore =orchestratorResponse.IntentScore, //IntentScorer.Score(validated, request?.PrimaryKeyword),
+            SectionScore = orchestratorResponse.SectionScore,//SectionScorer.Score(validated, request?.PrimaryKeyword),
+            KeywordScore = orchestratorResponse.KeywordScore,//KeywordScorer.Score(validated, request?.PrimaryKeyword, request?.SecondaryKeywords,
+                                            //  request?.MetaTitle, request?.MetaDescription, request?.Url),
 
             OriginalInfoScore = OriginalInfoScorer.Score(validated),
             ExpertiseScore = ExpertiseScorer.Score(validated),
@@ -33,7 +33,7 @@ public static class Level2Engine
             SimplicityScore = SimplicityScorer.Score(validated),
             GrammarScore = GrammarScorer.Score(validated),
             VariationScore = VariationScorer.Score(validated),
-            PlagiarismScore = PlagiarismScorer.Score(validated),
+            PlagiarismScore = orchestratorResponse.PlagiarismScore,//PlagiarismScorer.Score(validated),
             //ClaritySynthesisScore = ClaritySynthesisScorer.Score(validated),
             //FactRetrievalScore = FactRetrievalScorer.Score(validated),
             AnswerBlockDensityScore = AnswerBlockDensityScorer.Score(orchestratorResponse),

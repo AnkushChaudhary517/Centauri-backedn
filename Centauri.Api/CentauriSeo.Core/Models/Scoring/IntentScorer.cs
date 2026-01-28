@@ -7,11 +7,11 @@ namespace CentauriSeo.Application.Scoring;
 
 public static class IntentScorer
 {
-    // Returns 0..20
+    // Returns 0-10
     public static double Score(IEnumerable<ValidatedSentence> sentences, string? primaryKeyword)
     {
         // In absence of SERP-derived intent distribution, approximate:
-        // ratio of informational sentences (Fact/Definition/Observation) -> scale to 0..20
+        // ratio of informational sentences (Fact/Definition/Observation) -> scale to 0..10
         var list = sentences.ToList();
         if (!list.Any()) return 0.0;
 
@@ -21,6 +21,6 @@ public static class IntentScorer
             s.InformativeType == InformativeType.Observation);
 
         double ratio = informational / (double)list.Count;
-        return Math.Clamp(ratio * 20.0, 0.0, 20.0);
+        return Math.Clamp(ratio * 10.0, 0.0, 10.0);
     }
 }

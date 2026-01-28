@@ -91,7 +91,7 @@ public static class VariationScorer
 
         // STEP 4 — Convert to final Variation Score
         double finalScore = varietyScore10 / 3;
-
-        return Math.Round(finalScore, 2);
+        var f= Math.Clamp(finalScore, 0.0, 3.333333);
+        return Math.Round(f, 2);
     }
 }

@@ -10,7 +10,7 @@ public static class RelevanceScorer
     {
         return Math.Clamp(
             l2.IntentScore + l2.SectionScore + l2.OriginalInfoScore + l2.KeywordScore,
-            0.0, 50.0 // theoretical max 50 (20+10+10+10)
+            0.0, 40.0 // theoretical max 40 (10+10+10+10)
         );
     }
 }

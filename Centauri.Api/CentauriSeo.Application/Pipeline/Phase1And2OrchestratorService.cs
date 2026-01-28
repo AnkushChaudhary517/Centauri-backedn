@@ -47,7 +47,7 @@ public class Phase1And2OrchestratorService
     public async Task<(IReadOnlyList<GeminiSentenceTag>, IReadOnlyList<PerplexitySentenceTag>)> ParallelTaggingAsync(List<Sentence> sentences)
     {
         // 1. Prepare chunks
-        int chunkSize = 50;
+        int chunkSize = 150;
         var chunks = sentences.Chunk(chunkSize).ToList();
 
         // 2. Initialize Task lists for both providers
@@ -131,7 +131,7 @@ public class Phase1And2OrchestratorService
         {
 
             var tasks = new List<Task<List<ChatgptGeminiSentenceTag>>>();
-            var batchSize = 5000;
+            var batchSize = 100;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
                 tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, groqTags, chatGptDecisions));               

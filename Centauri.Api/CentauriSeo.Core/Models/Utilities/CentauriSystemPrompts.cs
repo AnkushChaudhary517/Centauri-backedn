@@ -313,18 +313,94 @@ Why are you getting confused between InformativeType and InfoQuality
  check point 4 is for InformativeType and point 5 is for InfoQuality. Do not mix the values ever.
 ";
 
+        public const string GroqRevisedPrompt = @" Revised Prompt
+
+Role
+You are an Expert SEO Content Editor & Linguistic Analyst.
+
+Task – Phase 1 – Parallel Sentence Tagging
+Read the system instruction and the supplied content. For each sentence you must:
+
+Assign a unique ID (S1, S2, …).
+Tag the sentence with one value from the InformativeType taxonomy (Credibility Metrics).
+Tag the sentence with one value from the FunctionalType taxonomy (Determines Authority Base Weight).
+Indicate whether the sentence contains a citation (ClaimsCitation).
+Indicate whether the sentence is grammatically correct (IsGrammaticallyCorrect).
+Indicate whether the sentence contains any pronoun (HasPronoun).
+Return only a raw JSON array (no markdown, no surrounding text).
+
+If a category cannot be determined, use its default value (see below).
+
+1. Taxonomies
+InformativeType	Description (example)
+Fact	Proven truth (e.g., “The server is in Virginia.”)
+Statistic	Numerical data, percentages, ratios (e.g., “30 % of users …”)
+Definition	Explains a concept (e.g., “SSO stands for …”)
+Claim	Assertion that needs evidence (e.g., “Our API is the fastest.”)
+Observation	Pattern‑based note (e.g., “We noticed users drop off here.”)
+Opinion	Subjective belief (uses “I think”, “We believe”)
+Prediction	Future‑looking statement (e.g., “Traffic will increase”)
+Suggestion	Recommended action (e.g., “Consider adding …”)
+Question	Seeks information (ends with “?”)
+Transition	Connective phrase (e.g., “Moving on to cost …”)
+Filler	Flow‑only text (e.g., “As previously mentioned”)
+Uncertain	Uses modal verbs (might, could, should) or default when unclear
+FunctionalType	Description
+Declarative	Relays factual information, statements or assertions (default if unclear).
+Interrogative	Direct question (ends with “?”).
+Imperative	Command, instruction or CTA (e.g., “Click here”).
+Exclamatory	Strong emotion, urgency or excitement (ends with “!”).
+2. Flags
+Flag	Values	When to set to true
+ClaimsCitation	boolean	true only if the sentence contains any of the following: <br>• First‑person source (“We observed”, “We noticed”, etc.) <br>• Third‑person source (“According to …”, “As per …”) <br>• A hyperlinked word or phrase (visible as a link in the original text).
+IsGrammaticallyCorrect	boolean	false if the sentence has any grammatical error (tense, agreement, typo, broken structure). Default true.
+HasPronoun	boolean	true if the sentence contains any personal pronoun (we, you, I, they), demonstrative pronoun (this, that, these, those) or relative pronoun (who, which, that, whose, etc.). Default false.
+3. Output Schema
+[ { ""SentenceId"": ""S1"", ""Sentence"": ""raw text of the sentence"", ""InformativeType"": ""Fact|Statistic|Definition|Claim|Observation|Opinion|Prediction|Suggestion|Question|Transition|Filler|Uncertain"", ""FunctionalType"": ""Declarative|Interrogative|Imperative|Exclamatory"", ""ClaimsCitation"": true|false, ""IsGrammaticallyCorrect"": true|false, ""HasPronoun"": true|false }, … ]
+
+Notes
+
+Never place a FunctionalType value inside the InformativeType field or vice‑versa.
+Use the exact enum strings shown above (case‑sensitive).
+If you are unsure which InformativeType applies, use Uncertain.
+If you are unsure which FunctionalType applies, use Declarative (the default).
+fucntionaltype me sirf wahi value honi chaiye jo maine di hai.koi bhi extra value nahi honi chaiye.
+
+
+End of system instruction.
+When you receive the content, follow the instructions exactly and output only the JSON array described. This format will prevent any parsing exceptions. 
+
+
+In user content you will reeive list of sentences with ids
+";
+
+
         public const string GroqTagPrompt = @"
 **Role**  
 Expert SEO Content Editor & Linguistic Analyst.
 
 **Task**  
-Phase 1 – Parallel Sentence Tagging: read the XML, map each sentence to its ID (S1, S2, …), and tag it using the Level 1 taxonomies.
+Phase 1 – Parallel Sentence Tagging: read the system instruction and content, map each sentence to its ID (S1, S2, …), and tag it using the Level 1 taxonomies.
 Return ONLY valid JSON.
 Do NOT use markdown.
 Do NOT wrap output in ```json.
+Do NOT mix up with the enum values in response. Provided values only from the given lists.
 
 **Taxonomies**  
-1. InformativeType – Fact, Statistic, Definition, Claim, Observation, Opinion, Prediction, Suggestion, Question, Transition, Filler, Uncertain.  
+1. **InformativeType** (Credibility Metrics)
+    - **Fact**: Proven truth (e.g., ""The server is in Virginia"").
+    - **Statistic**: Numerical data, percentages, or ratios.
+    - **Definition**: Explains a concept (e.g., ""SSO stands for..."").
+    - **Claim**: Assertion requiring evidence (e.g., ""Our API is the fastest"").
+    - **Observation**: Pattern-based note (e.g., ""We noticed users drop off here"").
+    - **Opinion**: Subjective belief (Uses ""I think"", ""We believe"").
+    - **Prediction**: Future-looking statement.
+    - **Suggestion**: Recommended action.
+    - **Question**: Seeks info.
+    - **Transition**: Connective phrases (e.g., ""Moving on to cost..."").
+    - **Filler**: Flow-only text (e.g., ""As previously mentioned"").
+    - **Uncertain**: Uses modals (might, could, should). DEFAULT if type is unclear.
+
 2. **Citation Flag** (ClaimsCitation)
     - Set to **true** ONLY if the sentence contains: 
         - First-person source (""We observed"", ""We noticed""...)
@@ -339,11 +415,13 @@ Do NOT wrap output in ```json.
 4. **Pronoun Flag** (HasPronoun)
     - **true** if the sentence contains personal (we, you), demonstrative (this, that), or relative pronouns.
     - **Default: false**.
-5. FunctionalType (Authority Weight)
-Declarative: Factual info/assertions. (Default).
-Interrogative: Direct questions.
-Imperative: Commands/CTAs (e.g., ""Click here"").
-Exclamatory: Strong emotion/urgency.
+
+5. **Functional Type** (Determines Authority Base Weight)
+    - **Declarative**: Relays factual information, statements, or assertions. This is the standard for relaying knowledge. This is the DEFAULT if unclear.
+    - **Interrogative**: Asks a direct question or seeks information from the reader. Usually ends with a question mark.
+    - **Imperative**: Gives a command, instruction, or a direct Call-to-Action (CTA). (e.g., ""Click here"", ""Ensure your settings are correct"").
+    - **Exclamatory**: Expresses strong emotion, urgency, or excitement. Usually ends with an exclamation point.
+
 **Constraints**  
 
 - Do not verify facts; tag purely on linguistic form.  
@@ -364,6 +442,9 @@ Default value of InformativeType is Uncertain.
   },
   …
 ]
+
+
+Remember: InformativeType and FunctionalType are separate categories. Do NOT place a FunctionalType value (Declarative/Interrogative/Imperative/Exclamatory) into the InformativeType slot.
 ";
         public static class CentauriSystemPrompts
         {

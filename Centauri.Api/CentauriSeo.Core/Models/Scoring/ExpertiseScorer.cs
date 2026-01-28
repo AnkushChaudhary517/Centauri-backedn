@@ -23,6 +23,6 @@ public static class ExpertiseScorer
 
         double expertisePercent = E / (double)list.Count * 100.0;
         double baseScore = expertisePercent / 10.0; // 0..10
-        return Math.Clamp(baseScore * 2.0, 0.0, 20.0);
+        return Math.Clamp(baseScore * 1.0, 0.0, 10.0);
     }
 }

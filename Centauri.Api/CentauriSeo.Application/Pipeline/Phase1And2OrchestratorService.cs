@@ -119,7 +119,7 @@ public class Phase1And2OrchestratorService
             if (gq == null || gm == null) return true;
             if (gq.InformativeType != gm.InformativeType) return true;
             if (gq.ClaimsCitation != gm.ClaimsCitation) return true;
-            if (gq.Structure != gm.Structure) return true;
+            if (gq.FunctionalType != gm.FunctionalType) return true;
             if (gq.Voice != gm.Voice) return true;
             // voice/structure mismatches handled by Gemini mostly; ignore deterministic detector differences
             return false;
@@ -232,11 +232,20 @@ public class Phase1And2OrchestratorService
             }).ToList(),100);
             resList?.ForEach(res =>
             {
-                var deserialized = JsonSerializer.Deserialize<AiIndexinglevel1Response>(res, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if(deserialized?.Sentences != null && deserialized.Sentences.Count>0)
+                try
                 {
-                    aiIndexingResponse.Sentences.AddRange(deserialized.Sentences);
+                    var deserialized = JsonSerializer.Deserialize<AiIndexinglevel1Response>(res, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (deserialized?.Sentences != null && deserialized.Sentences.Count > 0)
+                    {
+                        aiIndexingResponse.Sentences.AddRange(deserialized.Sentences);
+                    }
+
                 }
+                catch(Exception ex)
+                {
+                    _logger.LogErrorAsync($"Error occured in parsing ai indexing response : {ex.Message}:{ex.StackTrace}").Wait();
+                }
+
             });
 
 
@@ -251,7 +260,7 @@ public class Phase1And2OrchestratorService
                     {
                         vs.AnswerSentenceFlag = s.AnswerSentenceFlag;
                         vs.EntityConfidenceFlag = s.EntityConfidenceFlag;
-                        vs.EntityMentionFlag = s.EntityMentionFlag;
+                        vs.EntityMentionFlag = s.EntityMentionFlag ?? new EntityMentionFlag() { Entities = null, EntityCount = 0, Value = 0 }; ;
                     }
                     else
                     {
@@ -303,7 +312,7 @@ public class Phase1And2OrchestratorService
     private async Task<List<ChatgptGeminiSentenceTag>?> HandleMismatchSentences(List<GeminiSentenceTag>? mismatchedSentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<PerplexitySentenceTag>? groqTags, List<ChatgptGeminiSentenceTag>? chatGptDecisions)
     {
 
-        var mismatchSentences = mismatchedSentences.Select(x => new { x.SentenceId, x.Sentence }).ToList();
+        var mismatchSentences = mismatchedSentences.Select(x => new { Sentenceid=x.SentenceId,Sentence= x.Sentence }).ToList();
 
        
         string aiRaw = string.Empty;
@@ -399,7 +408,7 @@ public class Phase1And2OrchestratorService
         var h1 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h1")?.Text ?? string.Empty;
         var h2 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h2")?.Text ?? string.Empty;
         var h3 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h3")?.Text ?? string.Empty;
-        var body = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "body")?.Text ?? string.Empty;
+        var body = string.Join("",validated.Where(vs => vs.HtmlTag.ToLower() != "h1" && vs.HtmlTag.ToLower() != "h2" && vs.HtmlTag.ToLower() != "h3")?.Select(x => x.Text).ToList()) ?? string.Empty;
         return await KeywordScorer.CalculateKeywordScore(request.PrimaryKeyword, request.SecondaryKeywords, response.Variants, new ContentData()
         {
             H1 = h1,

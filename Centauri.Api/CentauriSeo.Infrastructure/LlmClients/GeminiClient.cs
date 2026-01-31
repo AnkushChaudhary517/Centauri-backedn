@@ -208,7 +208,7 @@ Example:
                 var uniqueCount =  doc.RootElement
                     .GetProperty("unique_sentence_count")
                     .GetInt32();
-                var copiedCount = sentences.Count - uniqueCount;
+                var copiedCount = random10.Count - uniqueCount;
                 var p = copiedCount * 100 / sentences.Count;
                 if(p>20)
                 {

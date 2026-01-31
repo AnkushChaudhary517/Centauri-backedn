@@ -79,6 +79,7 @@ public static class Phase2_ArbitrationEngine
              //FactRetrievalType = g.FactRetrievalType,
              Grammar = p.IsGrammaticallyCorrect ? "Correct" : "Incorrect",
              ParagraphId = g.ParagraphId,
+
              
         };
     }

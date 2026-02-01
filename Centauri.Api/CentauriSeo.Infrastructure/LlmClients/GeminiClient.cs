@@ -209,7 +209,7 @@ Example:
                     .GetProperty("unique_sentence_count")
                     .GetInt32();
                 var copiedCount = random10.Count - uniqueCount;
-                var p = copiedCount * 100 / sentences.Count;
+                var p = copiedCount * 100 / random10.Count;
                 if(p>20)
                 {
                     uniqueCount = 0;

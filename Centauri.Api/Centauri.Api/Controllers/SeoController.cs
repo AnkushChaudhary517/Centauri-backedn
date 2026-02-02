@@ -105,7 +105,7 @@ public class SeoController : ControllerBase
 
             l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
             l2.SectionScore = orchestratorResponse?.SectionScore ?? 1.0;
-            l2.AuthorityScore *= 10;
+            //l2.AuthorityScore *= 10;
             var l3 = Level3Engine.Compute(l2);
             var l4 = Level4Engine.Compute(l2, l3);
 

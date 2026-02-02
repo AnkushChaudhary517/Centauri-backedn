@@ -10,23 +10,23 @@ public static class Phase2_ArbitrationEngine
 {
     public static ValidatedSentence Arbitrate(
         Sentence sentence,
-        PerplexitySentenceTag p,
+        GeminiSentenceTag localTags,
         GeminiSentenceTag g,
         ChatgptGeminiSentenceTag? aiDecision)
     {
         InformativeType finalType;
         double confidence = 0.7;
 
-        FunctionalType functionalType = g.FunctionalType;
-        if(p.FunctionalType != g.FunctionalType && aiDecision?.FunctionalType != null)
-          functionalType = aiDecision.FunctionalType;
+        //FunctionalType functionalType = g.FunctionalType;
+        //if(p.FunctionalType != g.FunctionalType && aiDecision?.FunctionalType != null)
+        //  functionalType = aiDecision.FunctionalType;
 
-        VoiceType voiceType = g.Voice;
-        if (p.Voice != g.Voice && aiDecision?.Voice != null)
-            voiceType = aiDecision.Voice;
+        //VoiceType voiceType = g.Voice;
+        //if (p.Voice != g.Voice && aiDecision?.Voice != null)
+        //    voiceType = aiDecision.Voice;
 
         // Rule 1: Statistic must contain number
-        if ((p.InformativeType == InformativeType.Statistic ||
+        if ((localTags.InformativeType == InformativeType.Statistic ||
              g.InformativeType == InformativeType.Statistic)
             && sentence.Text.Any(char.IsDigit))
         {
@@ -34,17 +34,15 @@ public static class Phase2_ArbitrationEngine
             confidence = 0.95;
         }
         // Rule 2: Prediction beats claim
-        else if (p.InformativeType == InformativeType.Prediction ||
+        else if (localTags.InformativeType == InformativeType.Prediction ||
                  g.InformativeType == InformativeType.Prediction)
         {
             finalType = InformativeType.Prediction;
             confidence = 0.9;
         }
         // Rule 3: Opinion requires belief marker
-        else if ((sentence.Text.Contains("I think") ||
-                  sentence.Text.Contains("we believe")) &&
-                 (p.InformativeType == InformativeType.Opinion ||
-                  g.InformativeType == InformativeType.Opinion))
+        else if (localTags.InformativeType == InformativeType.Opinion ||
+                  g.InformativeType == InformativeType.Opinion)
         {
             finalType = InformativeType.Opinion;
             confidence = 0.9;
@@ -57,7 +55,7 @@ public static class Phase2_ArbitrationEngine
         }
         else
         {
-            finalType = g.InformativeType;
+            finalType = localTags.InformativeType;
         }
 
         return new ValidatedSentence
@@ -66,18 +64,19 @@ public static class Phase2_ArbitrationEngine
             Text = sentence.Text,
             InformativeType = finalType,
             Structure = g.Structure,
-            Voice = voiceType,
-            HasCitation = p.ClaimsCitation,
+            Voice = localTags.Voice,
+            HasCitation = localTags.ClaimsCitation,
             Confidence = confidence,
-            IsGrammaticallyCorrect = p.IsGrammaticallyCorrect,
-            HasPronoun = p.HasPronoun,
+            IsGrammaticallyCorrect = localTags.IsGrammaticallyCorrect,
+            HasPronoun = localTags.HasPronoun,
             IsPlagiarized = g.IsPlagiarized,
             InfoQuality = g.InfoQuality,
-            FunctionalType = functionalType,
-             HtmlTag = g.HtmlTag,
+            FunctionalType = localTags.FunctionalType,
+            RelevanceScore = localTags.RelevanceScore,
+            HtmlTag = g.HtmlTag,
              //ClaritySynthesisType = g.ClaritySynthesisType,
              //FactRetrievalType = g.FactRetrievalType,
-             Grammar = p.IsGrammaticallyCorrect ? "Correct" : "Incorrect",
+             Grammar = localTags.IsGrammaticallyCorrect ? "Correct" : "Incorrect",
              ParagraphId = g.ParagraphId,
 
              

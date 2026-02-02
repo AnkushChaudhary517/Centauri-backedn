@@ -144,7 +144,67 @@ Return ONLY a valid JSON object with this structure:
 ### PRIMARY KEYWORD and CONTENT TO ANALYZE will be passed in the user text.
 ";
 
-        public const string ChatGptTagPromptConcise = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to these 4 taxonomies. Return ONLY a raw JSON array.
+
+        public const string ChatGptTagPromptConcise = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to InformativeType. Return ONLY a raw JSON array.
+
+
+If unsure, ALWAYS use the stated default value.
+
+TASK:
+the input is list of json having SentenceId and Sentence. you need to do the tagging on the Sentence property attached to the sentenceid.
+
+1. InformativeType (Credibility) (type : Enum)[Default:Uncertain]
+Allowed values ONLY (closed set — no other values permitted):
+Fact: Proven truth.
+Statistic: Numerical data.
+Definition: Explains a concept.
+Claim: Assertion that requires evidence.
+Observation: Pattern-based note.
+Opinion: Subjective belief.
+Prediction: Future-looking statement.
+Suggestion: Recommended action.
+Question: Seeks information.
+Transition: Connective or bridging phrase.
+Filler: Flow or non-informational text.
+Uncertain: Uses modal uncertainty (might, could, may).
+
+WARNING:NOTE:Must Follow Rules:
+1.Never ever ever use any other enum values(other than provided above) for informativeType.
+2.Use default values if you are not clear. Default values are already given in the above description.
+
+Execution: Blind structural analysis. No intro/outro. No markdown tags. Use exact enums.
+
+ENUM ENFORCEMENT (MANDATORY)
+--------------------------------------------------
+You MUST strictly use ONLY the following values — no other values are allowed.
+
+For ""InformativeType"":
+Allowed values ONLY:
+- ""Uncertain""
+- ""Fact""
+- ""Statistic""
+- ""Definition""
+- ""Claim""
+- ""Observation""
+- ""Opinion""
+- ""Prediction""
+- ""Suggestion""
+- ""Question""
+- ""Transition""
+- ""Filler""
+
+If you provide any other value, the response is INVALID.If you are unsure about priority, DEFAULT to ""Uncertain"".
+You are NOT allowed to invent new labels or modify these names in any way.
+
+--------------------------------------------------------------------
+
+Output Schema: 
+[{""SentenceId"":""S#"",""InformativeType"":""Enum""}]
+";
+
+
+
+        public const string ChatGptTagPromptConciseOld = @"Role: Expert Linguistic Analyst for Centauri System. Task: Map each XML sentence ID to these 4 taxonomies. Return ONLY a raw JSON array.
 
 CRITICAL INSTRUCTION:
 Each taxonomy is INDEPENDENT.
@@ -269,8 +329,50 @@ UnIndexable: Transitional, rhetorical, or grammatical noise. (Default).
 Execution: Blind structural analysis. No intro/outro. No markdown tags. Use exact enums.
 Output Schema: 
 [{""SentenceId"":""S#"",""FunctionalType"":"""",""Structure"":"""",""Voice"":"""",""InformativeType"":"""",""InfoQuality"":"""",""ClaritySynthesisType"":""""}]";
-
         public const string GeminiSentenceTagPrompt = @"
+## Role
+Expert SEO Content Editor and Linguistic Analyst for the Centauri System.
+
+## Task
+Phase 1 – Parallel Sentence Tagging: read the XML, map each sentence to its ID (S1, S2, …), and tag it using the Level 1 taxonomies.
+
+## Linguistic Definitions & Tagging Rules (Level 1)
+You must apply these exact definitions for every sentence:
+
+1. **InformativeType** (Credibility Metrics)
+    - **Fact**: Proven truth (e.g., ""The server is in Virginia"").
+    - **Statistic**: Numerical data, percentages, or ratios.
+    - **Definition**: Explains a concept (e.g., ""SSO stands for..."").
+    - **Claim**: Assertion requiring evidence (e.g., ""Our API is the fastest"").
+    - **Observation**: Pattern-based note (e.g., ""We noticed users drop off here"").
+    - **Opinion**: Subjective belief (Uses ""I think"", ""We believe"").
+    - **Prediction**: Future-looking statement.
+    - **Suggestion**: Recommended action.
+    - **Question**: Seeks info.
+    - **Transition**: Connective phrases (e.g., ""Moving on to cost..."").
+    - **Filler**: Flow-only text (e.g., ""As previously mentioned"").
+    - **Uncertain**: Uses modals (might, could, should). Default if there is absolutly no match found after thourough check.
+
+InformativeType must be one of these (Fact,Statistic,Definition,Claim,Observation,Opinion,Prediction,Suggestion,Question,Transition,Filler,Uncertain). if you are not sure after thourough check then use Uncertain as default but do not use any other value and dont overuse Uncertain.
+
+## Execution Constraints
+- **Blind Analysis**: Do not verify truth or fetch web data. Tag purely on linguistic structure.
+- **No Markdown**: Return ONLY a raw JSON array. No ```json tags, no intro, no outro.
+
+**Constraint**
+Recheck all the enum values used with the ones provided in the prompt.I am getting wrong response again and again.
+
+## Response Schema
+[
+  {
+    ""SentenceId"": ""S1"",
+    ""InformativeType"": ""Enum""
+  }
+]
+";
+
+
+        public const string GeminiSentenceTagPrompt2 = @"
 ## Role
 Expert SEO Content Editor and Linguistic Analyst for the Centauri System.
 
@@ -485,8 +587,9 @@ FUNCTIONAL TYPE DECISION RULES (MANDATORY)
 
 ClaimsCitation = true ONLY if the sentence contains:
 - A first-person source (“We observed…”, “We noticed…”, etc.), OR  
-- A third-person source (“According to…”, “As per…”), OR  
+- A third-person source (“According to…”, “As per…” etc), OR  
 - A visible hyperlink in the original text.
+- Use your own citation check logic to assign true or false if above 3 things do not satisfy.
 
 IsGrammaticallyCorrect:
 - true if the sentence has correct grammar.  

@@ -66,7 +66,7 @@ public class GroqClient
         var exceptionPlaceholder = "";
         string assistantContent = rawResponse;
 
-        while (retryCount < 3 && !isSuccessful)
+        while (retryCount < 2 && !isSuccessful)
         {
 
             try

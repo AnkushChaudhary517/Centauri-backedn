@@ -11,7 +11,7 @@ public class Phase1And2Orchestrator
     // Existing Execute method kept for low-level use
     public IReadOnlyList<ValidatedSentence> Execute(
         IReadOnlyList<Sentence> sentences,
-        IReadOnlyList<PerplexitySentenceTag> perplexity,
+        IReadOnlyList<GeminiSentenceTag> perplexity,
         IReadOnlyList<GeminiSentenceTag> gemini,
         IReadOnlyList<ChatgptGeminiSentenceTag>? chatGpt = null)
     {
@@ -39,27 +39,27 @@ public class Phase1And2Orchestrator
 
     // New high-level entry used by controllers: builds deterministic tags using repo detectors,
     // then runs Execute -> Phase2 arbitration to return a validated sentence map.
-    public static IReadOnlyList<ValidatedSentence> Run(CentauriSeo.Core.Models.Input.ArticleInput article)
-    {
-        var sentences = Phase0_InputParser.Parse(article);
+    //public static IReadOnlyList<ValidatedSentence> Run(CentauriSeo.Core.Models.Input.ArticleInput article)
+    //{
+    //    var sentences = Phase0_InputParser.Parse(article);
 
-        var perplexityTags = sentences.Select(s => new PerplexitySentenceTag
-        {
-            SentenceId = s.Id,
-            InformativeType = InformativeTypeDetector.Detect(s.Text),
-            ClaimsCitation = CitationDetector.HasCitation(s.Text)
-        }).ToList();
+    //    var perplexityTags = sentences.Select(s => new PerplexitySentenceTag
+    //    {
+    //        SentenceId = s.Id,
+    //        InformativeType = InformativeTypeDetector.Detect(s.Text),
+    //        ClaimsCitation = CitationDetector.HasCitation(s.Text)
+    //    }).ToList();
 
-        var geminiTags = sentences.Select(s => new GeminiSentenceTag
-        {
-            SentenceId = s.Id,
-            Structure = StructureDetector.Detect(s.Text),
-            Voice = VoiceDetector.Detect(s.Text),
-            InformativeType = InformativeTypeDetector.Detect(s.Text)
-        }).ToList();
+    //    var geminiTags = sentences.Select(s => new GeminiSentenceTag
+    //    {
+    //        SentenceId = s.Id,
+    //        Structure = StructureDetector.Detect(s.Text),
+    //        Voice = VoiceDetector.Detect(s.Text),
+    //        InformativeType = InformativeTypeDetector.Detect(s.Text)
+    //    }).ToList();
 
-        // No ChatGPT decisions available in deterministic run; pass null
-        var orchestrator = new Phase1And2Orchestrator();
-        return orchestrator.Execute(sentences, perplexityTags, geminiTags, null);
-    }
+    //    // No ChatGPT decisions available in deterministic run; pass null
+    //    var orchestrator = new Phase1And2Orchestrator();
+    //    return orchestrator.Execute(sentences, perplexityTags, geminiTags, null);
+    //}
 }

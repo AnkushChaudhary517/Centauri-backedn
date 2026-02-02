@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -79,6 +80,43 @@ public class Phase1And2OrchestratorService
         return (allGeminiResults, allGroqResults);
     }
 
+
+    public async Task<List<GeminiSentenceTag>> GetSentenceTaggingFromLocalLLP(string primaryKeyword, List<Sentence> sentences)
+    {
+         HttpClient client = new HttpClient();
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+            var inputData = JsonSerializer.Serialize(new { 
+            sentences=sentences,
+            primaryKeyword= primaryKeyword
+            });
+            Console.WriteLine("Sending request to Centauri NLP Service...");
+            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+            // 3. Make the POST request
+            var response = await client.PostAsync(apiUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // 4. Deserialize the response
+                var res = await response.Content.ReadAsStringAsync();
+                var results = JsonSerializer.Deserialize<List<GeminiSentenceTag>>(res, options);
+                return results;
+            }
+            else
+            {
+            }
+        }
+        catch (Exception ex)
+        {
+        }
+        return null;
+    }
     // Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
     // then returns the validated sentence map using the existing Phase2_ArbitrationEngine.Execute flow.
     public async Task<OrchestratorResponse> RunAsync(SeoRequest request)
@@ -95,32 +133,52 @@ public class Phase1And2OrchestratorService
         //var groqTask = _groq.TagSentencesAsync(userContent,string.Empty);       
         //await Task.WhenAll(geminiTask, groqTask);
 
-        (var geminiTags, var groqTags) = await ParallelTaggingAsync(sentences);
-        //var geminiTags = await geminiTask;
+        var localLlpTags = await GetSentenceTaggingFromLocalLLP(request.PrimaryKeyword, sentences);
+        var geminiTags = await _gemini.TagArticleAsync(
+                SentenceTaggingPrompts.GeminiSentenceTagPrompt,
+                JsonSerializer.Serialize(sentences),
+                "gemini:tagging"
+            );
+
+        //(var geminiTags, var groqTags) = await ParallelTaggingAsync(sentences);
+        ////var geminiTags = await geminiTask;
         geminiTags?.ToList()?.ForEach(g =>
         {
             var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
             g.Sentence = sentence?.Sentence ?? string.Empty;
             g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
+            g.ParagraphId = sentence?.ParagraphId ?? string.Empty;
         });
 
-        //var groqTags = await groqTask;
-        groqTags?.ToList()?.ForEach(g =>
-        {
-            var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
-            g.Sentence = sentence?.Sentence ?? string.Empty;
-            g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
-        });
+        ////var groqTags = await groqTask;
+        //localLlpTags?.ToList()?.ForEach(g =>
+        //{
+        //    var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
+        //    g.Sentence = sentence?.Sentence ?? string.Empty;
+        //    g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
+        //});
         // 2) Detect mismatches (informative type OR citation flag OR voice)
         var anyMismatch = geminiTags?.Where(gm =>
         {
-            var gq = groqTags.FirstOrDefault(x => x.Sentence == gm.Sentence);
+            var gq = localLlpTags.FirstOrDefault(x => x.Sentence == gm.Sentence);
+
+
             //var gm = geminiTags.SingleOrDefault(x => x.SentenceId == s.Id);
             if (gq == null || gm == null) return true;
-            if (gq.InformativeType != gm.InformativeType) return true;
-            if (gq.ClaimsCitation != gm.ClaimsCitation) return true;
-            if (gq.FunctionalType != gm.FunctionalType) return true;
-            if (gq.Voice != gm.Voice) return true;
+            gm.Structure = gq.Structure;
+            gm.Voice = gq.Voice;
+            gm.ClaimsCitation = gq.ClaimsCitation;
+            gm.IsGrammaticallyCorrect = gq.IsGrammaticallyCorrect;
+            gm.HasPronoun = gq.HasPronoun;
+            gm.FunctionalType = gq.FunctionalType;
+            gm.InfoQuality = gq.InfoQuality;
+            if (gq.InformativeType != gm.InformativeType)
+            {
+                return true;
+            }
+            //if (gq.ClaimsCitation != gm.ClaimsCitation) return true;
+            //if (gq.FunctionalType != gm.FunctionalType) return true;
+            //if (gq.Voice != gm.Voice) return true;
             // voice/structure mismatches handled by Gemini mostly; ignore deterministic detector differences
             return false;
         }).ToList();
@@ -134,7 +192,7 @@ public class Phase1And2OrchestratorService
             var batchSize = 100;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
-                tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, groqTags, chatGptDecisions));               
+                tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, localLlpTags, chatGptDecisions));               
             }
             await Task.WhenAll(tasks);
             tasks.ForEach(async t =>
@@ -150,7 +208,7 @@ public class Phase1And2OrchestratorService
 
         // 3) Run arbitration engine to produce validated sentences TODO: pass Groq tags when implemented
 
-        var validated = new Phase1And2Orchestrator().Execute(sentences, groqTags, geminiTags, chatGptDecisions);
+        var validated = new Phase1And2Orchestrator().Execute(sentences, localLlpTags, geminiTags, chatGptDecisions);
         return new OrchestratorResponse()
         {
             ValidatedSentences = validated,
@@ -211,7 +269,37 @@ public class Phase1And2OrchestratorService
 
         return sections;
     }
+    public List<Level1Sentence> FilterIrrelevantSentences(List<ValidatedSentence> localAnalysis, string primaryKeyword)
+    {
+        var relevantList = new List<Level1Sentence>();
+        string keywordLower = primaryKeyword.ToLower();
 
+        foreach (var s in localAnalysis)
+        {
+            bool hasDirectKeyword = s.Text.ToLower().Contains(keywordLower);
+
+            // 1. Agar RelevanceScore low hai aur Direct Keyword bhi nahi hai -> Drop it
+            // Threshold 0.5 typical standard hai 'lg' model ke liye
+            if (s.RelevanceScore < 0.5 && !hasDirectKeyword)
+            {
+                continue;
+            }
+
+            // 2. Rule 1 logic: Meaning complete without pronouns
+            // Agar keyword nahi hai aur sentence pronoun se bhara hai, toh relevance bhale hi thodi ho, filter kar do
+            //if (!hasDirectKeyword && s.HasPronoun && s.RelevanceScore < 0.7)
+            //{
+            //    continue;
+            //}
+
+            // 3. Junk filtering (Optional but good)
+            if (s.InformativeType == Core.Models.Enums.InformativeType.Filler) continue;
+
+            relevantList.Add(new Level1Sentence { Id = s.Id, Text = s.Text });
+        }
+
+        return relevantList;
+    }
 
     private async Task<AnswerPositionIndex> GetAnswerPositionIndex(List<ValidatedSentence>? validatedSentences, SeoRequest request)
     {
@@ -225,11 +313,7 @@ public class Phase1And2OrchestratorService
         {
 
             var aiIndexingResponse = new AiIndexinglevel1Response();
-            var resList = await _gemini.GetLevel1InforForAIIndexing(request.PrimaryKeyword, validatedSentences.Select(vs => new Level1Sentence()
-            {
-                Id = vs.Id,
-                Text = vs.Text
-            }).ToList(),100);
+            var resList = await _gemini.GetLevel1InforForAIIndexing(request.PrimaryKeyword, FilterIrrelevantSentences(validatedSentences,request.PrimaryKeyword), 100);
             resList?.ForEach(res =>
             {
                 try
@@ -309,7 +393,7 @@ public class Phase1And2OrchestratorService
         return new AnswerPositionIndex() {FirstAnswerSentenceId = null, PositionScore = 0.0 };
     }
 
-    private async Task<List<ChatgptGeminiSentenceTag>?> HandleMismatchSentences(List<GeminiSentenceTag>? mismatchedSentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<PerplexitySentenceTag>? groqTags, List<ChatgptGeminiSentenceTag>? chatGptDecisions)
+    private async Task<List<ChatgptGeminiSentenceTag>?> HandleMismatchSentences(List<GeminiSentenceTag>? mismatchedSentences, IReadOnlyList<GeminiSentenceTag>? geminiTags, IReadOnlyList<GeminiSentenceTag>? localTags, List<ChatgptGeminiSentenceTag>? chatGptDecisions)
     {
 
         var mismatchSentences = mismatchedSentences.Select(x => new { Sentenceid=x.SentenceId,Sentence= x.Sentence }).ToList();
@@ -326,7 +410,7 @@ public class Phase1And2OrchestratorService
         var done = false;
         var excetion = string.Empty;
         var retryCount = 0;
-        while (!done && retryCount<3)
+        while (!done && retryCount<2)
         {
             if (cached != null)
             {
@@ -453,7 +537,7 @@ public class Phase1And2OrchestratorService
                 response = JsonSerializer.Deserialize<SectionScoreResponse>(cached, options);
                 return response;
             }
-            while (!done && retryCount < 3)
+            while (!done && retryCount < 2)
             {
                 try
                 {

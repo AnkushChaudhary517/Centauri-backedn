@@ -24,6 +24,8 @@ public class ValidatedSentence
     public FunctionalType FunctionalType { get; set; }
     public FactRetrievalType FactRetrievalType { get; init; }
     public ClaritySynthesisType ClaritySynthesisType { get; init; }
+
+    public double RelevanceScore { get; init; }
     public bool HasCitation { get; init; }
     public double Confidence { get; init; } // 0–1 arbitration confidence
     public bool HasPronoun { get; set; }

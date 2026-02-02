@@ -19,6 +19,7 @@ public class GeminiSentenceTag
     public bool HasPronoun { get; set; }
     public bool IsPlagiarized { get; set; }
     public string ParagraphId { get; set; } = "";
+    public double RelevanceScore { get; set; }
 }
 
 public class ChatgptGeminiSentenceTag

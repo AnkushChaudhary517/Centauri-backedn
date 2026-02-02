@@ -188,7 +188,7 @@ Example:
         return results;
     }
 
-    public async Task<int> GetPlagiarismScore(List<Sentence> sentences)
+    public async Task<double> GetPlagiarismScore(List<Sentence> sentences)
     {
         try
         {
@@ -209,7 +209,7 @@ Example:
                     .GetProperty("unique_sentence_count")
                     .GetInt32();
                 var copiedCount = random10.Count - uniqueCount;
-                var p = copiedCount * 100 / random10.Count;
+                var p = (double)(copiedCount * 100) / (double)random10.Count;
                 if(p>20)
                 {
                     uniqueCount = 0;
@@ -227,7 +227,7 @@ Example:
                         }
                     });
                     copiedCount = sentences.Count - uniqueCount;
-                    p = (int)Math.Ceiling((copiedCount * 100.0) / (double)sentences.Count);
+                    p = Math.Ceiling((copiedCount * 100.0) / (double)sentences.Count);
 
                 }
                 return p;

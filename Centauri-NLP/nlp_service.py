@@ -196,3 +196,6 @@ def analyze_sentences(request: AnalysisRequest):
             RelevanceScore=round(relevance, 4)
         ))
     return results
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("nlp_service:app", host="0.0.0.0", port=8000, log_level="info")

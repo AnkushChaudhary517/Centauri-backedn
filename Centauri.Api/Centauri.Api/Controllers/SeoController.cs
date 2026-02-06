@@ -301,8 +301,8 @@ public class SeoController : ControllerBase
     private async Task<AiIndexinglevelLocalLlmResponse> GetFullSentenceTaggingFromLocalLLP(string primaryKeyword, string htmlContent)
     {
         HttpClient client = new HttpClient();
-        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
-        string apiUrl = "http://localhost:8000/process-article";
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
+        //string apiUrl = "http://localhost:8000/process-article";
         try
         {
             var options = new JsonSerializerOptions

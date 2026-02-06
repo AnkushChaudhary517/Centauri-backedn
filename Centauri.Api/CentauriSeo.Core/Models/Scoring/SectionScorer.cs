@@ -130,8 +130,8 @@ public static class SectionScorer
     public static List<string> GetRequiredSubtopicsFromLocalLlm(List<CompetitorSectionScoreResponse> data)
     {
         HttpClient client = new HttpClient();
-        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/get-subtopics";
-        string apiUrl = "http://localhost:8000/get-subtopics";
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/get-subtopics";
+        //string apiUrl = "http://localhost:8000/get-subtopics";
         try
         {
             var options = new JsonSerializerOptions
@@ -173,8 +173,8 @@ public static class SectionScorer
     public static List<SentenceSimilarityOutput> GetFullArticleSimilarities(List<SentenceSimilarityInput> input)
     {
         HttpClient client = new HttpClient();
-        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/similarity/batch";
-        string apiUrl = "http://localhost:8000/similarity/batch";
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/similarity/batch";
+        //string apiUrl = "http://localhost:8000/similarity/batch";
         try
         {
             var options = new JsonSerializerOptions
@@ -226,8 +226,8 @@ public static class SectionScorer
     public static SentenceSimilarityOutput GetSimilarity(string text1, string text2)
     {
         HttpClient client = new HttpClient();
-        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/similarity";
-        string apiUrl = "http://localhost:8000/similarity";
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/similarity";
+        //string apiUrl = "http://localhost:8000/similarity";
         try
         {
             var options = new JsonSerializerOptions

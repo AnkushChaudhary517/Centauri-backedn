@@ -9,8 +9,6 @@ from fastapi import FastAPI, Body
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from enum import Enum
-import cloudscraper
-from difflib import SequenceMatcher
 from sentence_transformers import SentenceTransformer, util
 
 # --- 1. INITIALIZATION ---
@@ -104,60 +102,6 @@ class AnalysisResponse(BaseModel):
     sentences: List[SentenceOutput]
     answerPositionIndex: Optional[str] = None
 
-class HeadingRequest(BaseModel):
-    urls: List[str]
-
-# Output model: Structure for Gemini
-class HeadingData(BaseModel):
-    url: str
-    headings: List[str]
-    # 'Optional[str]' likhna zaroori hai taaki None type allow ho
-    error: Optional[str] = None
-
-class HeadingResponse(BaseModel):
-    results: List[HeadingData]
-def get_headings_from_urls(url_list):
-    """
-    URLs ki list se H2, H3, aur H4 headings extract karta hai.
-    """
-    all_site_data = []
-    
-    # Browser jaisa behavior dikhane ke liye headers zaroori hain
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
-
-    for url in url_list:
-        try:
-            print(f"Scraping: {url}...")
-            # 10 seconds timeout taaki script phasa na rahe
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status() # 404 ya 500 error pe exception trigger karega
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Junk remove karna (Ads, Footer, Nav)
-            for junk in soup(['nav', 'footer', 'aside', 'script', 'style']):
-                junk.decompose()
-
-            # Headings nikalna
-            headings = []
-            for tag in soup.find_all(['h2', 'h3', 'h4']):
-                text = tag.get_text().strip()
-                if text:
-                    headings.append(f"{tag.name.upper()}: {text}")
-            
-            all_site_data.append({
-                "url": url,
-                "headings": headings
-            })
-
-        except Exception as e:
-            print(f"Error scraping {url}: {e}")
-            all_site_data.append({"url": url, "headings": [], "error": str(e)})
-
-    return all_site_data
 def compute_similarity(text1: str, text2: str) -> float:
     doc1 = nlp(text1)
     doc2 = nlp(text2)
@@ -264,14 +208,6 @@ def analyze_logic(text: str, s_id: str, keyword_doc, state: Dict, h_tag: str = N
         entityConfidenceFlag=1 if (unique_ents and not any(h in text.lower() for h in ["might", "could", "maybe"])) else 0
     )
 
-def are_headings_similar(h1, h2):
-    # 0.6 similarity matlab 60% match. Ye "Notify" aur "Notifying" ko pakad lega.
-    ratio = difflib.SequenceMatcher(None, h1.lower(), h2.lower()).ratio()
-    # Agar ek heading dusri ka part hai (e.g. "Notify" within "Step 2: Notify creditors")
-    if h1.lower() in h2.lower() or h2.lower() in h1.lower():
-        return True
-    return ratio > 0.6
-
 @app.post("/get-subtopics")
 async def get_subtopics(request: CompetitorAnalysisRequest):
     all_comps = request.data
@@ -368,51 +304,7 @@ def process_article(request: ArticleRequest):
             results.append(res); s_count += 1
         processed_texts.add(raw_text); p_count += 1
     return AnalysisResponse(sentences=results, answerPositionIndex=first_id)
-def scrape_url(url: str):
-    try:
-        # Cloudscraper Cloudflare protection ko bypass karne mein help karta hai
-        scraper = cloudscraper.create_scraper()
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        
-        response = scraper.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Unwanted stuff remove karo
-        for junk in soup(['nav', 'footer', 'aside', 'script', 'style', 'header']):
-            junk.decompose()
 
-        # H2, H3, H4 extraction
-        headings = []
-        for tag in soup.find_all(['h2', 'h3', 'h4']):
-            text = tag.get_text().strip()
-            if text and len(text) > 2: # Very short text ko ignore karo
-                headings.append(f"{tag.name.upper()}: {text}")
-        
-        return headings, None
-    except Exception as e:
-        return [], str(e)
-
-@app.post("/extract-headings", response_model=HeadingResponse)
-async def extract_headings(req: HeadingRequest):
-    final_results = []
-    
-    for url in req.urls:
-        # Dhyaan dein: scrape_url method do cheezein return karta hai: (headings, error)
-        headings, error_val = scrape_url(url) 
-        
-        final_results.append(
-            HeadingData(
-                url=url, 
-                headings=headings, 
-                error=error_val # Ab None aane par Pydantic chillayega nahi
-            )
-        )
-    
-    return HeadingResponse(results=final_results)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

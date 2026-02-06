@@ -83,8 +83,8 @@ public class Phase1And2OrchestratorService
     public async Task<AiIndexinglevelLocalLlmResponse> GetSentenceTaggingFromLocalLLP(string primaryKeyword, List<Sentence> sentences)
     {
          HttpClient client = new HttpClient();
-        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
-        string apiUrl = "http://localhost:8000/analyze";
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
+        //string apiUrl = "http://localhost:8000/analyze";
         try
         {
             var options = new JsonSerializerOptions

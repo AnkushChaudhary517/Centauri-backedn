@@ -9,7 +9,7 @@ public static class AiIndexingScorer
     {
         // Assume l3.*Score values are already on reasonable scales.
         return Math.Clamp(
-            l3.RetrievalFactualityScore + l3.SynthesisCoherenceScore,
+            (l3.RetrievalFactualityScore + l3.SynthesisCoherenceScore),
             0.0, 100.0);
     }
 }

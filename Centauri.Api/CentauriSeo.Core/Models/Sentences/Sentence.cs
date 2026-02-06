@@ -9,5 +9,5 @@ namespace CentauriSeo.Core.Models.Sentences;
 public record Sentence(
     string Id,
     string Text,
-    int ParagraphIndex
+    string ParagraphIndex
 );

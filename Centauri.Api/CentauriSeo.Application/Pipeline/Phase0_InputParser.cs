@@ -13,25 +13,25 @@ namespace CentauriSeo.Application.Pipeline;
 
 public static class Phase0_InputParser
 {
-    public static List<Sentence> Parse(ArticleInput article)
-    {
-        var paragraphs = article.Raw.Split("\n\n");
-        var sentences = new List<Sentence>();
-        int id = 1;
+    //public static List<Sentence> Parse(ArticleInput article)
+    //{
+    //    var paragraphs = article.Raw.Split("\n\n");
+    //    var sentences = new List<Sentence>();
+    //    int id = 1;
 
-        for (int p = 0; p < paragraphs.Length; p++)
-        {
-            var parts = paragraphs[p]
-                .Split(new[] { ".", "?", "!" }, StringSplitOptions.RemoveEmptyEntries);
+    //    for (int p = 0; p < paragraphs.Length; p++)
+    //    {
+    //        var parts = paragraphs[p]
+    //            .Split(new[] { ".", "?", "!" }, StringSplitOptions.RemoveEmptyEntries);
 
-            foreach (var part in parts)
-            {
-                sentences.Add(new Sentence($"S{id++}", part.Trim(), p));
-            }
-        }
+    //        foreach (var part in parts)
+    //        {
+    //            sentences.Add(new Sentence($"S{id++}", part.Trim(), p));
+    //        }
+    //    }
 
-        return sentences;
-    }
+    //    return sentences;
+    //}
 
 
 

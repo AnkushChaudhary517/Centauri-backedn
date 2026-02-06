@@ -22,8 +22,8 @@ public class ValidatedSentence
 
     public InfoQuality InfoQuality { get; init; }
     public FunctionalType FunctionalType { get; set; }
-    public FactRetrievalType FactRetrievalType { get; init; }
-    public ClaritySynthesisType ClaritySynthesisType { get; init; }
+    public FactRetrievalType FactRetrievalType { get; set; }
+    public ClaritySynthesisType ClaritySynthesisType { get; set; }
 
     public double RelevanceScore { get; init; }
     public bool HasCitation { get; init; }

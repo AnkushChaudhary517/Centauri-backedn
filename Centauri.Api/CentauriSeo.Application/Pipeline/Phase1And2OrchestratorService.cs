@@ -80,11 +80,11 @@ public class Phase1And2OrchestratorService
         return (allGeminiResults, allGroqResults);
     }
 
-
-    public async Task<List<GeminiSentenceTag>> GetSentenceTaggingFromLocalLLP(string primaryKeyword, List<Sentence> sentences)
+    public async Task<AiIndexinglevelLocalLlmResponse> GetSentenceTaggingFromLocalLLP(string primaryKeyword, List<Sentence> sentences)
     {
          HttpClient client = new HttpClient();
-        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
+        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
+        string apiUrl = "http://localhost:8000/analyze";
         try
         {
             var options = new JsonSerializerOptions
@@ -105,7 +105,7 @@ public class Phase1And2OrchestratorService
             {
                 // 4. Deserialize the response
                 var res = await response.Content.ReadAsStringAsync();
-                var results = JsonSerializer.Deserialize<List<GeminiSentenceTag>>(res, options);
+                var results = JsonSerializer.Deserialize<AiIndexinglevelLocalLlmResponse>(res, options);
                 return results;
             }
             else
@@ -119,67 +119,38 @@ public class Phase1And2OrchestratorService
     }
     // Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
     // then returns the validated sentence map using the existing Phase2_ArbitrationEngine.Execute flow.
-    public async Task<OrchestratorResponse> RunAsync(SeoRequest request)
+    public async Task<OrchestratorResponse> RunAsync(SeoRequest request, AiIndexinglevelLocalLlmResponse fullLocalLlmTags)
     {
-        //var sentences1 = Phase0_InputParser.TagArticleLikeGemini(request.Article.Raw);
-        //var sentences2 = Phase0_InputParser.TagByHtmlStructure(request.Article.Raw);
-        var sentenceTagging = Phase0_InputParser.TagArticleProfessional(request.Article.Raw);
-        //var sentenceTagging = (await _gemini.TagArticleAsync(SentenceTaggingPrompts.SentenceTaggingPrompt, request.Article.Raw, "gemini:tagging:level1")).ToList();
-        var sentences = sentenceTagging?.Select(s => new Sentence(s.SentenceId, s.Sentence,0) ).ToList();
-        //var userContent = JsonSerializer.Serialize(sentences);
+        var sectionScore = await GetSectionScoreInfo(request.PrimaryKeyword, fullLocalLlmTags.Sentences);
+        var intentScoreTask = GetIntentScoreInfo(request.PrimaryKeyword);
+        var keywordScoreTask = GetKeywordScore(fullLocalLlmTags.Sentences, request);
+        var sentences = fullLocalLlmTags.Sentences.Select(s => new Sentence(s.SentenceId, s.Sentence, s.ParagraphId)).ToList();
 
+        var geminiTags = await _gemini.TagArticleAsync(SentenceTaggingPrompts.GeminiSentenceTagPrompt, JsonSerializer.Serialize(sentences),"gemini:tagging");
 
-        //var geminiTask = _gemini.TagArticleAsync(SentenceTaggingPrompts.GeminiSentenceTagPrompt, userContent, "gemini:tagging");
-        //var groqTask = _groq.TagSentencesAsync(userContent,string.Empty);       
-        //await Task.WhenAll(geminiTask, groqTask);
-
-        var localLlpTags = await GetSentenceTaggingFromLocalLLP(request.PrimaryKeyword, sentences);
-        var geminiTags = await _gemini.TagArticleAsync(
-                SentenceTaggingPrompts.GeminiSentenceTagPrompt,
-                JsonSerializer.Serialize(sentences),
-                "gemini:tagging"
-            );
-
-        //(var geminiTags, var groqTags) = await ParallelTaggingAsync(sentences);
-        ////var geminiTags = await geminiTask;
         geminiTags?.ToList()?.ForEach(g =>
         {
-            var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
+            var sentence = fullLocalLlmTags.Sentences.FirstOrDefault(s => s.SentenceId == g.SentenceId);
             g.Sentence = sentence?.Sentence ?? string.Empty;
-            g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
-            g.ParagraphId = sentence?.ParagraphId ?? string.Empty;
+            g.Structure = sentence.Structure;
+            g.Voice = sentence.Voice;
+            g.ClaimsCitation = sentence.ClaimsCitation;
+            g.IsGrammaticallyCorrect = sentence.IsGrammaticallyCorrect;
+            g.HasPronoun = sentence.HasPronoun;
+            g.FunctionalType = sentence.FunctionalType;
+            g.InfoQuality = sentence.InfoQuality;
+            g.ClaritySynthesisType = sentence.ClaritySynthesisType;
+            g.HtmlTag = sentence.HtmlTag;
         });
 
-        ////var groqTags = await groqTask;
-        //localLlpTags?.ToList()?.ForEach(g =>
-        //{
-        //    var sentence = sentenceTagging.FirstOrDefault(s => s.SentenceId == g.SentenceId);
-        //    g.Sentence = sentence?.Sentence ?? string.Empty;
-        //    g.HtmlTag = sentence?.HtmlTag ?? string.Empty;
-        //});
-        // 2) Detect mismatches (informative type OR citation flag OR voice)
         var anyMismatch = geminiTags?.Where(gm =>
         {
-            var gq = localLlpTags.FirstOrDefault(x => x.Sentence == gm.Sentence);
-
-
-            //var gm = geminiTags.SingleOrDefault(x => x.SentenceId == s.Id);
+            var gq = fullLocalLlmTags.Sentences?.FirstOrDefault(x => x.Sentence == gm.Sentence);
             if (gq == null || gm == null) return true;
-            gm.Structure = gq.Structure;
-            gm.Voice = gq.Voice;
-            gm.ClaimsCitation = gq.ClaimsCitation;
-            gm.IsGrammaticallyCorrect = gq.IsGrammaticallyCorrect;
-            gm.HasPronoun = gq.HasPronoun;
-            gm.FunctionalType = gq.FunctionalType;
-            gm.InfoQuality = gq.InfoQuality;
             if (gq.InformativeType != gm.InformativeType)
             {
                 return true;
             }
-            //if (gq.ClaimsCitation != gm.ClaimsCitation) return true;
-            //if (gq.FunctionalType != gm.FunctionalType) return true;
-            //if (gq.Voice != gm.Voice) return true;
-            // voice/structure mismatches handled by Gemini mostly; ignore deterministic detector differences
             return false;
         }).ToList();
 
@@ -189,10 +160,10 @@ public class Phase1And2OrchestratorService
         {
 
             var tasks = new List<Task<List<ChatgptGeminiSentenceTag>>>();
-            var batchSize = 100;
+            var batchSize = 150;
             for (int i=0;i< anyMismatch.Count; i+=batchSize)
             {
-                tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, localLlpTags, chatGptDecisions));               
+                tasks.Add(HandleMismatchSentences(anyMismatch.Skip(i).Take(batchSize).ToList(), geminiTags, fullLocalLlmTags.Sentences, chatGptDecisions));               
             }
             await Task.WhenAll(tasks);
             tasks.ForEach(async t =>
@@ -205,23 +176,25 @@ public class Phase1And2OrchestratorService
             });
         }
 
-
         // 3) Run arbitration engine to produce validated sentences TODO: pass Groq tags when implemented
 
-        var validated = new Phase1And2Orchestrator().Execute(sentences, localLlpTags, geminiTags, chatGptDecisions);
+        var validated = new Phase1And2Orchestrator().Execute(sentences, fullLocalLlmTags.Sentences, geminiTags, chatGptDecisions);
+
+        await Task.WhenAll(intentScoreTask,keywordScoreTask);
+        var intentScore = await intentScoreTask;
+        var keywordScore = await keywordScoreTask;
         return new OrchestratorResponse()
         {
             ValidatedSentences = validated,
-            PlagiarismScore = await _gemini.GetPlagiarismScore(sentences),
-            SectionScore = await GetSectionScoreInfo(request.PrimaryKeyword, validated?.ToList()),
-            IntentScore = await GetIntentScoreInfo(request.PrimaryKeyword),
-            KeywordScore = await GetKeywordScore(validated?.ToList(), request),
-            AnswerPositionIndex = await GetAnswerPositionIndex(validated?.ToList(), request),
-            Sections = BuildSections(validated?.ToList())
+            //PlagiarismScore = await _gemini.GetPlagiarismScore(sentences),
+            SectionScore = sectionScore,//doesn't require informativetype
+            IntentScore = intentScore, //doesn;t require informative type
+            KeywordScore = keywordScore, //doesn't require informativeType
+            AnswerPositionIndex = fullLocalLlmTags.AnswerPositionIndex?? await GetAnswerPositionIndex(validated?.ToList(), request)
         };
     }
 
-    public static List<Section> BuildSections(List<ValidatedSentence> sentences)
+    public static List<Section> BuildSections(List<GeminiSentenceTag> sentences)
     {
         var sections = new List<Section>();
         Section currentSection = null;
@@ -246,7 +219,7 @@ public class Phase1And2OrchestratorService
                 currentSection = new Section
                 {
                     Id = $"S{sectionCounter++}",
-                    SectionText = sentence.Text,
+                    SectionText = sentence.Sentence,
                     SentenceIds = new List<string>()
                 };
             }
@@ -255,7 +228,7 @@ public class Phase1And2OrchestratorService
                 // Content sentence → attach to current section
                 if (currentSection != null)
                 {
-                    currentSection.SentenceIds.Add(sentence.Id);
+                    currentSection.SentenceIds.Add(sentence.SentenceId);
                 }
                 // else: content before first header → ignored by definition
             }
@@ -410,7 +383,7 @@ public class Phase1And2OrchestratorService
         var done = false;
         var excetion = string.Empty;
         var retryCount = 0;
-        while (!done && retryCount<2)
+        while (!done && retryCount<1)
         {
             if (cached != null)
             {
@@ -486,20 +459,27 @@ public class Phase1And2OrchestratorService
         return chatGptDecisions;
     }
 
-    public async Task<double> GetKeywordScore(List<ValidatedSentence> validated, SeoRequest request)
+    public async Task<double> GetKeywordScore(List<GeminiSentenceTag> validated, SeoRequest request)
     {
         var response = await GetSectionScoreResAsync(request.PrimaryKeyword);
-        var h1 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h1")?.Text ?? string.Empty;
-        var h2 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h2")?.Text ?? string.Empty;
-        var h3 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h3")?.Text ?? string.Empty;
-        var body = string.Join("",validated.Where(vs => vs.HtmlTag.ToLower() != "h1" && vs.HtmlTag.ToLower() != "h2" && vs.HtmlTag.ToLower() != "h3")?.Select(x => x.Text).ToList()) ?? string.Empty;
+        var h1 = validated.FirstOrDefault(vs => vs.HtmlTag.ToLower() == "h1")?.Sentence ?? string.Empty;
+        var h2 = validated.Where(vs => vs.HtmlTag.ToLower() == "h2")?.Select(x => x.Sentence)?.ToList();
+        var h3 = validated.Where(vs => vs.HtmlTag.ToLower() == "h3")?.Select(x => x.Sentence)?.ToList();
+        var body = string.Join("",validated.Where(vs => vs.HtmlTag.ToLower() != "h1" && vs.HtmlTag.ToLower() != "h2" && vs.HtmlTag.ToLower() != "h3")?.Select(x => x.Sentence).ToList()) ?? string.Empty;
+
+        var h2h3list = new List<string>();
+        if (h2 != null && h2.Count > 0)
+            h2h3list.AddRange(h2);
+        if (h3 != null && h3.Count > 0)
+            h2h3list.AddRange(h3);
+
         return await KeywordScorer.CalculateKeywordScore(request.PrimaryKeyword, request.SecondaryKeywords, response.Variants, new ContentData()
         {
             H1 = h1,
             MetaDescription = request.MetaDescription,
             MetaTitle = request.MetaTitle,
             UrlSlug = request.Url,
-            HeadersH2H3 = new List<string>() { h2, h3 },
+            HeadersH2H3 = h2h3list,
             RawBodyText = body
         });
     }
@@ -541,7 +521,7 @@ public class Phase1And2OrchestratorService
             {
                 try
                 {
-                    var res = await _gemini.GetSectionScore(keyword, exception);
+                    var res = await _gemini.GetSectionScore(keyword);
                     if (!string.IsNullOrEmpty(res))
                     {
                         var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
@@ -572,10 +552,10 @@ public class Phase1And2OrchestratorService
         
         return response;
     }
-    public async Task<double> GetSectionScoreInfo(string keyword, List<ValidatedSentence> validatedSentences)
+    public async Task<double> GetSectionScoreInfo(string keyword, List<GeminiSentenceTag> validatedSentences)
     {
         var response = await GetSectionScoreResAsync(keyword);
-        List<string> myHeadings = validatedSentences.Where(vs => vs.HtmlTag.ToLower() == "h2" || vs.HtmlTag.ToLower() == "h3" || vs.HtmlTag.ToLower() == "h4").Select(x => x.Text).ToList();
+        List<string> myHeadings = validatedSentences.Where(vs => vs.HtmlTag.ToLower() == "h2" || vs.HtmlTag.ToLower() == "h3" || vs.HtmlTag.ToLower() == "h4").Select(x => x.Sentence).ToList();
 
         return SectionScorer.Calculate(response?.Competitors, myHeadings);
         //return 0.0;
@@ -597,7 +577,7 @@ public class Phase1And2OrchestratorService
         };
     }
 
-    public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(string article, List<ValidatedSentence> level1, List<Section> sections)
+    public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(string article, List<GeminiSentenceTag> level1, List<Section> sections)
     {
         int offset = 100;
         var response = new RecommendationResponseDTO()
@@ -622,12 +602,12 @@ public class Phase1And2OrchestratorService
                 Sections=sections,
                 Sentences = level1.Select(x => new
                 {
-                    Id = x.Id,
-                    Text = x.Text,
+                    Id = x.SentenceId,
+                    Text = x.Sentence,
                     HtmlTag = x.HtmlTag
                 }).ToList()
             });
-            response.Recommendations = await GenerateRecommendationsAsync(JsonSerializer.Serialize(request));
+            response.Recommendations = await GenerateRecommendationsAsync(request);
             
            // for (int i = 0; i < level1.Count; i += offset)
            // {

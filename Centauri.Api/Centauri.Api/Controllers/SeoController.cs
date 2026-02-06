@@ -1,19 +1,21 @@
-﻿using System;
-using System.Linq;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using CentauriSeo.Core.Models.Input;
-using CentauriSeo.Core.Models.Sentences;
-using CentauriSeo.Core.Models.Output;
+﻿using Centauri_Api.Model;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Scoring;
-using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Application.Utils;
+using CentauriSeo.Core.Models.Input;
+using CentauriSeo.Core.Models.Output;
 using CentauriSeo.Core.Models.Outputs;
+using CentauriSeo.Core.Models.Sentences;
+using CentauriSeo.Core.Models.Utilities;
+using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
+using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
-using Centauri_Api.Model;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 namespace CentauriSeoBackend.Controllers;
 
@@ -30,6 +32,14 @@ public class SeoController : ControllerBase
         _httpContextAccessor = httpContextAccessor;
     }
 
+    [HttpPost("recommendations-test")]
+    public async Task<ActionResult<RecommendationResponseDTO>> GetTestRecommendations([FromBody] SeoRequest request)
+    {
+        var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+        var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
+        var recommendations =await _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
+        return Ok(recommendations);
+    }
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
@@ -43,11 +53,14 @@ public class SeoController : ControllerBase
             };
             var topIssues = new List<TopIssue>();
             response.InputIntegrity = EnsureInputIntegrity(request);
+            var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+            var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
+            _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
 
-            OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request);
-
+            OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request,fullLocalLlmTags);
+            orchestratorResponse.Sections = sections;
             //start recommendations
-            _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, orchestratorResponse?.ValidatedSentences?.ToList(), orchestratorResponse?.Sections);
+            
 
             var level1 = orchestratorResponse?.ValidatedSentences?.ToList()?.ConvertAll(x => new Level1Sentence()
             {
@@ -104,8 +117,8 @@ public class SeoController : ControllerBase
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
 
             l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
-            l2.SectionScore = orchestratorResponse?.SectionScore ?? 1.0;
-            //l2.AuthorityScore *= 10;
+            //l2.SectionScore = orchestratorResponse?.SectionScore /10.0?? 1.0;
+            
             var l3 = Level3Engine.Compute(l2);
             var l4 = Level4Engine.Compute(l2, l3);
 
@@ -114,7 +127,7 @@ public class SeoController : ControllerBase
             response.Level3Scores = l3;
             response.Level4Scores = l4;
             response.SeoScore = CentauriSeoScorer.Score(l2, l3, l4);
-
+            response.Level2Scores.AuthorityScore *= 10;
             response.FinalScores = new FinalScores()
             {
                 UserVisible = new UserVisibleFinal()
@@ -285,4 +298,43 @@ public class SeoController : ControllerBase
         recommendations.RequestId = correlationId;
         return Ok(recommendations);
     }
+    private async Task<AiIndexinglevelLocalLlmResponse> GetFullSentenceTaggingFromLocalLLP(string primaryKeyword, string htmlContent)
+    {
+        HttpClient client = new HttpClient();
+        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
+        string apiUrl = "http://localhost:8000/process-article";
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+            var inputData = JsonSerializer.Serialize(new
+            {
+                htmlContent = htmlContent,
+                primaryKeyword = primaryKeyword
+            });
+            Console.WriteLine("Sending request to Centauri NLP Service...");
+            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+            // 3. Make the POST request
+            var response = await client.PostAsync(apiUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // 4. Deserialize the response
+                var res = await response.Content.ReadAsStringAsync();
+                var results = JsonSerializer.Deserialize<AiIndexinglevelLocalLlmResponse>(res, options);
+                return results;
+            }
+            else
+            {
+            }
+        }
+        catch (Exception ex)
+        {
+        }
+        return null;
+    }
+
 }

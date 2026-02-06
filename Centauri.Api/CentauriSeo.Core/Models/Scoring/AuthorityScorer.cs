@@ -27,7 +27,7 @@ public static class AuthorityScorer
             totalAuthority += sentenceAuthority;
         }
 
-        double A_percent = totalAuthority / list.Count * 100.0;
+        double A_percent = (double)totalAuthority / list.Count * 100.0;
         return Math.Clamp(A_percent / 10.0, 0.0, 10.0);
     }
 

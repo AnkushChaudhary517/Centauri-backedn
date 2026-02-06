@@ -17,11 +17,12 @@ public static class CredibilityScorer
         int C = 0;
 
         // First pass: if any Statistic without citation => immediate 0 (strict rule)
-        if (list.Any(s => s.InformativeType == InformativeType.Statistic && !s.HasCitation))
-            return 0.0;
+        //if (list.Any(s => s.InformativeType == InformativeType.Statistic && !s.HasCitation))
+        //    return 0.0;
 
         foreach (var s in list)
         {
+
             if (s.InformativeType == InformativeType.Statistic)
             {
                 if (s.HasCitation) C += 1;

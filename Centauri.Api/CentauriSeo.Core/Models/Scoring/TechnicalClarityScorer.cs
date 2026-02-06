@@ -37,7 +37,7 @@ namespace CentauriSeo.Core.Models.Scoring
                 }
             });
             var CS = ClaritySynthesisScorer.Score(orchestratorResponse.ValidatedSentences);
-            var SQ = structureScore / (orchestratorResponse.ValidatedSentences?.Count() ?? 1);
+            var SQ = (double)structureScore / (orchestratorResponse.ValidatedSentences?.Count() ?? 1);
             var GA = 0.0;
             var T = orchestratorResponse.ValidatedSentences.Count();
             if (orchestratorResponse?.ValidatedSentences == null || orchestratorResponse.ValidatedSentences.Count() == 0)

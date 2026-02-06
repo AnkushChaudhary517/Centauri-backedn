@@ -11,7 +11,7 @@ namespace CentauriSeo.Core.Models.Scoring
     {
         public static double Score(OrchestratorResponse orchestratorResponse)
         {
-            var E = orchestratorResponse.ValidatedSentences.Where(x=>x.EntityConfidenceFlag != null).Sum(vs => vs.EntityMentionFlag.Value);
+            var E = orchestratorResponse.ValidatedSentences.Where(x=>x.EntityMentionFlag != null).Sum(vs =>  vs.EntityMentionFlag.Value);
             if(E == 0)
             {
                 return 0;

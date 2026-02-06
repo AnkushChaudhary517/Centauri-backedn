@@ -3,6 +3,8 @@ using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace CentauriSeo.Application.Scoring;
@@ -31,12 +33,22 @@ public static class SectionScorer
     {
         // Normalize competitor headings
         var competitorMap = BuildSubtopicFrequencyMap(competitors);
+        var requiredSubtopics = GetRequiredSubtopicsFromLocalLlm(competitors);
 
         // Required Subtopics = appear in >= 3 competitors
-        var requiredSubtopics = competitorMap
-            .Where(x => x.Value.Count >= 3)
-            .Select(x => x.Key)
-            .ToList();
+        //var requiredSubtopics = competitorMap
+        //    .Where(x => x.Value.Count >= 3)
+        //    .Select(x => x.Key)
+        //    .ToList();
+
+        //if(requiredSubtopics == null || requiredSubtopics.Count==0)
+        //{
+        //    requiredSubtopics = competitorMap
+        //                    .OrderByDescending(x => x.Value.Count)
+        //    //.Take(5)
+        //    .Select(x => x.Key)
+        //    .ToList();
+        //}
 
         int RS_total = requiredSubtopics.Count;
 
@@ -45,12 +57,30 @@ public static class SectionScorer
             .Select(Normalize)
             .ToHashSet();
 
+        List<SentenceSimilarityInput>inputs = new List<SentenceSimilarityInput>();
+        requiredSubtopics?.ForEach(requiredSubtopic =>
+        {
+            normalizedYourHeadings?.ToList()?.ForEach(heading =>
+            {
+                inputs.Add(new SentenceSimilarityInput()
+                {
+                    Text1 = heading,
+                    Text2 = requiredSubtopic,
+                });
+            });
+        });
+
+        var similarities = GetFullArticleSimilarities(inputs);
+
         // RS_covered
         var covered = requiredSubtopics
     .Where(rs =>
         normalizedYourHeadings.Any(h =>
-            Similarity(h, rs) >= 0.9
-        )
+        {
+            var key = h + rs;
+            var similarity = similarities.FirstOrDefault(x => x.Key == key);
+            return similarity != null && similarity.Similarity >= 0.5;
+        })
     )
     .ToList();
 
@@ -71,7 +101,7 @@ public static class SectionScorer
         // Score formula
         double score = RS_total == 0
             ? 0
-            : (double)RS_covered / RS_total * 10 * (1 + (double)OG / RS_total);
+            : ((double)RS_covered / RS_total) * (1 + ((double)OG / RS_total));//need to check if we have to multiply with 10 or not
 
         //return new SectionScoreResult
         //{
@@ -86,7 +116,7 @@ public static class SectionScorer
     }
 
     // ----------- HELPERS -----------
-    public static double Similarity(string s1, string s2)
+    public static double Similarity(string s1, string s2) /// is a form  is the form misising ashjh
     {
         if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2))
             return 0;
@@ -96,6 +126,141 @@ public static class SectionScorer
 
         return 1.0 - (double)distance / maxLen;
     }
+
+    public static List<string> GetRequiredSubtopicsFromLocalLlm(List<CompetitorSectionScoreResponse> data)
+    {
+        HttpClient client = new HttpClient();
+        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/get-subtopics";
+        string apiUrl = "http://localhost:8000/get-subtopics";
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+            var inputData = JsonSerializer.Serialize(new
+            {
+                data = data.ConvertAll(x => new
+                {
+                    Headings = x.Headings,
+                    Url = x.Url,
+                    Intent = (int)x.Intent
+                })
+            }, options);
+            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+            // 3. Make the POST request
+            var response = client.PostAsync(apiUrl, content).Result;
+
+            if (response.IsSuccessStatusCode)
+            {
+                // 4. Deserialize the response
+                var res = response.Content.ReadAsStringAsync().Result;
+                return JsonSerializer.Deserialize<List<string>>(res, options);
+
+            }
+            else
+            {
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+        }
+        return null;
+    }
+
+    public static List<SentenceSimilarityOutput> GetFullArticleSimilarities(List<SentenceSimilarityInput> input)
+    {
+        HttpClient client = new HttpClient();
+        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/similarity/batch";
+        string apiUrl = "http://localhost:8000/similarity/batch";
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+            var inputData = JsonSerializer.Serialize(new
+            {
+                items=input?.Select(x => new
+                {
+                    text1=x.Text1,
+                    text2=x.Text2
+                })
+            }, options);
+            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+            // 3. Make the POST request
+            var response = client.PostAsync(apiUrl, content).Result;
+
+            if (response.IsSuccessStatusCode)
+            {
+                // 4. Deserialize the response
+                var res = response.Content.ReadAsStringAsync().Result;
+                var results = JsonSerializer.Deserialize<SentenceSimilarityOutputLlmResponse>(res, options);
+                if(results?.Similarities != null && results?.Similarities.Count > 0)
+                {
+                    List<SentenceSimilarityOutput> outputs = new List<SentenceSimilarityOutput>();
+                    for (int i = 0; i < results?.Similarities.Count; i++) {
+                        outputs.Add( new SentenceSimilarityOutput()
+                        {
+                            Key = input[i].Key,
+                            Similarity = results.Similarities[i],
+                        });
+                    }
+                    return outputs;
+                }
+
+            }
+            else
+            {
+            }
+        }
+        catch (Exception ex)
+        {
+        }
+        return null;
+    }
+
+    public static SentenceSimilarityOutput GetSimilarity(string text1, string text2)
+    {
+        HttpClient client = new HttpClient();
+        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/similarity";
+        string apiUrl = "http://localhost:8000/similarity";
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+            var inputData = JsonSerializer.Serialize(new 
+            {
+                text1 = text1,
+                text2 = text2
+            },options);
+            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+            // 3. Make the POST request
+            var response = client.PostAsync(apiUrl, content).Result;
+
+            if (response.IsSuccessStatusCode)
+            {
+                // 4. Deserialize the response
+                var res = response.Content.ReadAsStringAsync().Result;
+                var results = JsonSerializer.Deserialize<SentenceSimilarityOutput>(res, options);
+                return results;
+            }
+            else
+            {
+            }
+        }
+        catch (Exception ex)
+        {
+        }
+        return null;
+    }
+
     private static int LevenshteinDistance(string s, string t)
     {
         var dp = new int[s.Length + 1, t.Length + 1];

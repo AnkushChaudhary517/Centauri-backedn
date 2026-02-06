@@ -11,7 +11,7 @@ public class Phase1And2Orchestrator
     // Existing Execute method kept for low-level use
     public IReadOnlyList<ValidatedSentence> Execute(
         IReadOnlyList<Sentence> sentences,
-        IReadOnlyList<GeminiSentenceTag> perplexity,
+        IReadOnlyList<GeminiSentenceTag> localTags,
         IReadOnlyList<GeminiSentenceTag> gemini,
         IReadOnlyList<ChatgptGeminiSentenceTag>? chatGpt = null)
     {
@@ -21,7 +21,7 @@ public class Phase1And2Orchestrator
         {
             try
             {
-                var p = perplexity.FirstOrDefault(x => x.SentenceId == s.Id);
+                var p = localTags.FirstOrDefault(x => x.SentenceId == s.Id);
                 var g = gemini.FirstOrDefault(x => x.SentenceId == s.Id);
                 var ai = chatGpt?.SingleOrDefault(x => x.SentenceId == s.Id);
                 if (p != null && g != null)

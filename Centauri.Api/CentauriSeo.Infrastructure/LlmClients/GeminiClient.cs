@@ -4,6 +4,7 @@ using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
+using GenerativeAI;
 using GenerativeAI.Types;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -17,6 +18,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
 using static CentauriSeo.Core.Models.Utilities.SentenceTaggingPrompts;
+using Tool = Mscc.GenerativeAI.Types.Tool;
 
 namespace CentauriSeo.Infrastructure.LlmClients;
 
@@ -45,72 +47,79 @@ public class GeminiClient
         _httpContextAccessor = httpContextAccessor;
     }
 
-
-    public async Task<string> GetSectionScore(string keyword, string exception = null)
+    public async Task<List<string>> GetCompetitorUrls(string keyword)
     {
         var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
         string userContent = @"
-Locale: ""en-US""
+Role: SEO Expert & Content Strategist
+Task: Use the Google Search tool to find the top 5 organic results for the keyword.
+
+Constraints:
+- Output MUST be valid JSON. 
+- No preamble, no explanation, no markdown backticks.
+- If a URL cannot be accessed, skip it and move to the next organic result.
+
+Output will be list of string.
+";
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
+        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:CompetitorUrls");
+        var cachedResponse = await _cache.GetAsync(cacheKey);
+        if (cachedResponse != null)
+        {
+            return JsonSerializer.Deserialize<List<string>>(cachedResponse,options);
+        }
+        try
+        {
+            var responseContent = await ProcessContent(systemPrompt, userContent, false, null, true);
+            if (!string.IsNullOrEmpty(responseContent))
+            {
+                await _cache.SaveAsync(cacheKey, responseContent);
+                return JsonSerializer.Deserialize<List<string>>(cachedResponse, options);
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in get getting competitor urls :  {ex.Message}:{ex.StackTrace}");
+        }
+        return null;
+    }
+    public async Task<string> GetSectionScore(string keyword)
+    {
+        //var urls = await GetCompetitorUrls(keyword);
+        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
+        string userContent = @"
+Role: SEO Expert & Content Strategist
+Task: Analyze SERP for the target keyword and generate semantic variants.
 
 Steps:
-1. Search Google for the target keyword.
-2. Identify the top 5 organic results (exclude ads, forums, PDFs).
-3. Extract H2, H3, H4 headings from each page.
-4. Return raw headings without rewriting.
-5. Return Intent (The primary intent both for the current keyword and each competitor).
-Allowed intent values (choose ONE only per item):
-- Informational (Default incase its not clear)
-- Commercial
-- Transactional
-- Navigational
-6. Variants
-Before scoring, generate a **PK Variant Pool**. Include:
-1. **Morphological**: Singular/plural, tenses, noun/verb forms (e.g., ""checker"" -> ""checking"").
-2. **Lexical**: Synonyms and common SaaS substitutions (e.g., ""checker"" -> ""tool"", ""platform"").
-3. **Search-Derived**: Close semantic variations (e.g., ""AI content checker"" -> ""AI-based quality tool""),People also search for, Titles from top-ranking pages, H2/H3 phrases from top results.
-*Constraint: Weight exact matches higher than semantic equivalents.*
+1. Use the Google Search tool to find the top 5 organic results for the keyword.
+2. Extract exact H2, H3, and H4 headings from these pages. Do NOT summarize or rewrite them.
+3. Identify the Primary Search Intent (Informational, Commercial, Transactional, Navigational).
+4. Generate a PK Variant Pool:
+   - Morphological: Tenses, plurals, noun/verb forms.
+   - Lexical: SaaS-specific synonyms (tool, platform, software).
+   - Search-Derived: Variations from ""People also search for"" and competitor titles.
 
-Rules:
-- Choose the dominant intent, not secondary intent
-- Do NOT invent URLs
-- Do NOT explain your reasoning
-- Do NOT add extra fields
-- Output MUST be valid JSON only
-- No markdown, no text outside JSON
+Constraints:
+- Output MUST be valid JSON. 
+- No preamble, no explanation, no markdown backticks.
+- If a URL cannot be accessed, skip it and move to the next organic result.
 
-Output format:
+JSON Schema:
 {
-  ""keyword"": """",
+  ""keyword"": ""string"",
   ""competitors"": [
-    {
-      ""url"": """",
-      ""headings"": [],
-       ""intent"": ""Enum"",
-    }    
+    { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""string"" }
   ],
-""intent"": ""Enum"",
-""variants"": []
-}
-
-Example:
-{
-  ""keyword"": ""ai content checker"",
-  ""competitors"": [
-    {
-      ""url"": ""https://example.com/best-running-shoes"",
-      ""headings"": [""Top 10 Running Shoes of 2024"" ,""1. Speedster Pro"", ""Features of Speedster Pro"" ],
-       ""intent"" : ""Commercial""
-    }
-  ],
-""intent"" : ""Informational""
-""variants"":[""AI content checking"", ""AI-based content checker"", ""v3""]
+  ""intent"": ""string"",
+  ""variants"": [""string""]
 }
 ";
 
-        if(!string.IsNullOrEmpty(exception))
-        {
-            systemPrompt += $"fix this Exception occured in previous request.: {exception}";
-        }
         userContent = @$"Target keyword: ""{ keyword}"" " + userContent;
         var options = new JsonSerializerOptions
         {
@@ -118,14 +127,14 @@ Example:
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
         var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:SectionScore");
-        //var cachedResponse = await _cache.GetAsync(cacheKey);
-        //if (cachedResponse != null)
-        //{
-        //    return cachedResponse;
-        //}
+        var cachedResponse = await _cache.GetAsync(cacheKey);
+        if (cachedResponse != null)
+        {
+            return cachedResponse;
+        }
         try
         {
-            var responseContent = await ProcessContent(systemPrompt, userContent);
+            var responseContent = await ProcessContent(systemPrompt, userContent, false,null, true);
             if (!string.IsNullOrEmpty(responseContent))
             {
                 await _cache.SaveAsync(cacheKey, responseContent);
@@ -138,14 +147,14 @@ Example:
         }
         return string.Empty;
     }
-    public async Task<string> GetLevel1InforForAIIndexing(string primaryKeyword, List<Level1Sentence> sentences)
-    {
-        var req = new {PrimaryKeyword = primaryKeyword, ContentToAnalyze = sentences?.Select(x => new { Text = x.Text, Id = x.Id, InformativeType = x.InformativeType.ToString() }) };
-        var start = DateTime.Now;
-        var responseContent = await ProcessContent(SentenceTaggingPrompts.CentauriLevel1PromptConcise, JsonSerializer.Serialize(req));
-        var end = DateTime.Now;
-        return responseContent;
-    }
+    //public async Task<string> GetLevel1InforForAIIndexing(string primaryKeyword, List<Level1Sentence> sentences)
+    //{
+    //    var req = new {PrimaryKeyword = primaryKeyword, ContentToAnalyze = sentences?.Select(x => new { Text = x.Text, Id = x.Id, InformativeType = x.InformativeType.ToString() }) };
+    //    var start = DateTime.Now;
+    //    var responseContent = await ProcessContent(SentenceTaggingPrompts.CentauriLevel1PromptConcise, JsonSerializer.Serialize(req));
+    //    var end = DateTime.Now;
+    //    return responseContent;
+    //}
 
     public async Task<List<string>> GetLevel1InforForAIIndexing(
     string primaryKeyword,
@@ -200,7 +209,7 @@ Example:
                 .Take((int)r)
                 .Select(x => x.Text)
                 .ToList();
-            var responseContent = await ProcessContent(prompt,JsonSerializer.Serialize(random10));
+            var responseContent = await ProcessContent(prompt,JsonSerializer.Serialize(random10),false,null,true);
 
             if(!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
             {
@@ -240,7 +249,7 @@ Example:
         return 0;
     }
 
-    public async Task<List<string>> ProcessContentInChunksAsync(string prompt, List<Sentence> sentences, int chunkSize = 25)
+    public async Task<List<string>> ProcessContentInChunksAsync(string prompt, List<Sentence> sentences, int chunkSize = 25, bool enableGoogleSearch=false)
     {
         if (sentences == null || !sentences.Any())
             return new List<string>();
@@ -255,7 +264,7 @@ Example:
             var chunkPayload = JsonSerializer.Serialize(chunk);
 
             // Call the AI
-            tasks.Add(ProcessContent(prompt, chunkPayload));
+            tasks.Add(ProcessContent(prompt, chunkPayload,false,null,enableGoogleSearch));
 
         }
 
@@ -309,7 +318,7 @@ Example:
         return await ProcessContent(CentauriSystemPrompts.RecommendationsPrompt, article);
     }
 
-    public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null)
+    public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)
     {
         if(cachePrompt)
         {
@@ -335,13 +344,13 @@ Example:
                 var r = await GetAnalysisFromCache(_apiKey, cachedArticleKey, prompt);
                 return r;
             }
-            var res = await GenerateSentenceTagsDirect(prompt, xmlData);
+            var res = await GenerateSentenceTagsDirect(prompt, xmlData,enableGoogleSearch);
             return res;
 
         }
     }
 
-    private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent)
+    private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent, bool enableSearch=false)
     {
         var options = new JsonSerializerOptions
         {
@@ -352,31 +361,46 @@ Example:
 
         int estimatedSentenceCount = (xmlContent.Length / 90) + 1;
         int calculatedMaxTokens = estimatedSentenceCount * 220; // 220 for safety margin
-
+        var toolsList = new List<object>();
+        object generationConfig = new();
         // Limit check: Gemini models ki apni limits hoti hain (e.g. 8k for Flash output)
-       // calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 1000, 8192);
-
-        // Standard GenerateContent request body
-        var requestBody = new
+        // calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 1000, 8192);
+        if (enableSearch)
         {
-            system_instruction = new
+            toolsList.Add(new { google_search = new { } });
+            generationConfig = new
             {
-                parts = new[] { new { text = prompt } }
-            },
-            contents = new[]
-            {
-            new {
-                role = "user",
-                parts = new[] { new { text = xmlContent } }
-            }
-        },
+                //response_mime_type = "application/json", // Forces Gemini to return valid JSON
+                //maxOutputTokens = calculatedMaxTokens,
+                temperature = 0.1
+            };
+        }
+        else
+        {
             generationConfig = new
             {
                 response_mime_type = "application/json", // Forces Gemini to return valid JSON
                 //maxOutputTokens = calculatedMaxTokens,
                 temperature = 0.1
-            }
-        };
+            };
+        }
+            // Standard GenerateContent request body
+            var requestBody = new
+            {
+                system_instruction = new
+                {
+                    parts = new[] { new { text = prompt } }
+                },
+                contents = new[]
+                {
+            new {
+                role = "user",
+                parts = new[] { new { text = xmlContent } }
+                }
+            },
+                tools = toolsList.Any() ? toolsList.ToArray() : null,
+                
+            };
 
         var result = await _aiCallTracker.TrackAsync(
             requestBody,
@@ -393,7 +417,7 @@ Example:
                         await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
                         throw new Exception($"Gemini API Error: {error}");
                     }
-
+                    generationConfig = generationConfig;
                     var res = await response.Content.ReadAsStringAsync();
                    return (res, (JsonSerializer.Deserialize<GeminiResponse>(res, options))?.Usage);
 
@@ -407,7 +431,9 @@ Example:
             .GetProperty("content")
             .GetProperty("parts")[0]
             .GetProperty("text")
-            .GetString();
+            .GetString().Replace("```json", "")
+                .Replace("```", "")
+                .Trim();
 
 
     }

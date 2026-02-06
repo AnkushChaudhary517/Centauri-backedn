@@ -27,8 +27,8 @@ public static class Phase2_ArbitrationEngine
 
         // Rule 1: Statistic must contain number
         if ((localTags.InformativeType == InformativeType.Statistic ||
-             g.InformativeType == InformativeType.Statistic)
-            && sentence.Text.Any(char.IsDigit))
+             g.InformativeType == InformativeType.Statistic))
+            //&& sentence.Text.Any(char.IsDigit))
         {
             finalType = InformativeType.Statistic;
             confidence = 0.95;
@@ -63,23 +63,26 @@ public static class Phase2_ArbitrationEngine
             Id = sentence.Id,
             Text = sentence.Text,
             InformativeType = finalType,
-            Structure = g.Structure,
+            Structure = localTags.Structure,
             Voice = localTags.Voice,
             HasCitation = localTags.ClaimsCitation,
             Confidence = confidence,
             IsGrammaticallyCorrect = localTags.IsGrammaticallyCorrect,
             HasPronoun = localTags.HasPronoun,
             IsPlagiarized = g.IsPlagiarized,
-            InfoQuality = g.InfoQuality,
+            InfoQuality = localTags.InfoQuality,
             FunctionalType = localTags.FunctionalType,
             RelevanceScore = localTags.RelevanceScore,
-            HtmlTag = g.HtmlTag,
-             //ClaritySynthesisType = g.ClaritySynthesisType,
+            HtmlTag = localTags.HtmlTag,
+             ClaritySynthesisType = localTags.ClaritySynthesisType,
              //FactRetrievalType = g.FactRetrievalType,
              Grammar = localTags.IsGrammaticallyCorrect ? "Correct" : "Incorrect",
-             ParagraphId = g.ParagraphId,
+             ParagraphId = localTags.ParagraphId,
+             AnswerSentenceFlag = localTags.AnswerSentenceFlag,
+                EntityConfidenceFlag = localTags.EntityConfidenceFlag,
+                EntityMentionFlag = localTags.EntityMentionFlag,
+                SectionId = localTags.ParagraphId // Assuming SectionId can be derived from ParagraphId or set to it for now
 
-             
         };
     }
 }

@@ -29,7 +29,7 @@ namespace CentauriSeo.Core.Models.Scoring
 
             }
 
-            double A_percent = totalCount / list.Count * 100.0;
+            double A_percent = (double)totalCount / list.Count * 100.0;
             return Math.Clamp(A_percent / 10.0, 0.0, 10.0);
         }
     }

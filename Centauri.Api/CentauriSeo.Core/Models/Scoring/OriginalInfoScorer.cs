@@ -17,8 +17,8 @@ public static class OriginalInfoScorer
         int unique = list.Count(s => s.InfoQuality == InfoQuality.Unique);
         int lessKnown = list.Count(s => s.InfoQuality == InfoQuality.PartiallyKnown);
 
-        double percent = (unique + lessKnown) / (double)list.Count * 100.0;
-        double score = percent / 10.0;
+        double percent = (unique + lessKnown) / (double)list.Count;
+        double score = percent*10; //adjusted to scale of 0..10
         return Math.Clamp(score, 0.0, 10.0);
     }
 }

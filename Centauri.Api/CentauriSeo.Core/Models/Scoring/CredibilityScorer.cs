@@ -25,26 +25,49 @@ public static class CredibilityScorer
 
             if (s.InformativeType == InformativeType.Statistic)
             {
-                if (s.HasCitation) C += 1;
+                if (s.Source != SourceType.Unknown)
+                {
+                    C += 1;
+                } else
+                {
+                    //C -= 1;
+                }
             }
             else if (s.InformativeType == InformativeType.Prediction)
             {
-                if (s.HasCitation) C += 1;
+                if (s.Source != SourceType.Unknown)
+                {
+                    C += 1;
+                }
+                else
+                {
+                    //C -= 1;
+                }
             }
-            else if (s.InformativeType == InformativeType.Claim || s.InformativeType == InformativeType.Definition)
+            else if (s.InformativeType == InformativeType.Definition)
             {
-                if (s.HasCitation) C += 1;
-                else if (s.InfoQuality == InfoQuality.PartiallyKnown || s.InfoQuality == InfoQuality.Unique)
+                if (s.Source != SourceType.Unknown) C += 1;
+            }
+            else if (s.InformativeType == InformativeType.Claim)
+            {
+                if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source == SourceType.Unknown)
+                {
+                    //C -= 1;
+                }
+                if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source != SourceType.Unknown) C += 1;
+                //if (s.HasCitation) C += 1;
+                else if (s.InfoQuality == InfoQuality.WellKnown || s.InfoQuality == InfoQuality.Unique)
                     C += 1;
             }
-            else if (s.InformativeType == InformativeType.Opinion)
+            else 
             {
-                if (s.HasCitation) C += 1;
+                if (s.Source != SourceType.Unknown) C += 1;
             }
             // others contribute 0
         }
 
-        double credibilityPercent = C / (double)list.Count * 100.0;
-        return Math.Clamp(credibilityPercent / 10.0, 0.0, 10.0);
+        double credibilityPercent = (C / (double)list.Count) * 10.0;
+        return Math.Clamp(credibilityPercent, 0.0, 10.0);
     }
+
 }

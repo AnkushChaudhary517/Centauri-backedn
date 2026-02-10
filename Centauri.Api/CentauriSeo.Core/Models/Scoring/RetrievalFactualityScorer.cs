@@ -10,6 +10,6 @@ public static class RetrievalFactualityScorer
     // or keep as 0 if not implemented. We'll use a simple proxy: use OriginalInfo + Credibility scaled.
     public static double Score(Level2Scores l2)
     {
-        return (l2.AnswerBlockDensityScore*3) + (l2.FactualIsolationScore * 2.5) + (l2.EntityAlignmentScore * 1.5);
+        return (3*l2.AnswerBlockDensityScore) + (2.5*l2.FactualIsolationScore) + (1.5*l2.EntityAlignmentScore);
     }
 }

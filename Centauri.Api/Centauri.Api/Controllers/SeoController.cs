@@ -133,16 +133,17 @@ public class SeoController : ControllerBase
             response.Level3Scores = l3;
             response.Level4Scores = l4;
             response.SeoScore = CentauriSeoScorer.Score(l2, l3, l4);
-            response.Level2Scores.AuthorityScore *= 10;
             response.FinalScores = new FinalScores()
             {
                 UserVisible = new UserVisibleFinal()
                 {
-                    AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore * 10),
+                    AiIndexingScore = Math.Round(response.Level4Scores.AiIndexingScore),
                     SeoScore = Math.Round(response.Level4Scores.CentauriSeoScore),
                     EeatScore = Math.Round(response.Level3Scores.EeatScore),
                     ReadabilityScore = Math.Round(response.Level3Scores.ReadabilityScore * 10),
-                    RelevanceScore = Math.Round(response.Level3Scores.RelevanceScore)
+                    RelevanceScore = Math.Round(response.Level3Scores.RelevanceScore),
+                    AuthorityScore = Math.Round(response.Level2Scores.AuthorityScore * 10),
+                    ExpertiseScore = Math.Round(response.Level2Scores.ExpertiseScore * 10)
                 }
             };
 
@@ -307,8 +308,8 @@ public class SeoController : ControllerBase
     private async Task<AiIndexinglevelLocalLlmResponse> GetFullSentenceTaggingFromLocalLLP(string primaryKeyword, string htmlContent)
     {
         HttpClient client = new HttpClient();
-        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
-        string apiUrl = "http://localhost:8000/process-article";
+        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
+        //string apiUrl = "http://localhost:8000/process-article";
         try
         {
             var options = new JsonSerializerOptions

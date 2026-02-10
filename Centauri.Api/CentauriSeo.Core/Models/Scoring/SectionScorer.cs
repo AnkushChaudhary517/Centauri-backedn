@@ -26,96 +26,83 @@ public static class SectionScorer
     //    double sectionScore = (RS_covered / RS_total) * 10.0 * (1.0 + OG / RS_total);
     //    return Math.Clamp(sectionScore, 0.0, 10.0);
     //}
-
     public static double Calculate(
-            List<CompetitorSectionScoreResponse> competitors,
-            List<string> yourHeadings)
+        List<CompetitorSectionScoreResponse> competitors,
+        List<string> yourHeadings,
+        string primaryKeyword,
+        List<string> secondaryKeywords)
     {
-        // Normalize competitor headings
+        if (yourHeadings == null || !yourHeadings.Any()) return 0;
+
+        // --- PILLAR 1: SUB-TOPIC COVERAGE SCORE (Base 5) ---
+        double subTopicScore = 0;
         var competitorMap = BuildSubtopicFrequencyMap(competitors);
-        var requiredSubtopics = GetRequiredSubtopicsFromLocalLlm(competitors);
 
-        // Required Subtopics = appear in >= 3 competitors
-        //var requiredSubtopics = competitorMap
-        //    .Where(x => x.Value.Count >= 3)
-        //    .Select(x => x.Key)
-        //    .ToList();
-
-        //if(requiredSubtopics == null || requiredSubtopics.Count==0)
-        //{
-        //    requiredSubtopics = competitorMap
-        //                    .OrderByDescending(x => x.Value.Count)
-        //    //.Take(5)
-        //    .Select(x => x.Key)
-        //    .ToList();
-        //}
+        // Required Sub-topics (Jo 3 ya usse zyada competitors mein hain)
+        var requiredSubtopics = competitorMap
+            .Where(x => x.Value.Count >= 3)
+            .Select(x => x.Key)
+            .ToList();
 
         int RS_total = requiredSubtopics.Count;
 
         // Normalize your headings
         var normalizedYourHeadings = yourHeadings
             .Select(Normalize)
-            .ToHashSet();
+            .Where(h => !string.IsNullOrWhiteSpace(h))
+            .ToList();
 
-        List<SentenceSimilarityInput>inputs = new List<SentenceSimilarityInput>();
-        requiredSubtopics?.ForEach(requiredSubtopic =>
+        // Agar required subtopics hain tabhi ye logic chalega
+        if (RS_total > 0)
         {
-            normalizedYourHeadings?.ToList()?.ForEach(heading =>
+            List<SentenceSimilarityInput> inputs = new List<SentenceSimilarityInput>();
+            foreach (var rs in requiredSubtopics)
             {
-                inputs.Add(new SentenceSimilarityInput()
+                foreach (var h in normalizedYourHeadings)
                 {
-                    Text1 = heading,
-                    Text2 = requiredSubtopic,
-                });
-            });
-        });
+                    inputs.Add(new SentenceSimilarityInput { Text1 = h, Text2 = rs });
+                }
+            }
 
-        var similarities = GetFullArticleSimilarities(inputs);
+            var similarities = GetFullArticleSimilarities(inputs);
 
-        // RS_covered
-        var covered = requiredSubtopics
-    .Where(rs =>
-        normalizedYourHeadings.Any(h =>
+            int RS_covered = requiredSubtopics.Count(rs =>
+                normalizedYourHeadings.Any(h =>
+                {
+                    var key = h + rs;
+                    var sim = similarities.FirstOrDefault(x => x.Key == key);
+                    return sim != null && sim.Similarity >= 0.65;
+                })
+            );
+
+            subTopicScore = ((double)RS_covered / RS_total) * 5;
+        }
+        else
         {
-            var key = h + rs;
-            var similarity = similarities.FirstOrDefault(x => x.Key == key);
-            return similarity != null && similarity.Similarity >= 0.5;
-        })
-    )
-    .ToList();
+            // Agar competitor data hi nahi mila, toh subTopicScore 0 rahega
+            // Par niche wala logic chalna chahiye
+            subTopicScore = 0;
+        }
 
-        int RS_covered = covered.Count;
+        // --- PILLAR 2: HEADER KEYWORD SCORE (Base 5) ---
 
-        // Missing required
-        var missingRequired = requiredSubtopics
-            .Except(covered)
-            .ToList();
+        var allKeywords = secondaryKeywords.Select(k => k.ToLower()).ToList();
+        allKeywords.Add(primaryKeyword.ToLower());
 
-        // OG = your headings not in competitors
-        var originalSubtopics = normalizedYourHeadings
-            .Where(h => !competitorMap.ContainsKey(h))
-            .ToList();
+        // Har header check karo ki usme koi bhi keyword (Primary/Secondary) hai ya nahi
+        int headersWithKeywords = normalizedYourHeadings.Count(h =>
+            allKeywords.Any(kw => h.ToLower().Contains(kw))
+        );
 
-        int OG = originalSubtopics.Count;
+        double headerScore = ((double)headersWithKeywords / normalizedYourHeadings.Count) * 5;
 
-        // Score formula
-        double score = RS_total == 0
-            ? 0
-            : ((double)RS_covered / RS_total) * (1 + ((double)OG / RS_total));//need to check if we have to multiply with 10 or not
+        // --- FINAL SECTION SCORE CALCULATION ---
 
-        //return new SectionScoreResult
-        //{
-        //    RS_Total = RS_total,
-        //    RS_Covered = RS_covered,
-        //    OG = OG,
-        //    SectionScore = Math.Round(score, 2),
-        //    MissingRequiredSubtopics = missingRequired,
-        //    OriginalSubtopics = originalSubtopics
-        //};
-        return Math.Round(score, 2);
+        // Example: (2 + 2) * 1.5 = 6
+        double finalSectionScore = (subTopicScore + headerScore) * 1.5;
+
+        return Math.Round(finalSectionScore, 2);
     }
-
-    // ----------- HELPERS -----------
     public static double Similarity(string s1, string s2) /// is a form  is the form misising ashjh
     {
         if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2))

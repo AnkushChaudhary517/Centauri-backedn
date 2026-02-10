@@ -89,9 +89,6 @@ public static class VariationScorer
         const double Hmax = 2.321928094887362; // log2(5)
         double varietyScore10 = (entropy / Hmax) * 10;
 
-        // STEP 4 — Convert to final Variation Score
-        double finalScore = varietyScore10 / 3;
-        var f= Math.Clamp(finalScore, 0.0, 3.333333);
-        return Math.Round(f, 2);
+        return Math.Clamp(varietyScore10, 0.0, 10.0);
     }
 }

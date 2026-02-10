@@ -14,21 +14,21 @@ public static class CentauriSeoScorer
         double eeat = l3?.EeatScore ?? 0.0;
         double readability = l3?.ReadabilityScore ?? 0.0;
 
-        // Fallbacks: if any l3 component is zero, compute from l2
-        if (relevance <= 0.0 && l2 != null)
-        {
-            relevance = RelevanceScorer.Score(l2);
-        }
+        //// Fallbacks: if any l3 component is zero, compute from l2
+        //if (relevance <= 0.0 && l2 != null)
+        //{
+        //    relevance = RelevanceScorer.Score(l2);
+        //}
 
-        if (eeat <= 0.0 && l2 != null)
-        {
-            eeat = EeatScorer.Score(l2);
-        }
+        //if (eeat <= 0.0 && l2 != null)
+        //{
+        //    eeat = EeatScorer.Score(l2);
+        //}
 
-        if (readability <= 0.0 && l2 != null)
-        {
-            readability = ReadabilityScorer.Score(l2);
-        }
+        //if (readability <= 0.0 && l2 != null)
+        //{
+        //    readability = ReadabilityScorer.Score(l2);
+        //}
 
         double total = relevance + eeat + readability;
 

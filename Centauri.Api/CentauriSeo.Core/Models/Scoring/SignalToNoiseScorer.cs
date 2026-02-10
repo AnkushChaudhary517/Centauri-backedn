@@ -11,47 +11,39 @@ namespace CentauriSeo.Core.Models.Scoring
     {
         public static double Score(OrchestratorResponse orchestratorResponse)
         {
-            var S = orchestratorResponse.ValidatedSentences.Where(x => x.InformativeType == Enums.InformativeType.Fact ||
-            x.InformativeType == Enums.InformativeType.Claim || x.InformativeType == Enums.InformativeType.Definition ||
-            x.InformativeType == Enums.InformativeType.Statistic).Count();
+            var sentences = orchestratorResponse.ValidatedSentences;
+            if (sentences == null || !sentences.Any()) return 0;
 
-            var N = orchestratorResponse.ValidatedSentences.Where(x => x.InformativeType == Enums.InformativeType.Filler ||
-            x.InformativeType == Enums.InformativeType.Transition || x.InformativeType == Enums.InformativeType.Uncertain ||
-            x.Structure == Enums.SentenceStructure.Fragment).Count();
-            if(S+N == 0)
-            {
-                return 0;
-            }
+            // 1. Signal (Value-adding content)
+            var S = sentences.Count(x => x.InformativeType == Enums.InformativeType.Fact ||
+                                         x.InformativeType == Enums.InformativeType.Claim ||
+                                         x.InformativeType == Enums.InformativeType.Definition ||
+                                         x.InformativeType == Enums.InformativeType.Statistic);
 
-            var SN_base = (double)S / (S + N);
+            // 2. Noise (Fillers and fluff)
+            var N = sentences.Count(x => x.InformativeType == Enums.InformativeType.Filler ||
+                                         x.InformativeType == Enums.InformativeType.Transition ||
+                                         x.InformativeType == Enums.InformativeType.Uncertain);
 
-            var sentencesWithSameParagraphAndHavingconsecutiveNoise = orchestratorResponse.ValidatedSentences
-                .Where(x => x.InformativeType == Enums.InformativeType.Filler ||
-                x.InformativeType == Enums.InformativeType.Transition ||
-                x.InformativeType == Enums.InformativeType.Uncertain ||
-                x.Structure == Enums.SentenceStructure.Fragment)
+            if (S + N == 0) return 0;
+
+            // snBase is between 0.0 and 1.0
+            double snBase = (double)S / (S + N);
+
+            // 3. Cluster Penalty
+            var noisyParagraphsCount = sentences
                 .GroupBy(x => x.ParagraphId)
-                .Where(g => g.Count() > 1)
-                .SelectMany(g => g)
-                .ToList();
+                .Count(g => g.Count(s => s.InformativeType == Enums.InformativeType.Filler) > 1);
 
-            var c = sentencesWithSameParagraphAndHavingconsecutiveNoise?.DistinctBy(x => x.ParagraphId).Count();
+            // Penalty logic (Max 0.20 reduction from the base ratio)
+            double totalPenalty = Math.Min(0.20, noisyParagraphsCount * 0.02);
 
-            if(c != null)
-            {
-                var maxPenalty = 0.15;
-                var penalty = 0.05;
-                while (c > 0 && penalty <=maxPenalty)
-                {
+            // Result calculation on a 0.0 to 1.0 scale
+            double finalRatio = Math.Max(0, snBase - totalPenalty);
 
-                    
-                    SN_base -= penalty;
-                    penalty += 0.05;
-                    c--;
-                }
-            }
-
-            return SN_base;
+            // 4. Adjusting to Base 10
+            // Direct multiplication by 10 to scale from 0..1 to 0..20
+            return Math.Round(finalRatio * 10, 2);
         }
     }
 }

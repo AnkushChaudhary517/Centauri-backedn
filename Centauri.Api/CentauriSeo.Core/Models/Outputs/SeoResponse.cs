@@ -156,6 +156,8 @@ public class UserVisibleFinal
     public double? EeatScore { get; set; }
     public double? ReadabilityScore { get; set; }
     public double? AiIndexingScore { get; set; }
+    public double? AuthorityScore { get; set; }
+    public double? ExpertiseScore { get; set; }
 }
 
 public class Diagnostics

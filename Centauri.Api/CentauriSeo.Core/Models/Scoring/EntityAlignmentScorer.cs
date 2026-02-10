@@ -17,7 +17,7 @@ namespace CentauriSeo.Core.Models.Scoring
                 return 0;
             }
             var C = orchestratorResponse.ValidatedSentences.Where(x => x.EntityConfidenceFlag == 1).Count();
-            return (double)C/ E;
+            return ((double)C/ E)*10;
         }
     }
 }

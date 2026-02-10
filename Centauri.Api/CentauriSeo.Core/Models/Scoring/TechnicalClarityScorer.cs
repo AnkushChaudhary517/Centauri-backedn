@@ -12,43 +12,47 @@ namespace CentauriSeo.Core.Models.Scoring
     {
         public static double Score(OrchestratorResponse orchestratorResponse)
         {
+            if (orchestratorResponse?.ValidatedSentences == null || !orchestratorResponse.ValidatedSentences.Any())
+                return 0;
 
+            var sentences = orchestratorResponse.ValidatedSentences;
+            var total = (double)sentences.Count();
             var structureScore = 0.0;
             var G = 0;
-            orchestratorResponse.ValidatedSentences?.ToList()?.ForEach(s =>
+            var entityBonus = 0.0;
+
+            foreach (var s in sentences)
             {
-                switch(s.Structure)
+                // 1. Structure Score (Weighted for Technical Clarity)
+                switch (s.Structure)
                 {
-                    case Enums.SentenceStructure.Simple:
-                        structureScore += 1.0;
-                        break;
-                        case Enums.SentenceStructure.Compound:
-                    case Enums.SentenceStructure.Complex:
-                        structureScore += 0.75;
-                        break;  
-                    case Enums.SentenceStructure.CompoundComplex:
-                        structureScore += 0.5;
-                        break;
+                    case Enums.SentenceStructure.Simple: structureScore += 1.0; break;
+                    case Enums.SentenceStructure.Compound:
+                    case Enums.SentenceStructure.Complex: structureScore += 0.85; break;
+                    case Enums.SentenceStructure.CompoundComplex: structureScore += 0.5; break;
+                    default: structureScore += 0.3; break;
                 }
 
-                if(s.IsGrammaticallyCorrect)
-                {
-                    G += 1;
-                }
-            });
-            var CS = ClaritySynthesisScorer.Score(orchestratorResponse.ValidatedSentences);
-            var SQ = (double)structureScore / (orchestratorResponse.ValidatedSentences?.Count() ?? 1);
-            var GA = 0.0;
-            var T = orchestratorResponse.ValidatedSentences.Count();
-            if (orchestratorResponse?.ValidatedSentences == null || orchestratorResponse.ValidatedSentences.Count() == 0)
-            {
-                GA = 0;
+                // 2. Grammar check
+                if (s.IsGrammaticallyCorrect || s.Structure == Enums.SentenceStructure.Fragment) G++;
+
+                // 3. Technical Quality (Entity + Relevance)
+                // Yahan entityBonus ratio 1.0 se upar nahi jana chahiye per sentence
+                if (s.EntityConfidenceFlag > 0 && s.RelevanceScore > 0.5) entityBonus += 1.0;
             }
-            else {
-                GA = (double)G / T;
-            }
-            return  (0.4 * GA) + (0.35 * SQ) + (0.25 * CS)
-;
+
+            // Ratios (All between 0.0 and 1.0)
+            var GA = (double)G / total;             // Grammar Accuracy
+            var SQ = (double)structureScore / total; // Structure Quality
+            var CS = ClaritySynthesisScorer.Score(sentences); // Synthesis (Ensure this returns 0-1)
+            var TQ = (double)entityBonus / total;    // Technical Quality factor
+
+            // Final Weighted Score Adjusted to Base 10
+            // Sum of weights (0.3 + 0.3 + 0.2 + 0.2) = 1.0
+            double weightedSum = (0.3 * GA) + (0.3 * SQ) + (0.2 * CS) + (0.2 * TQ);
+
+            // Scaling to 10
+            return Math.Round(weightedSum * 10, 2);
         }
     }
 }

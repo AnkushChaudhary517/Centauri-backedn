@@ -16,11 +16,10 @@ public static class SimplicityScorer
 
         int complexCount = list.Count(s => s.Structure == SentenceStructure.Complex ||
                                            s.Structure == SentenceStructure.CompoundComplex);
-        double complexityPercent = complexCount / (double)list.Count * 100.0;
+        double complexityPercent = complexCount / (double)list.Count * 10.0;
 
-        double complexityScore = complexityPercent / 10.0; // 0..10
+        double complexityScore = complexityPercent; // 0..10
         double baseSimplicity = 10.0 - complexityScore;
-        double simplicity = baseSimplicity / 3.0; // 0..3.33
-        return Math.Clamp(simplicity, 0.0, 3.333333);
+        return Math.Clamp(baseSimplicity, 0.0,10.0);  //out of 10
     }
 }

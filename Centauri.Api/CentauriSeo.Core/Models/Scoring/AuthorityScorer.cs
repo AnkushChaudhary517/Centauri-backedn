@@ -23,12 +23,12 @@ public static class AuthorityScorer
             double informative = InformativeTypeScore(s.InformativeType);
             double voice = VoiceScore(s.Voice);
 
-            double sentenceAuthority = functional * structure * informative * voice;
+            double sentenceAuthority = (functional * 0.2) + (structure * 0.2) + (informative * 0.4) + (voice * 0.2);
             totalAuthority += sentenceAuthority;
         }
 
-        double A_percent = (double)totalAuthority / list.Count * 100.0;
-        return Math.Clamp(A_percent / 10.0, 0.0, 10.0);
+        double A_percent = ((double)totalAuthority / list.Count) * 10.0;
+        return Math.Clamp(A_percent, 0.0, 10.0);
     }
 
     private static double FunctionalTypeScore(FunctionalType f)

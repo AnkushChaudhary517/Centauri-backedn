@@ -97,6 +97,7 @@ class SentenceOutput(BaseModel):
     answerSentenceFlag: int
     entityMentionFlag: EntityMentionFlag
     entityConfidenceFlag: int
+    Source: str
 
 class AnalysisResponse(BaseModel):
     sentences: List[SentenceOutput]
@@ -127,50 +128,283 @@ def is_self_contained(doc) -> bool:
     has_ref = any(ref in doc.text.lower() for ref in forward_refs)
     return not (starts_with_pronoun or has_ref)
 
-def detect_structure_advanced(doc) -> str:
-    verbs = [t for t in doc if t.pos_ in ("VERB", "AUX")]
-    if not verbs: return "Fragment"
-    ic_count = sum(1 for t in doc if t.dep_ == "ROOT" or (t.dep_ == "conj" and t.head.pos_ in ("VERB", "AUX")))
-    dc_count = sum(1 for t in doc if t.dep_ in ("advcl", "relcl", "ccomp"))
-    if ic_count >= 2 and dc_count >= 1: return "CompoundComplex"
-    if ic_count >= 1 and dc_count >= 1: return "Complex"
-    if ic_count >= 2: return "Compound"
-    return "Simple" if ic_count == 1 else "Fragment"
+def detect_structure_advanced(sent) -> str:
+    """Ek single sentence ki structure nikalne ke liye logic"""
+    # Verbs check
+    verbs = [t for t in sent if t.pos_ in ("VERB", "AUX")]
+    if not verbs: 
+        return "Fragment"
 
+    # Independent Clauses (IC): ROOT aur uske parallel main verbs
+    ic_count = sum(1 for t in sent if t.dep_ == "ROOT" or (t.dep_ == "conj" and t.pos_ in ("VERB", "AUX")))
+    
+    # Dependent Clauses (DC): Extra layers like 'because', 'when', 'which'
+    dc_count = sum(1 for t in sent if t.dep_ in ("advcl", "relcl", "acl", "ccomp") or t.dep_ == "mark")
+
+    # Final Classification Logic
+    if ic_count >= 2 and dc_count >= 1: 
+        return "CompoundComplex"
+    if ic_count >= 1 and dc_count >= 1: 
+        return "Complex"
+    if ic_count >= 2: 
+        return "Compound"
+    return "Simple" if ic_count == 1 else "Fragment"
+    
 def detect_clarity_synthesis(doc, voice: str, structure: str, info_type: InformativeType) -> str:
     text_lower = doc.text.lower()
-    if info_type == InformativeType.FILLER or structure == "Fragment": return "UnIndexable"
-    if any(p in text_lower for p in ["as we can see", "look at this"]): return "UnIndexable"
+    
+    # 1. UNINDEXABLE: Filler content ya aise phrases jo web context ke liye kachra hain
+    if info_type == InformativeType.FILLER or structure == "Fragment": 
+        return "UnIndexable"
+    if any(p in text_lower for p in ["as we can see", "look at this", "click here", "read more"]): 
+        return "UnIndexable"
+
+    # 2. LOGIC PREPARATION
+    # Depth of dependency tree (kitne complex branches hain sentence mein)
+    depths = [len(list(t.ancestors)) for t in doc]
+    avg_depth = sum(depths) / len(doc) if len(doc) > 0 else 0
+    
+    # Unique entities vs total tokens (High entity density means technical jargon)
+    entity_ratio = len(doc.ents) / len(doc) if len(doc) > 0 else 0
+    
+    # Verbs and Punctuation check
+    verb_count = len([t for t in doc if t.pos_ == "VERB"])
+    is_punctuated = any(t.pos_ == "PUNCT" for t in doc)
+
+    # 3. LOW CLARITY: Agar sentence bahut zyada "deep" hai ya verbs ki jagah sirf adjectives bhare hain
+    # (High depth + passive voice + no proper verbs)
+    if avg_depth > 4 or (voice == "Passive" and structure == "CompoundComplex"):
+        return "LowClarity"
+    
+    # Adjective/Adverb loading (Abhi bhi check karenge par length ke context mein nahi)
     modifiers = [t for t in doc if t.pos_ in ("ADJ", "ADV")]
-    if len(doc) > 25 or (len(doc) > 15 and len(modifiers) > 5): return "LowClarity"
-    if voice == "Active" and structure in ("Simple", "Compound") and len(doc) < 15: return "Focused"
+    if len(modifiers) / len(doc) > 0.3: # Agar 30% se zyada words sirf tareef ya quality wale hain
+        return "LowClarity"
+
+    # 4. FOCUSED: Active voice, sahi verb-to-token ratio, aur direct structure
+    # (Length check ko flexible rakha hai - Focused content 20 words tak bhi ho sakta hai)
+    if (voice == "Active" 
+        and structure in ("Simple", "Compound") 
+        and verb_count >= 1 
+        and entity_ratio < 0.2): # Bahut zyada technical names nahi hain toh "Focused" hai
+        return "Focused"
+
+    # 5. DEFAULT: Agar sentence structured hai par thoda bhari hai
     return "ModerateComplexity"
 
 def classify_informative_type_merged(doc) -> InformativeType:
     text_lower = doc.text.lower().strip()
-    if text_lower.endswith("?") or any(t.lower_ in {"what", "how", "why"} for t in doc[:1]): return InformativeType.QUESTION
+
+    # 1. QUESTION
+    if text_lower.endswith("?"):
+        return InformativeType.QUESTION
+
+    # Agar sentence "What/How" se shuru ho raha hai PAR end mein "?" nahi hai, 
+    # toh wo Declarative sentence ho sakta hai (e.g., "How you do it matters.")
+    if len(doc) > 0 and doc[0].lower_ in {"what", "how", "why", "when", "where"}:
+    # Sirf tab QUESTION bolo jab auxiliary verb (is, are, do, does) turant baad ho
+    # Ya phir end mein punct ho. 
+    # S5 yahan bach jayega kyunki "When you..." ke baad noun hai.
+        if any(t.pos_ == "AUX" for t in doc[:3]) and text_lower.endswith("?"):
+            return InformativeType.QUESTION
+
+    # 2. TRANSITION
+    if doc[0].lower_ in {"however", "therefore", "moreover", "additionally"}:
+        return InformativeType.TRANSITION
+
+    # 3. NOISE / FILLER
     noise_markers = ("meta title", "meta description", "url :", "/*", "visual suggestion")
-    if text_lower.startswith(noise_markers) or len(doc) < 4: return InformativeType.FILLER
-    if any(t.text.lower() in {"might", "could", "may", "perhaps"} for t in doc): return InformativeType.UNCERTAIN
-    if any(ent.label_ in {"PERCENT", "MONEY"} for ent in doc.ents): return InformativeType.STATISTIC
-    if any(p in text_lower for p in ["is defined as", "refers to"]): return InformativeType.DEFINITION
-    return InformativeType.FACT if any(ent.label_ in {"DATE", "GPE", "LAW"} for ent in doc.ents) else InformativeType.CLAIM
+    if text_lower.startswith(noise_markers):
+        return InformativeType.FILLER
+
+    # very short + no entities = filler
+    if len(doc) < 4 and not doc.ents:
+        return InformativeType.FILLER
+
+    # 4. DEFINITION
+    if any(p in text_lower for p in {
+        "is defined as",
+        "refers to",
+        "means",
+        "is a type of"
+    }):
+        return InformativeType.DEFINITION
+
+    # linguistic definition pattern: Noun + is + Noun
+    if (
+        len(doc) > 3
+        and doc[0].pos_ in {"NOUN", "PROPN"}
+        and doc[1].lower_ == "is"
+        and doc[2].pos_ in {"DET", "NOUN", "ADJ"}
+    ):
+        return InformativeType.DEFINITION
+
+    # 5. UNCERTAIN
+    if any(t.lemma_ in {"might", "could", "may", "perhaps", "likely"} for t in doc):
+        return InformativeType.UNCERTAIN
+
+    # 6. STATISTIC
+    if any(ent.label_ in {"PERCENT", "MONEY", "QUANTITY"} for ent in doc.ents):
+        return InformativeType.STATISTIC
+
+    # 7. FACT (authoritative entities)
+    if any(ent.label_ in {"DATE", "GPE", "LAW", "ORG"} for ent in doc.ents):
+        return InformativeType.FACT
+
+    # 8. DEFAULT
+    return InformativeType.CLAIM
 
 def detect_info_quality_merged(doc, text: str) -> str:
-    if re.search(r"\b(according to|as per|reports that)\b", text.lower()): return "Derived"
-    if any(ent.label_ in {"ORG", "GPE", "LAW"} for ent in doc.ents): return "WellKnown"
+    text_lower = text.lower()
+    
+    # 1. FALSE: Extreme claims or suspicious patterns
+    # Logical contradictions, exaggerated superlatives, or obvious spam patterns
+    if re.search(r"\b(guaranteed|instantly|always|never|100% true|no doubt)\b", text_lower):
+        # Yahan context check hota hai, agar claim bina evidence ke extreme hai toh False/High-Risk
+        return "False"
+
+    # 2. DERIVED: Attribution logic (According to, Cited by, etc.)
+    # Isme humne patterns badha diye hain for better accuracy
+    derived_patterns = r"\b(according to|as per|reports that|studies show|cited by|based on|referencing)\b"
+    if re.search(derived_patterns, text_lower):
+        return "Derived"
+
+    # 3. UNIQUE: Personal experience and First-hand insights
+    # "I found", "In my experience", "Our testing revealed"
+    unique_patterns = r"\b(in my experience|i found|our testing|we discovered|unique insight|specifically observed)\b"
+    if re.search(unique_patterns, text_lower) or any(token.text.lower() in {"i", "my", "we", "our"} for token in doc):
+        # Personal pronouns + observation verbs usually indicate unique/first-hand info
+        return "Unique"
+
+    # 4. WELLKNOWN: Public facts, Entities, and Legal mentions
+    # Entities like Organizations (IRS), Laws, and Dates
+    if any(ent.label_ in {"ORG", "GPE", "LAW", "DATE", "EVENT"} for ent in doc.ents):
+        return "WellKnown"
+
+    # 5. PARTIALLYKNOWN: Default fallback
+    # Jab info vague ho ya half-context mein ho
     return "PartiallyKnown"
+import re
+
+# Regex to detect numbering prefixes like i), ii), 1., a), etc.
+NUMBERING_REGEX = re.compile(r'^\s*(?:[ivxlcdm]+|[0-9]+|[a-z]+)(?:[\.\)])\s+', re.IGNORECASE)
+# Pehle ye install kar lena: pip install pyspellchecker
+import re
 
 def check_grammar_heuristics(doc, text: str) -> bool:
-    if not text or len(text) < 2: return False
-    has_root_verb = any(t.dep_ == "ROOT" and (t.pos_ in ["VERB", "AUX"]) for t in doc)
-    return has_root_verb and text[0].isupper() and text[-1] in ".?!\""
+    if not text or len(text.strip()) < 2: 
+        return False
 
-# --- 4. ENGINE: analyze_single_sentence ---
+    raw_text = text.strip()
+    
+    for sent in doc.sents:
+        for i, t in enumerate(sent):
+            # 1. BLUNT TENSE ERROR (is treat, is file)
+            # 'be' verb ke turant baad agar Base Form (VB) hai toh 100% galti hai
+            if t.lemma_ == "be" and i + 1 < len(sent):
+                nxt = sent[i+1]
+                if nxt.tag_ == "VB": 
+                    return False
 
+            # 2. BLUNT SUBJECT-VERB MISMATCH (is Requirements)
+            # Singular 'is' aur Plural attribute ka combo
+            if t.lemma_ == "be" and "Number=Sing" in t.morph:
+                for child in t.children:
+                    if child.dep_ in {"attr", "nsubj"} and "Number=Plur" in child.morph:
+                        return False
+
+            # 3. BLUNT SPELLING/OOV (telled, busines)
+            # Technical Acronyms (EIN, LLC) ko upper-case logic se bacha liya hai
+            if t.is_alpha and not t.is_stop and not t.ent_type_:
+                if hasattr(t, 'is_oov') and t.is_oov:
+                    # Acronyms like EINs, LLCs are ignored
+                    is_acronym = t.text.isupper() or (t.text[:-1].isupper() and t.text.endswith('s'))
+                    if not is_acronym:
+                        return False
+
+    # 4. CAPITALIZATION (Starting with lowercase)
+    # i), 1) jaise numbering ko clean karke check karta hai
+    content = re.sub(r'^(\d+[\.\)]|[a-zA-Z][\.\)]|[ivxIVX]+[\.\)]|\(\w\))\s*', '', raw_text).strip()
+    if content and content[0].islower() and not content[0].isdigit():
+        return False
+
+    return True
+
+    
+def identify_source_type_semantic(doc, text: str) -> str:
+    text_lower = text.lower().strip()
+    
+    # --- 0. PRE-REQUISITES ---
+    subjects = [t.text.lower() for t in doc if "subj" in t.dep_]
+    # Check for specific entities (IRS, ACH, GPE, etc.)
+    has_external_entity = any(ent.label_ in {"ORG", "GPE", "LAW", "MONEY", "CARDINAL"} for ent in doc.ents)
+    has_brand = "inkle" in text_lower # Specific brand recognition
+    
+    # Action/Verb analysis
+    root_verb = [t.lemma_ for t in doc if t.dep_ == "ROOT"]
+    root_verb = root_verb[0] if root_verb else ""
+
+    # --- 1. FIRST PARTY (Publisher's Expertise/Action) ---
+    # Logic: If brand name is present OR First-person used with internal actions
+    first_person_markers = {"we", "our", "us", "my", "i"}
+    discovery_keywords = {"analyze", "find", "audit", "proprietary", "data", "observe", "research", "platform", "help"}
+    
+    if has_brand or any(s in first_person_markers for s in subjects):
+        # Agar brand khud ki baat kar raha hai ya "Humein mila" bol raha hai
+        if any(k in text_lower for k in discovery_keywords) or root_verb in {"help", "provide", "analyze"}:
+            return "FirstParty"
+        # Contextual First Party (e.g., "Our team recommends")
+        if "our" in text_lower:
+            return "FirstParty"
+
+    # --- 2. THIRD PARTY (Regulatory/External Authority) ---
+    # Logic: Agar IRS, Tax, Rules, ya Laws ki baat hai aur hum (First Party) claim nahi kar rahe
+    regulatory_keywords = {"irs", "tax", "form", "rule", "requirement", "penalty", "law", "government", "deadline", "filing"}
+    
+    # A. Explicit Attribution (According to, reports)
+    referencing_markers = {"according", "report", "state", "cite", "publish", "mention", "require"}
+    if any(m in text_lower for m in referencing_markers):
+        if not any(s in first_person_markers for s in subjects):
+            return "ThirdParty"
+
+    # B. Implicit Attribution (Tax facts are always Third Party)
+    # This fixes S6, S14, S22, S29
+    if any(rk in text_lower for rk in regulatory_keywords) or has_external_entity:
+        # Agar sentence Fact ya Statistic hai aur first person missing hai
+        if not any(s in first_person_markers for s in subjects):
+            return "ThirdParty"
+
+    # --- 3. SECOND PARTY (Direct Engagement) ---
+    # Logic: Direct quotes, interviews, or "told us"
+    interaction_verbs = {"interview", "told", "confirm", "respond", "speak"}
+    if root_verb in interaction_verbs and any(p in text_lower for p in ["us", "me", "our"]):
+        return "SecondParty"
+    if "exclusive" in text_lower and "interview" in text_lower:
+        return "SecondParty"
+
+    # --- 4. FALLBACK FOR TECHNICAL CONTEXT ---
+    # Agar 1099 jaisa technical term hai, toh wo third-party documentation se hi hai
+    if re.search(r"\b(1099|nec|misc|k-1|w2)\b", text_lower):
+        return "ThirdParty"
+
+    return "Unknown"
+    
+    
 def analyze_logic(text: str, s_id: str, keyword_doc, state: Dict, h_tag: str = None, p_id: str = None) -> SentenceOutput:
     doc = nlp(text)
     info_type = classify_informative_type_merged(doc)
+    # Target types for source attribution
+    source_trigger_types = {
+        InformativeType.FACT, 
+        InformativeType.CLAIM, 
+        InformativeType.DEFINITION, # Definitions often have sources
+        InformativeType.STATISTIC
+    }
+    
+    source_value = "Unknown"
+    if info_type in source_trigger_types:
+        # Using Semantic brain instead of just hardcoded strings
+        source_value = identify_source_type_semantic(doc, text)
     voice = "Passive" if any(t.dep_ == "auxpass" for t in doc) else "Active"
     struct = detect_structure_advanced(doc)
     relevance = doc.similarity(keyword_doc) if doc.vector_norm and keyword_doc.vector_norm else 0.0
@@ -205,7 +439,8 @@ def analyze_logic(text: str, s_id: str, keyword_doc, state: Dict, h_tag: str = N
         HasPronoun=not is_self_contained(doc), EntityCount=len(unique_ents), RelevanceScore=round(relevance, 4),
         answerSentenceFlag=is_answer,
         entityMentionFlag=EntityMentionFlag(value=1 if unique_ents else 0, entity_count=len(unique_ents), entities=unique_ents),
-        entityConfidenceFlag=1 if (unique_ents and not any(h in text.lower() for h in ["might", "could", "maybe"])) else 0
+        entityConfidenceFlag=1 if (unique_ents and not any(h in text.lower() for h in ["might", "could", "maybe"])) else 0,
+        Source=source_value
     )
 
 @app.post("/get-subtopics")
@@ -259,6 +494,7 @@ async def get_subtopics(request: CompetitorAnalysisRequest):
                 already_grouped.add(idx)
 
     return final_output
+    
 @app.post("/similarity", response_model=SimilarityResponse)
 def similarity(req: SimilarityRequest):
     return SimilarityResponse(similarity=compute_similarity(req.text1, req.text2))
@@ -281,30 +517,48 @@ def analyze(request: AnalysisRequest):
 def process_article(request: ArticleRequest):
     soup = BeautifulSoup(request.htmlContent, "html.parser")
     results, first_id, s_count, p_count = [], None, 1, 1
-    kw_doc, state = nlp(request.primaryKeyword.lower()), {"is_keyword_active": True}
-    processed_texts, pointer_regex = set(), re.compile(r'^([a-zA-Z0-9]{1,3}\.)+$')
+    
+    # Primary keyword setting
+    kw_doc = nlp(request.primaryKeyword.lower())
+    state = {"is_keyword_active": True}
+    processed_texts = set()
 
+    # Saare block elements ko identify karna
     for block in soup.find_all(is_block_element):
-        if any(is_block_element(p) for p in block.parents): continue
+        # Nested blocks avoid karne ke liye (e.g., div inside div)
+        if any(is_block_element(p) for p in block.parents): 
+            continue
+            
+        # 1. Pura Block Text extract karna (No sentence breaking here)
         raw_text = block.get_text(separator=" ", strip=True)
-        if not raw_text or raw_text in processed_texts: continue
-        
-        doc = nlp(raw_text)
-        temp_sents = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
-        merged_sents, skip = [], False
-        for i in range(len(temp_sents)):
-            if skip: (skip := False); continue
-            if pointer_regex.match(temp_sents[i]) and (i+1) < len(temp_sents):
-                merged_sents.append(f"{temp_sents[i]} {temp_sents[i+1]}"); skip = True
-            elif not pointer_regex.match(temp_sents[i]): merged_sents.append(temp_sents[i])
+        if not raw_text or raw_text in processed_texts: 
+            continue
 
-        for text in merged_sents:
-            res = analyze_logic(text, f"S{s_count}", kw_doc, state, block.name, f"P{p_count}")
-            if res.answerSentenceFlag == 1 and first_id is None: first_id = res.SentenceId
-            results.append(res); s_count += 1
-        processed_texts.add(raw_text); p_count += 1
+        # 2. Table Rows (TR) handling: Inhe ek unit ki tarah join karna
+        if block.name == 'tr':
+            raw_text = " - ".join([td.get_text(strip=True) for td in block.find_all('td') if td.get_text(strip=True)])
+
+        # 3. Analyze Logic call: Pura block ab ek 'text' unit ban chuka hai
+        # Ab 'analyze_logic' ko ek paragraph/section ka text milega, jisse Intent aur Relevance sahi niklega
+        res = analyze_logic(
+            text=raw_text, 
+            s_id=f"S{s_count}", 
+            keyword_doc=kw_doc, 
+            state=state, 
+            h_tag=block.name, 
+            p_id=f"P{p_count}"
+        )
+
+        # First Answer Detection
+        if res.answerSentenceFlag == 1 and first_id is None: 
+            first_id = res.SentenceId
+            
+        results.append(res)
+        processed_texts.add(raw_text)
+        s_count += 1 # Har block ek s_id hai
+        p_count += 1
+
     return AnalysisResponse(sentences=results, answerPositionIndex=first_id)
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

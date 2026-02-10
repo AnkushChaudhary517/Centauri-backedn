@@ -20,7 +20,7 @@ public static class IntentScorer
             s.InformativeType == InformativeType.Definition ||
             s.InformativeType == InformativeType.Observation);
 
-        double ratio = informational / (double)list.Count;
-        return Math.Clamp(ratio * 10.0, 0.0, 10.0);
+        double ratio = (informational / (double)list.Count)/10; //base 10
+        return Math.Clamp(ratio * 10, 0.0, 10.0); ///0...10
     }
 }

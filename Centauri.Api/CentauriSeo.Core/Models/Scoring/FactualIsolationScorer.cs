@@ -11,16 +11,37 @@ namespace CentauriSeo.Core.Models.Scoring
     {
         public static double Score(OrchestratorResponse orchestratorResponse)
         {
-            var factualList = orchestratorResponse.ValidatedSentences.Where(x => x.InformativeType == Enums.InformativeType.Fact || x.InformativeType == Enums.InformativeType.Statistic);
-             var pragraphIdsWithOnlyFacts = orchestratorResponse.ValidatedSentences
+            if (orchestratorResponse?.ValidatedSentences == null || !orchestratorResponse.ValidatedSentences.Any())
+                return 0;
+
+            // 1. Saare facts nikal lo
+            var factualList = orchestratorResponse.ValidatedSentences
+                .Where(x => x.InformativeType == Enums.InformativeType.Fact ||
+                            x.InformativeType == Enums.InformativeType.Statistic ||
+                            x.InformativeType == Enums.InformativeType.Definition)
+                .ToList();
+
+            // Agar article mein koi fact hi nahi hai, toh isolation score 0
+            if (factualList.Count == 0) return 0;
+
+            // 2. Wo Paragraphs dhoondo jo "Purely Informative" hain (Authority Blocks)
+            var pragraphIdsWithOnlyFacts = orchestratorResponse.ValidatedSentences
                 .GroupBy(x => x.ParagraphId)
-                .Where(g => g.All(s => s.InformativeType == Enums.InformativeType.Fact || s.InformativeType == Enums.InformativeType.Statistic || s.InformativeType == Enums.InformativeType.Definition))
+                .Where(g => g.All(s => s.InformativeType == Enums.InformativeType.Fact ||
+                                       s.InformativeType == Enums.InformativeType.Statistic ||
+                                       s.InformativeType == Enums.InformativeType.Definition))
                 .Select(g => g.Key)
                 .ToHashSet();
 
-            var isolatedFactualSentences = factualList.Where(x => pragraphIdsWithOnlyFacts.Contains(x.ParagraphId)).ToList();
+            // 3. Isolated facts count karo
+            var isolatedFactualSentencesCount = factualList.Count(x => pragraphIdsWithOnlyFacts.Contains(x.ParagraphId));
 
-            return ((double)isolatedFactualSentences.Count) / (double)orchestratorResponse.ValidatedSentences.Count;
+            // 4. Ratio: (Isolated Facts / Total Facts)
+            double isolationRatio = (double)isolatedFactualSentencesCount / factualList.Count;
+
+            // 5. Adjusting to Base 10
+            // Result will be between 0.00 and 10.00
+            return Math.Round(isolationRatio * 10, 2);
         }
     }
 }

@@ -69,28 +69,31 @@ public static class KeywordScorer
     private const double W_URL = 2.0;
     private const double W_H2_H3 = 1.0;
     private const double W_Desc = 1.0;
-
-    public static async Task<double> CalculateKeywordScore(string primaryKeyword, List<string> secondaryKeywords,List<string> variants, ContentData content)
+    public static async Task<double> CalculateKeywordScore(string primaryKeyword, List<string> secondaryKeywords, List<string> variants, ContentData content)
     {
-        variants.Add(primaryKeyword.ToLower()); // Ensure exact match is in pool
+        // 1. Safety check
+        if (string.IsNullOrEmpty(primaryKeyword) || content == null) return 0.0;
 
-        // 2. Calculate P-Score (Placement)
-        double pScore = CalculatePScore(variants, secondaryKeywords, content);
+        // 2. Ensure variants are distinct and lowercase
+        var uniqueVariants = variants.Select(v => v.ToLower()).ToList();
+        if (!uniqueVariants.Contains(primaryKeyword.ToLower()))
+        {
+            uniqueVariants.Add(primaryKeyword.ToLower());
+        }
 
-        // 3. Calculate F-Score (Frequency)
-        double fScore = CalculateFScore(variants, secondaryKeywords, content.RawBodyText);
+        // 3. P-Score (Max 5.0) -> Normalized to 10.0
+        double pScore = CalculatePScore(uniqueVariants, secondaryKeywords, content);
+        double normalizedPScore = Math.Min(5.0, pScore) * 2; // Clamp at 5 to ensure max 10
 
-        // 4. Final Weighted Calculation (60/40 Rule)
-        double finalKs = (pScore * 0.6) + (fScore * 0.4);
+        // 4. F-Score (Max 10.0)
+        double fScore = CalculateFScore(uniqueVariants, secondaryKeywords, content.RawBodyText);
+        double normalizedFScore = Math.Min(10.0, fScore); // Clamp at 10
 
-        //return new KeywordScoreResult
-        //{
-        //    P_Score = pScore,
-        //    F_Score = fScore,
-        //    FinalKS = Math.Round(finalKs, 2),
-        //    VariantsUsed = variants
-        //};
-        return Math.Round(finalKs, 2);
+        // 5. Final Weighted Calculation (0.6 + 0.4 = 1.0 weight)
+        double finalKs = (normalizedPScore * 0.6) + (normalizedFScore * 0.4);
+
+        // 6. Round and Cap
+        return Math.Min(10.0, Math.Round(finalKs, 2));
     }
     private static double DensityToScore(double actual, (double low, double high) target)
     {
@@ -131,21 +134,23 @@ public static class KeywordScorer
         if (string.IsNullOrWhiteSpace(bodyText)) return 0;
 
         int totalWords = bodyText.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-        int pkCount = CountOccurrences(bodyText, variants);
-        int skCount = CountOccurrences(bodyText, skList);
+        double pkDensity = (double)CountOccurrences(bodyText, variants) / totalWords * 100;
+        double skDensity = (double)CountOccurrences(bodyText, skList) / totalWords * 100;
 
-        double pkDensity = (double)pkCount / totalWords * 100;
-        double skDensity = (double)skCount / totalWords * 100;
+        // Score_PTK (Primary): Perfect 10 if 0.5-1.5%. If > 1.5%, start Over-optimization penalty.
+        double scorePTK = 0;
+        if (pkDensity >= 0.5 && pkDensity <= 1.5) scorePTK = 10;
+        else if (pkDensity > 1.5) scorePTK = 7; // Keyword stuffing penalty
+        else if (pkDensity > 0) scorePTK = 5;
 
-        // Score_PTK: Target 0.5% - 1.5%
-        double scorePTK = (pkDensity >= 0.5 && pkDensity <= 1.5) ? 10 : (pkDensity > 0 ? 5 : 0);
-
-        // Score_SK: Target 1.5% - 3.0%
-        double scoreSK = (skDensity >= 1.5 && skDensity <= 3.0) ? 10 : (skDensity > 0 ? 5 : 0);
+        // Score_SK (Secondary): Perfect 10 if 1.5-3.0%
+        double scoreSK = 0;
+        if (skDensity >= 1.5 && skDensity <= 3.0) scoreSK = 10;
+        else if (skDensity > 3.0) scoreSK = 7;
+        else if (skDensity > 0) scoreSK = 5;
 
         return (scorePTK + scoreSK) / 2.0;
     }
-
     // Helper: Case-insensitive search for any string in a list
     private static bool ContainsAny(string text, List<string> items)
     {

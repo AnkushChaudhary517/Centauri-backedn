@@ -8,21 +8,33 @@ namespace CentauriSeo.Application.Scoring;
 
 public static class ExpertiseScorer
 {
-    // Returns 0..20
+    // Returns 0..10
     public static double Score(IEnumerable<ValidatedSentence> sentences)
     {
-        var list = sentences.ToList();
-        if (!list.Any()) return 0.0;
+        int totalCount = 0;
+        int expertiseCount = 0;
 
-        int E = list.Count(s =>
-            s.InformativeType == InformativeType.Opinion ||
-            s.InformativeType == InformativeType.Prediction ||
-            s.InformativeType == InformativeType.Observation ||
-            (s.HasPronoun) ||
-            s.InformativeType == InformativeType.Suggestion);
+        foreach (var s in sentences)
+        {
+            totalCount++;
 
-        double expertisePercent = E / (double)list.Count * 100.0;
-        double baseScore = expertisePercent / 10.0; // 0..10
-        return Math.Clamp(baseScore * 1.0, 0.0, 10.0);
+            // Simplified check: Opinion, Prediction, Observation, Suggestion, or has Pronouns
+            bool isExpertise = s.InformativeType switch
+            {
+                InformativeType.Opinion => true,
+                InformativeType.Prediction => true,
+                InformativeType.Observation => true,
+                InformativeType.Suggestion => true,
+                _ => s.HasPronoun // Fallback to pronoun check
+            };
+
+            if (isExpertise) expertiseCount++;
+        }
+
+        if (totalCount == 0) return 0.0;
+
+        double score = (expertiseCount / ((double)totalCount-sentences.Count(x => x.InformativeType == InformativeType.Uncertain))) * 10; //scaled to 10
+
+        return Math.Clamp(score, 0.0, 10.0);
     }
 }

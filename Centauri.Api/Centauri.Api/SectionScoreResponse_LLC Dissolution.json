@@ -1,0 +1,85 @@
+{
+  "keyword": "LLC Dissolution",
+  "competitors": [
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG4bZFuEUaM9vG7ZhT32H12HKLaP46Y5cNTh90hjr417dasha7OOVo3l4eyhRL2gB30y9PmHkvT5HTmwLDIWx9q3oI2p5kyLBi2CqmPlIZr2dJDJs0EEIk1wcTUs5xKTMNePpeSE157YLgUvHFX-R78eCu7n03mRPnlY6jnC91e3-40-C-wEwkZZHmFa9vcVR3_2o5zv69YH3PXYHWWu5StCONynP-5qoMMfc0hPA==",
+      "headings": [
+        "How to close an LLC: Dissolution, winding up, and termination",
+        "The triggering event.",
+        "Member vote.",
+        "What typically has to be done.",
+        "Filing a document."
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHMsV9kq1Ck_5F0SRq7sIDBUMiQwp8w4j-TkDEypauCrKxq4CjaLFdCVdTZx_v9LePssfkfu40wGIQovhyoqhS_z-E6M9ERfNjS2GzgV9icJhn6n5CCcZLz1BCLC1s5ZV7nYTN33AVkTmlYe_TeCd8Z99U=",
+      "headings": [
+        "How to Dissolve an LLC the Right Way | The Complete Guide",
+        "Steps to Dissolve an LLC",
+        "Vote to close your LLC",
+        "What to do to close an LLC?",
+        "File article of dissolution"
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFJS3GrB8S4PFcPmUqHmcTOHZ6NVZu5xmlsCvB9UX5JtysY3FKAzet2iue3quyuC10188VRU7bXtitSAHsvssx0pXBXnb3mpQxyqv2bi-OpeNAI2ABderWedfNqH72kFyISJGEK7Z0tzZtuoVJW3fhYjQ==",
+      "headings": [
+        "Dissolving an LLC",
+        "You'll also need to file official paperwork with your state, usually called \"Articles of Dissolution,\" to legally dissolve your LLC with the state.",
+        "File Final Tax Returns and Pay Your Taxes When You Go Out of Business."
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHV9oGR-3eorIpH6fgVHG90gmIIyglXqNQI8uavmZeSjBONgbTEa85G77yxE7KzJWGzfIs4xH0ADwmL_Sg3tsroGFaAzoqaVCbuyZ_2dnPzv3Aqp4m5-ryRh6aB9bJcqr1zKlwDV9-LhhbLg6NfHdwEXW5o6uw==",
+      "headings": [
+        "How to Dissolve an LLC: A Step-by-Step Guide",
+        "How to dissolve an LLC: A comprehensive overview.",
+        "What does it mean to dissolve an LLC?",
+        "Step 1: Decide to close your business",
+        "Step 5: File dissolution papers"
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGsaFEMT7kgI2ka44xCNR05Y8GFUrZNCCOkE8db9q7FSWWvbssjEb6sUmIiYN_lICMsVd4FQRBbPR3-tdNXotQfKEL9af-7w5bs-mn1Ke2GYUIxgeS-Jg0K1e3m6BSack59U79WZkdTw_qvd-dwcIEvXzIoRPHVqhOvdw==",
+      "headings": [
+        "LLC Dissolution - Why and How?",
+        "Section 17707.09 provides a means for LLC members to revoke a filed certificate of dissolution and continue the business of an LLC in a number of circumstances.",
+        "Commonly asked questions about the dissolution of LLCs include:",
+        "Section 17707.08 sets forth the filing requirements with the Secretary of State in the process of dissolution",
+        "Section 17707.05 sets forth the order in which the LLC assets may be distributed in the process of winding up.",
+        "Section 17707.06 permits a canceled LLC (one that has filed a certificate of cancellation as the final step in dissolution) to continue to exist for certain purposes",
+        "Section 17707.07 provides for enforcement of causes of action against dissolved LLCs."
+      ],
+      "intent": "Informational"
+    }
+  ],
+  "intent": "Informational",
+  "variants": [
+    "dissolve LLC",
+    "dissolving an LLC",
+    "LLC dissolves",
+    "LLC dissolution process",
+    "LLC dissolution requirements",
+    "LLC dissolution laws",
+    "close LLC",
+    "terminate LLC",
+    "shut down LLC",
+    "cancel LLC registration",
+    "winding up LLC",
+    "liquidate LLC",
+    "end LLC",
+    "how to dissolve an LLC",
+    "steps to dissolve an LLC",
+    "how to close an LLC",
+    "articles of dissolution LLC",
+    "LLC termination",
+    "cancel LLC",
+    "administrative dissolution LLC",
+    "revoke LLC dissolution",
+    "dissolve my LLC"
+  ]
+}

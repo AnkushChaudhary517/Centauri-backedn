@@ -24,6 +24,8 @@ public class GeminiSentenceTag
     public int AnswerSentenceFlag { get; set; } = 0;
     public int EntityConfidenceFlag { get; set; } = 0;
 
+    public SourceType Source { get; set; }
+
     public EntityMentionFlag EntityMentionFlag { get; set; }
 }
 

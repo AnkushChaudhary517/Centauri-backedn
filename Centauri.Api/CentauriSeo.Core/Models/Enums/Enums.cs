@@ -14,6 +14,13 @@
         Passive,
         Both
     }
+    public enum SourceType
+    {
+        Unknown,
+        FirstParty,
+        SecondParty,
+        ThirdParty
+    }
     public enum InformativeType
     {
         Fact,

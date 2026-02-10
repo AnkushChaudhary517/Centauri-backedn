@@ -20,6 +20,8 @@ public class ValidatedSentence
     public SentenceStructure Structure { get; init; }
     public VoiceType Voice { get; init; }
 
+    public SourceType Source { get; init; }
+
     public InfoQuality InfoQuality { get; init; }
     public FunctionalType FunctionalType { get; set; }
     public FactRetrievalType FactRetrievalType { get; set; }

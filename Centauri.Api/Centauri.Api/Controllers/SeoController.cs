@@ -55,6 +55,12 @@ public class SeoController : ControllerBase
             response.InputIntegrity = EnsureInputIntegrity(request);
             var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
             var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
+            var headings = fullLocalLlmTags.Sentences.Where(s => s.HtmlTag?.ToLower() != "h1" && s.HtmlTag.StartsWith("h", StringComparison.InvariantCultureIgnoreCase))
+                .Select(s => s.Sentence).ToList();
+            if (request.SecondaryKeywords == null || request.SecondaryKeywords.Count==0)
+            {
+                request.SecondaryKeywords = SecondaryKeywordGenerator.ExtractSecondaryKeywords(request.PrimaryKeyword, headings);
+            }
             _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
 
             OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request,fullLocalLlmTags);
@@ -301,8 +307,8 @@ public class SeoController : ControllerBase
     private async Task<AiIndexinglevelLocalLlmResponse> GetFullSentenceTaggingFromLocalLLP(string primaryKeyword, string htmlContent)
     {
         HttpClient client = new HttpClient();
-        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
-        //string apiUrl = "http://localhost:8000/process-article";
+        //string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
+        string apiUrl = "http://localhost:8000/process-article";
         try
         {
             var options = new JsonSerializerOptions

@@ -65,6 +65,7 @@ public static class Phase2_ArbitrationEngine
             InformativeType = finalType,
             Structure = localTags.Structure,
             Voice = localTags.Voice,
+            Source = localTags.Source,
             HasCitation = localTags.ClaimsCitation,
             Confidence = confidence,
             IsGrammaticallyCorrect = localTags.IsGrammaticallyCorrect,

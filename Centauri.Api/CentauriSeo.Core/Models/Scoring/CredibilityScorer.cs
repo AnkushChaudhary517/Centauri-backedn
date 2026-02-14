@@ -17,8 +17,8 @@ public static class CredibilityScorer
         int C = 0;
 
         // First pass: if any Statistic without citation => immediate 0 (strict rule)
-        //if (list.Any(s => s.InformativeType == InformativeType.Statistic && !s.HasCitation))
-        //    return 0.0;
+        if (list.Any(s => s.InformativeType == InformativeType.Statistic && s.Source == SourceType.Unknown))
+            return 0.0;
 
         foreach (var s in list)
         {
@@ -28,20 +28,13 @@ public static class CredibilityScorer
                 if (s.Source != SourceType.Unknown)
                 {
                     C += 1;
-                } else
-                {
-                    //C -= 1;
-                }
+                } 
             }
             else if (s.InformativeType == InformativeType.Prediction)
             {
                 if (s.Source != SourceType.Unknown)
                 {
                     C += 1;
-                }
-                else
-                {
-                    //C -= 1;
                 }
             }
             else if (s.InformativeType == InformativeType.Definition)
@@ -50,18 +43,18 @@ public static class CredibilityScorer
             }
             else if (s.InformativeType == InformativeType.Claim)
             {
-                if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source == SourceType.Unknown)
-                {
-                    //C -= 1;
-                }
+                //if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source == SourceType.Unknown)
+                //{
+                //    C += 1;
+                //}
                 if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source != SourceType.Unknown) C += 1;
                 //if (s.HasCitation) C += 1;
-                else if (s.InfoQuality == InfoQuality.WellKnown || s.InfoQuality == InfoQuality.Unique)
+                else if ((s.InfoQuality == InfoQuality.WellKnown || s.InfoQuality == InfoQuality.Unique) && s.Source != SourceType.Unknown)
                     C += 1;
             }
             else 
             {
-                if (s.Source != SourceType.Unknown) C += 1;
+                //if (s.Source != SourceType.Unknown) C += 1;
             }
             // others contribute 0
         }

@@ -7,6 +7,7 @@ using CentauriSeo.Core.Models.Output;
 using CentauriSeo.Core.Models.Outputs;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
+using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using Microsoft.AspNetCore.Mvc;
@@ -25,11 +26,20 @@ public class SeoController : ControllerBase
 {
     private readonly Phase1And2OrchestratorService _orchestrator;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly GroqClient _groqClient;
 
-    public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor)
+    public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor, GroqClient groqClient)
     {
         _orchestrator = orchestrator;
         _httpContextAccessor = httpContextAccessor;
+        _groqClient = groqClient;
+    }
+
+    [HttpPost("categories-test")]
+    public async Task<ActionResult<RecommendationResponseDTO>> TestCategories([FromBody] List<string> h2Tags)
+    {
+        var response = await _groqClient.GetGroqCategorization(h2Tags);
+        return Ok(response);
     }
 
     [HttpPost("recommendations-test")]
@@ -57,10 +67,10 @@ public class SeoController : ControllerBase
             var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
             var headings = fullLocalLlmTags.Sentences.Where(s => s.HtmlTag?.ToLower() != "h1" && s.HtmlTag.StartsWith("h", StringComparison.InvariantCultureIgnoreCase))
                 .Select(s => s.Sentence).ToList();
-            if (request.SecondaryKeywords == null || request.SecondaryKeywords.Count==0)
-            {
-                request.SecondaryKeywords = SecondaryKeywordGenerator.ExtractSecondaryKeywords(request.PrimaryKeyword, headings);
-            }
+            //if (request.SecondaryKeywords == null || request.SecondaryKeywords.Count==0)
+            //{
+            //    request.SecondaryKeywords = SecondaryKeywordGenerator.ExtractSecondaryKeywords(request.PrimaryKeyword, headings);
+            //}
             _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
 
             OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request,fullLocalLlmTags);

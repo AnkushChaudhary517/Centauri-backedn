@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Collections.Generic;
 using CentauriSeo.Core.Models.Sentences;
+using CentauriSeo.Core.Models.Outputs;
 
 namespace CentauriSeo.Application.Scoring;
 
@@ -69,28 +70,31 @@ public static class KeywordScorer
     private const double W_URL = 2.0;
     private const double W_H2_H3 = 1.0;
     private const double W_Desc = 1.0;
-    public static async Task<double> CalculateKeywordScore(string primaryKeyword, List<string> secondaryKeywords, List<string> variants, ContentData content)
+    public static async Task<double> CalculateKeywordScore(string primaryKeyword, List<string> secondaryKeywords, List<CentauriSeo.Core.Models.Outputs.Variant2> variants, ContentData content)
     {
         // 1. Safety check
         if (string.IsNullOrEmpty(primaryKeyword) || content == null) return 0.0;
 
-        // 2. Ensure variants are distinct and lowercase
-        var uniqueVariants = variants.Select(v => v.ToLower()).ToList();
-        if (!uniqueVariants.Contains(primaryKeyword.ToLower()))
+        variants.Add(new Variant2()
         {
-            uniqueVariants.Add(primaryKeyword.ToLower());
-        }
+            Text = primaryKeyword,
+            VariantType=Variant2Type.Exact
+        });
+        // 2. Ensure variants are distinct and lowercase
+        //var uniqueVariants = variants.Select(v => v.Text.ToLower()).ToList();
+        //if (!uniqueVariants.Contains(primaryKeyword.ToLower()))
+        //{
+        //    uniqueVariants.Add(primaryKeyword.ToLower());
+        //}
 
         // 3. P-Score (Max 5.0) -> Normalized to 10.0
-        double pScore = CalculatePScore(uniqueVariants, secondaryKeywords, content);
-        double normalizedPScore = Math.Min(5.0, pScore) * 2; // Clamp at 5 to ensure max 10
+        double pScore = CalculatePScore(variants, secondaryKeywords, content);
 
         // 4. F-Score (Max 10.0)
-        double fScore = CalculateFScore(uniqueVariants, secondaryKeywords, content.RawBodyText);
-        double normalizedFScore = Math.Min(10.0, fScore); // Clamp at 10
+        double fScore = CalculateFScore(variants, secondaryKeywords, content.RawBodyText);
 
         // 5. Final Weighted Calculation (0.6 + 0.4 = 1.0 weight)
-        double finalKs = (normalizedPScore * 0.6) + (normalizedFScore * 0.4);
+        double finalKs = (pScore * 0.6) + (fScore * 0.4);
 
         // 6. Round and Cap
         return Math.Min(10.0, Math.Round(finalKs, 2));
@@ -115,64 +119,109 @@ public static class KeywordScorer
         return 0.0;
     }
 
-    private static double CalculatePScore(List<string> variants, List<string> skList, ContentData content)
+    private static double CalculatePScore(List<Variant2> variants, List<string> skList, ContentData content)
     {
-        int f_h1 = ContainsAny(content.H1, variants) ? 1 : 0;
-        int f_title = ContainsAny(content.MetaTitle, variants) ? 1 : 0;
-        int f_url = ContainsAny(content.UrlSlug, variants) ? 1 : 0;
-        int f_desc = ContainsAny(content.MetaDescription, variants) || ContainsAny(content.MetaDescription, skList) ? 1 : 0;
+        var h1Res = ContainsAny(content.H1, variants);
+        var titalRes = ContainsAny(content.MetaTitle, variants);
+        var urlRes = ContainsAny(content.UrlSlug, variants);
+        var descRes = ContainsAny(content.MetaDescription, variants);
+        double f_h1 = 0;
+        double f_title = 0;
+        double f_url = 0;//TODO : similarity
+        double f_desc = 0;
 
-        // H2/H3 Logic: 50% must contain SK or variations
-        double h2h3MatchRate = CalculateHeaderMatchRate(content.HeadersH2H3, skList);
-        int f_h2_h3 = h2h3MatchRate >= 0.5 ? 1 : 0;
+        if (h1Res != null)
+        {
+            f_h1 = GetScore(h1Res.VariantType);
+        }
 
-        return (f_h1 * W_H1) + (f_title * W_Title) + (f_url * W_URL) + (f_h2_h3 * W_H2_H3) + (f_desc * W_Desc);
+        if (titalRes != null)
+        {
+            f_title = GetScore(titalRes.VariantType);
+        }
+
+        if (urlRes != null)
+        {
+            f_url = GetScore(urlRes.VariantType);
+        }
+
+        if (descRes != null)
+        {
+            f_desc = GetScore(descRes.VariantType);
+        }
+
+
+
+        //double h2h3MatchRate = CalculateHeaderMatchRate(content.HeadersH2H3, skList);
+        //int f_h2_h3 = h2h3MatchRate >= 0.5 ? 1 : 0;
+
+        return (f_h1 * W_H1) + (f_title * W_Title) + (f_url * W_URL) + (f_desc * W_Desc);
     }
 
-    private static double CalculateFScore(List<string> variants, List<string> skList, string bodyText)
+    public static double GetScore(Variant2Type variant2Type)
+    {
+        switch (variant2Type)
+        {
+            case Variant2Type.Exact:
+                return 1;
+            case Variant2Type.Lexical:
+                return 0.95;
+            case Variant2Type.Semantic:
+                return 0.90;
+            case Variant2Type.SearchDerived:
+                return 0.85;
+            case Variant2Type.Morphological:
+                return 0.80;
+        }
+        return 0.0;
+    }
+    private static double CalculateFScore(List<Variant2> variants, List<string> skList, string bodyText)
     {
         if (string.IsNullOrWhiteSpace(bodyText)) return 0;
 
-        int totalWords = bodyText.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-        double pkDensity = (double)CountOccurrences(bodyText, variants) / totalWords * 100;
-        double skDensity = (double)CountOccurrences(bodyText, skList) / totalWords * 100;
+        int W_total = bodyText.Split(' ', StringSplitOptions.RemoveEmptyEntries).Count();
+        double C_PTK = (double)CountOccurrences(bodyText, variants);
+
+        var D_PTK_Target = (C_PTK / (double)W_total)*100;
 
         // Score_PTK (Primary): Perfect 10 if 0.5-1.5%. If > 1.5%, start Over-optimization penalty.
         double scorePTK = 0;
-        if (pkDensity >= 0.5 && pkDensity <= 1.5) scorePTK = 10;
-        else if (pkDensity > 1.5) scorePTK = 7; // Keyword stuffing penalty
-        else if (pkDensity > 0) scorePTK = 5;
+        if (D_PTK_Target >= 0.5 && D_PTK_Target <= 1.5) scorePTK = 10;
+        else if (D_PTK_Target > 1.5) scorePTK = 7; // Keyword stuffing penalty
+        else if (D_PTK_Target > 0) scorePTK = 5;
 
-        // Score_SK (Secondary): Perfect 10 if 1.5-3.0%
-        double scoreSK = 0;
-        if (skDensity >= 1.5 && skDensity <= 3.0) scoreSK = 10;
-        else if (skDensity > 3.0) scoreSK = 7;
-        else if (skDensity > 0) scoreSK = 5;
-
-        return (scorePTK + scoreSK) / 2.0;
+        return scorePTK;
     }
     // Helper: Case-insensitive search for any string in a list
-    private static bool ContainsAny(string text, List<string> items)
+    private static Variant2 ContainsAny(string text, List<Variant2> items)
     {
-        if (string.IsNullOrEmpty(text)) return false;
-        return items.Any(item => text.Contains(item, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrEmpty(text)) return null;
+        return items.Where(item => text.Contains(item?.Text, StringComparison.OrdinalIgnoreCase))?.Select(x => x)?.FirstOrDefault();
     }
 
+
     // Helper: Counts total occurrences of a pool of keywords
-    private static int CountOccurrences(string text, List<string> pool)
+    private static int CountOccurrences(string text, List<Variant2> pool)
     {
         int count = 0;
         foreach (var variant in pool)
         {
-            count += Regex.Matches(text, Regex.Escape(variant), RegexOptions.IgnoreCase).Count;
+            var c = Regex.Matches(text, Regex.Escape(variant.Text), RegexOptions.IgnoreCase).Count;
+            if(c>0)
+            {
+                
+                var countOfWordInPresentKeyword = variant.Text.Split(' ').Count();
+                count += countOfWordInPresentKeyword;
+            }
+
         }
         return count;
     }
 
-    private static double CalculateHeaderMatchRate(List<string> headers, List<string> skList)
-    {
-        if (headers.Count == 0) return 0;
-        int matches = headers.Count(h => ContainsAny(h, skList));
-        return (double)matches / headers.Count;
-    }
+    //private static double CalculateHeaderMatchRate(List<string> headers, List<string> skList)
+    //{
+    //    if (headers.Count == 0) return 0;
+    //    int matches = headers.Count(h => ContainsAny(h, skList));
+    //    return (double)matches / headers.Count;
+    //}
 }

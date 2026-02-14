@@ -28,80 +28,109 @@ public static class SectionScorer
     //}
     public static double Calculate(
         List<CompetitorSectionScoreResponse> competitors,
-        List<string> yourHeadings,
         string primaryKeyword,
-        List<string> secondaryKeywords)
+        List<string> allHeadings)
     {
-        if (yourHeadings == null || !yourHeadings.Any()) return 0;
-
-        // --- PILLAR 1: SUB-TOPIC COVERAGE SCORE (Base 5) ---
-        double subTopicScore = 0;
-        var competitorMap = BuildSubtopicFrequencyMap(competitors);
-
-        // Required Sub-topics (Jo 3 ya usse zyada competitors mein hain)
-        var requiredSubtopics = competitorMap
-            .Where(x => x.Value.Count >= 3)
-            .Select(x => x.Key)
-            .ToList();
-
-        int RS_total = requiredSubtopics.Count;
-
-        // Normalize your headings
-        var normalizedYourHeadings = yourHeadings
-            .Select(Normalize)
-            .Where(h => !string.IsNullOrWhiteSpace(h))
-            .ToList();
-
-        // Agar required subtopics hain tabhi ye logic chalega
-        if (RS_total > 0)
+        if (allHeadings == null || !allHeadings.Any()) return 0;
+        var cHeadings = 0;
+        competitors.ForEach(c =>
         {
-            List<SentenceSimilarityInput> inputs = new List<SentenceSimilarityInput>();
-            foreach (var rs in requiredSubtopics)
+            cHeadings += c.Headings.Count;
+        });
+        var competitorHeadings = allHeadings.Take(cHeadings).ToList();
+        var ourHeadings = allHeadings.Skip(cHeadings).ToList();
+        var totalCompetitorHeader = competitorHeadings.Count;
+        Dictionary<string,double> weigthDict = new Dictionary<string, double>(); //scaled to 10
+        competitorHeadings?.ForEach(h =>
+        {
+            if(weigthDict.ContainsKey(h))
             {
-                foreach (var h in normalizedYourHeadings)
-                {
-                    inputs.Add(new SentenceSimilarityInput { Text1 = h, Text2 = rs });
-                }
+                var c = weigthDict[h]+ (((double)1 / totalCompetitorHeader)*10);
+                weigthDict[h] = c;
             }
+            else
+            {
+                weigthDict.Add(h, ((double)1/totalCompetitorHeader)*10);
+            }
+        });
 
-            var similarities = GetFullArticleSimilarities(inputs);
-
-            int RS_covered = requiredSubtopics.Count(rs =>
-                normalizedYourHeadings.Any(h =>
-                {
-                    var key = h + rs;
-                    var sim = similarities.FirstOrDefault(x => x.Key == key);
-                    return sim != null && sim.Similarity >= 0.65;
-                })
-            );
-
-            subTopicScore = ((double)RS_covered / RS_total) * 5;
-        }
-        else
+        var totalWeight = 0.0;
+        weigthDict.Keys?.ToList()?.ForEach(k =>
         {
-            // Agar competitor data hi nahi mila, toh subTopicScore 0 rahega
-            // Par niche wala logic chalna chahiye
-            subTopicScore = 0;
-        }
+            if(ourHeadings.Contains(k))
+            {
+                totalWeight += weigthDict[k];
+            }
+        });
+        return Math.Round(totalWeight, 2);
+        //// --- PILLAR 1: SUB-TOPIC COVERAGE SCORE (Base 5) ---
+        //double subTopicScore = 0;
+        //var competitorMap = BuildSubtopicFrequencyMap(competitors);
 
-        // --- PILLAR 2: HEADER KEYWORD SCORE (Base 5) ---
+        //// Required Sub-topics (Jo 3 ya usse zyada competitors mein hain)
+        //var requiredSubtopics = competitorMap
+        //    .Where(x => x.Value.Count >= 3)
+        //    .Select(x => x.Key)
+        //    .ToList();
 
-        var allKeywords = secondaryKeywords.Select(k => k.ToLower()).ToList();
-        allKeywords.Add(primaryKeyword.ToLower());
+        //int RS_total = requiredSubtopics.Count;
 
-        // Har header check karo ki usme koi bhi keyword (Primary/Secondary) hai ya nahi
-        int headersWithKeywords = normalizedYourHeadings.Count(h =>
-            allKeywords.Any(kw => h.ToLower().Contains(kw))
-        );
+        //// Normalize your headings
+        //var normalizedYourHeadings = yourHeadings
+        //    .Select(Normalize)
+        //    .Where(h => !string.IsNullOrWhiteSpace(h))
+        //    .ToList();
 
-        double headerScore = ((double)headersWithKeywords / normalizedYourHeadings.Count) * 5;
+        //// Agar required subtopics hain tabhi ye logic chalega
+        //if (RS_total > 0)
+        //{
+        //    List<SentenceSimilarityInput> inputs = new List<SentenceSimilarityInput>();
+        //    foreach (var rs in requiredSubtopics)
+        //    {
+        //        foreach (var h in normalizedYourHeadings)
+        //        {
+        //            inputs.Add(new SentenceSimilarityInput { Text1 = h, Text2 = rs });
+        //        }
+        //    }
 
-        // --- FINAL SECTION SCORE CALCULATION ---
+        //    var similarities = GetFullArticleSimilarities(inputs);
 
-        // Example: (2 + 2) * 1.5 = 6
-        double finalSectionScore = (subTopicScore + headerScore) * 1.5;
+        //    int RS_covered = requiredSubtopics.Count(rs =>
+        //        normalizedYourHeadings.Any(h =>
+        //        {
+        //            var key = h + rs;
+        //            var sim = similarities.FirstOrDefault(x => x.Key == key);
+        //            return sim != null && sim.Similarity >= 0.65;
+        //        })
+        //    );
 
-        return Math.Round(finalSectionScore, 2);
+        //    subTopicScore = ((double)RS_covered / RS_total) * 5;
+        //}
+        //else
+        //{
+        //    // Agar competitor data hi nahi mila, toh subTopicScore 0 rahega
+        //    // Par niche wala logic chalna chahiye
+        //    subTopicScore = 0;
+        //}
+
+        //// --- PILLAR 2: HEADER KEYWORD SCORE (Base 5) ---
+
+        //var allKeywords = secondaryKeywords.Select(k => k.ToLower()).ToList();
+        //allKeywords.Add(primaryKeyword.ToLower());
+
+        //// Har header check karo ki usme koi bhi keyword (Primary/Secondary) hai ya nahi
+        //int headersWithKeywords = normalizedYourHeadings.Count(h =>
+        //    allKeywords.Any(kw => h.ToLower().Contains(kw))
+        //);
+
+        //double headerScore = ((double)headersWithKeywords / normalizedYourHeadings.Count) * 5;
+
+        //// --- FINAL SECTION SCORE CALCULATION ---
+
+        //// Example: (2 + 2) * 1.5 = 6
+        //double finalSectionScore = (subTopicScore + headerScore) * 1.5;
+
+        //return Math.Round(finalSectionScore, 2);
     }
     public static double Similarity(string s1, string s2) /// is a form  is the form misising ashjh
     {

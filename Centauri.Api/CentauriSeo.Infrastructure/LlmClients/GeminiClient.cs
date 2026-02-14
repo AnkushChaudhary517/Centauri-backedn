@@ -97,7 +97,7 @@ Task: Analyze SERP for the target keyword and generate semantic variants.
 
 Steps:
 1. Use the Google Search tool to find the top 5 organic results for the keyword.
-2. Extract exact H2, H3, and H4 headings from these pages. Do NOT summarize or rewrite them.
+2. Extract exact H2 headings from these pages. Do NOT summarize or rewrite them.
 3. Identify the Primary Search Intent (Informational, Commercial, Transactional, Navigational).
 4. Generate a PK Variant Pool:
    - Morphological: Tenses, plurals, noun/verb forms.
@@ -116,11 +116,13 @@ JSON Schema:
     { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""string"" }
   ],
   ""intent"": ""string"",
-  ""variants"": [""string""]
+  ""variants"": [{""text"":""variant text value"", ""variantType"":""Exact|Lexical|Semantic|Morphological|SearchDerived""}]
 }
+
+[Strict Rule] : VariantType is an enum with these values (Exact|Lexical|Semantic|Morphological|SearchDerived).
 ";
 
-        userContent = @$"Target keyword: ""{ keyword}"" " + userContent;
+        userContent = @$"Target keyword: ""{ keyword}""." + userContent;
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,

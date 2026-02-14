@@ -33,7 +33,7 @@ public static class ExpertiseScorer
 
         if (totalCount == 0) return 0.0;
 
-        double score = (expertiseCount / ((double)totalCount-sentences.Count(x => x.InformativeType == InformativeType.Uncertain))) * 10; //scaled to 10
+        double score = (expertiseCount / ((double)totalCount)) * 10; //scaled to 10
 
         return Math.Clamp(score, 0.0, 10.0);
     }

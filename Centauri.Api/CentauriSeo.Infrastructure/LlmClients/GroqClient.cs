@@ -38,6 +38,65 @@ public class GroqClient
         _aiCallTracker = aiCallTracker;
     }
 
+    public async Task<List<string>> GetGroqCategorization(List<string> h2Tags)
+    {
+        string endpoint = "https://api.groq.com/openai/v1/chat/completions";
+
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+        var prompt = $@"
+    Mapping Rules:
+    1. Definition (Concept Clarification)
+    2. Process (How-To)
+    3. Problem (Pain-Oriented)
+    4. Solution (Recommendation)
+    5. Analytical (Insight)
+    6. Data (Evidence)
+    7. Comparison (Evaluates alternatives)
+    8. FAQ (Long-tail/edge cases)
+    9. Cost (ROI/Pricing)
+    10. Implementation (Setup)
+
+    TASK:
+    Categorize each of the H2 tags below. 
+    Return ONLY a simple JSON array of strings containing the Category Names in the same order as the input.
+
+    H2 TAGS:
+    {string.Join("\n", h2Tags)}
+
+    STRICT OUTPUT FORMAT:
+    [""""Category1"""", """"Category2"""", """"Category3""""]
+    Allowed values: (Definition|Process|Problem|Solution|Analytical|Data|Comparison|FAQ|Cost|Implementation)
+    ";
+
+        var requestBody = new
+        {
+            model = "llama-3.3-70b-versatile",
+            messages = new[] {
+            new { role = "system", content = "You are a JSON-only SEO classifier. No preamble. No conversational text." },
+            new { role = "user", content = prompt }
+        },
+            response_format = new { type = "json_object" },
+            temperature = 0 // Lowest temperature for maximum logic 
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+        try
+        {
+            var response = await client.PostAsync(endpoint, content);
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var data =  doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            var res =  JsonSerializer.Deserialize<GroqHeadingsResponse>(data);
+            return res.categories;
+        }
+        catch (Exception ex)
+        {
+            return null;
+        }
+    }
+
     // Low-level analyze (kept for compatibility)
     // Sends an OpenAI-compatible chat/completions payload and returns assistant content (machine-parsable JSON expected).
     public async Task<List<PerplexitySentenceTag>> AnalyzeAsync(string payload, string systemRequirement)
@@ -296,6 +355,10 @@ public class GroqClient
     }
 }
 
+public class GroqHeadingsResponse
+{
+    public List<string> categories { get; set; }
+}
 public class GroqUsageDetails
 {
     [JsonPropertyName("input_tokens")]

@@ -22,8 +22,9 @@ public static class AuthorityScorer
             double structure = StructureScore(s.Structure);
             double informative = InformativeTypeScore(s.InformativeType);
             double voice = VoiceScore(s.Voice);
-
-            double sentenceAuthority = (functional * 0.2) + (structure * 0.2) + (informative * 0.4) + (voice * 0.2);
+            //
+            //double sentenceAuthority = (functional * 0.2) + (structure * 0.2) + (informative * 0.4) + (voice * 0.2);
+            double sentenceAuthority = functional * structure * informative *voice ;
             totalAuthority += sentenceAuthority;
         }
 
@@ -71,6 +72,7 @@ public static class AuthorityScorer
             InformativeType.Opinion => 1.0,
             InformativeType.Prediction => 1.0,
             InformativeType.Question => 0.0,
+            InformativeType.Filler => 0.0,
             _ => 0.5
         };
     }

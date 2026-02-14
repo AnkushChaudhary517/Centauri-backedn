@@ -1,4 +1,5 @@
 ﻿using CentauriSeo.Core.Models.Output;
+using Microsoft.VisualBasic;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,8 +13,14 @@ namespace CentauriSeo.Core.Models.Outputs
         public Intent Intent { get; set; }
         public string KeyWord { get; set; } = "";
         public List<CompetitorSectionScoreResponse> Competitors { get; set; } = new List<CompetitorSectionScoreResponse>();
-        public List<string> Variants { get; set; } = new List<string>();
+        public List<Variant2> Variants { get; set; } = new List<Variant2>();
 
+    }
+
+    public class Variant2
+    {
+        public string Text { get; set; }
+        public Variant2Type VariantType { get; set; }
     }
     public class CompetitorSectionScoreResponse
     {
@@ -28,5 +35,13 @@ namespace CentauriSeo.Core.Models.Outputs
         Navigational,
         Transactional,
         Commercial
+    }
+    public enum Variant2Type
+    {
+        Exact,
+        Lexical,
+        Semantic,
+        Morphological,
+        SearchDerived
     }
 }

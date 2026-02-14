@@ -239,10 +239,6 @@ def classify_informative_type_merged(doc) -> InformativeType:
     ):
         return InformativeType.DEFINITION
 
-    # 5. UNCERTAIN
-    if any(t.lemma_ in {"might", "could", "may", "perhaps", "likely"} for t in doc):
-        return InformativeType.UNCERTAIN
-
     # 6. STATISTIC
     if any(ent.label_ in {"PERCENT", "MONEY", "QUANTITY"} for ent in doc.ents):
         return InformativeType.STATISTIC
@@ -250,6 +246,12 @@ def classify_informative_type_merged(doc) -> InformativeType:
     # 7. FACT (authoritative entities)
     if any(ent.label_ in {"DATE", "GPE", "LAW", "ORG"} for ent in doc.ents):
         return InformativeType.FACT
+        
+    if any(t.dep_ == "aux" and t.lemma_ in {"need", "must", "should", "have"} for t in doc):
+        return InformativeType.SUGGESTION   
+        # 5. UNCERTAIN
+    if any(t.lemma_ in {"might", "could", "may", "perhaps", "likely"} for t in doc):
+        return InformativeType.UNCERTAIN
 
     # 8. DEFAULT
     return InformativeType.CLAIM
@@ -523,42 +525,49 @@ def process_article(request: ArticleRequest):
     state = {"is_keyword_active": True}
     processed_texts = set()
 
-    # Saare block elements ko identify karna
     for block in soup.find_all(is_block_element):
-        # Nested blocks avoid karne ke liye (e.g., div inside div)
         if any(is_block_element(p) for p in block.parents): 
             continue
             
-        # 1. Pura Block Text extract karna (No sentence breaking here)
+        # 1. Pura Block Text extract karna
         raw_text = block.get_text(separator=" ", strip=True)
         if not raw_text or raw_text in processed_texts: 
             continue
 
-        # 2. Table Rows (TR) handling: Inhe ek unit ki tarah join karna
+        # 2. Table Rows (TR) special handling
         if block.name == 'tr':
             raw_text = " - ".join([td.get_text(strip=True) for td in block.find_all('td') if td.get_text(strip=True)])
 
-        # 3. Analyze Logic call: Pura block ab ek 'text' unit ban chuka hai
-        # Ab 'analyze_logic' ko ek paragraph/section ka text milega, jisse Intent aur Relevance sahi niklega
-        res = analyze_logic(
-            text=raw_text, 
-            s_id=f"S{s_count}", 
-            keyword_doc=kw_doc, 
-            state=state, 
-            h_tag=block.name, 
-            p_id=f"P{p_count}"
-        )
+        # --- CHANGE START: Logical Sentence Splitting ---
+        # SpaCy ka use karke text ko semantic sentences mein split karenge
+        doc = nlp(raw_text)
+        sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
 
-        # First Answer Detection
-        if res.answerSentenceFlag == 1 and first_id is None: 
-            first_id = res.SentenceId
-            
-        results.append(res)
+        for sentence_text in sentences:
+            # Har sentence ko ab alag analyze karenge
+            res = analyze_logic(
+                text=sentence_text, 
+                s_id=f"S{s_count}", 
+                keyword_doc=kw_doc, 
+                state=state, 
+                h_tag=block.name, 
+                p_id=f"P{p_count}" # Same block ke liye p_id same rahegi
+            )
+
+            # First Answer Detection
+            if res.answerSentenceFlag == 1 and first_id is None: 
+                first_id = res.SentenceId
+                
+            results.append(res)
+            s_count += 1 
+        
+        # --- CHANGE END ---
+
         processed_texts.add(raw_text)
-        s_count += 1 # Har block ek s_id hai
-        p_count += 1
+        p_count += 1 # Sirf block khatam hone par paragraph count badhao
 
     return AnalysisResponse(sentences=results, answerPositionIndex=first_id)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

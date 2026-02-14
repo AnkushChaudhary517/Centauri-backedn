@@ -548,7 +548,7 @@ public class Phase1And2OrchestratorService
                     var res = await _gemini.GetSectionScore(keyword);
                     if (!string.IsNullOrEmpty(res))
                     {
-                        File.WriteAllText($"SectionScoreResponse_{keyword}.json", res);
+                        //File.WriteAllText($"SectionScoreResponse_{keyword}.json", res);
                         var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
                         if (sectionScores != null)
                         {

@@ -194,68 +194,52 @@ def detect_clarity_synthesis(doc, voice: str, structure: str, info_type: Informa
 
 def classify_informative_type_merged(doc) -> InformativeType:
     text_lower = doc.text.lower().strip()
-
-    # 1. QUESTION
-    if text_lower.endswith("?"):
+    
+    # 1. QUESTION (Syntactic Check)
+    # Check for '?' or inverted auxiliary-subject order (e.g., "Are you...")
+    if text_lower.endswith("?") or (doc[0].pos_ == "AUX" and len(doc) > 1 and doc[1].pos_ in {"PRON", "NOUN"}):
         return InformativeType.QUESTION
 
-    # Agar sentence "What/How" se shuru ho raha hai PAR end mein "?" nahi hai, 
-    # toh wo Declarative sentence ho sakta hai (e.g., "How you do it matters.")
-    if len(doc) > 0 and doc[0].lower_ in {"what", "how", "why", "when", "where"}:
-    # Sirf tab QUESTION bolo jab auxiliary verb (is, are, do, does) turant baad ho
-    # Ya phir end mein punct ho. 
-    # S5 yahan bach jayega kyunki "When you..." ke baad noun hai.
-        if any(t.pos_ == "AUX" for t in doc[:3]) and text_lower.endswith("?"):
-            return InformativeType.QUESTION
+    # 2. SUGGESTION (The Expertise Powerhouse)
+    # Catch Imperatives (sentences starting with a base verb like "Learn", "Choose", "Build")
+    # And Modals (should, must, need to)
+    is_imperative = doc[0].pos_ == "VERB" and doc[0].dep_ == "ROOT"
+    has_modal = any(t.lemma_ in {"should", "must", "ought", "need", "require"} for t in doc)
+    
+    if is_imperative or has_modal:
+        return InformativeType.SUGGESTION
 
-    # 2. TRANSITION
-    if doc[0].lower_ in {"however", "therefore", "moreover", "additionally"}:
-        return InformativeType.TRANSITION
-
-    # 3. NOISE / FILLER
-    noise_markers = ("meta title", "meta description", "url :", "/*", "visual suggestion")
-    if text_lower.startswith(noise_markers):
-        return InformativeType.FILLER
-
-    # very short + no entities = filler
-    if len(doc) < 4 and not doc.ents:
-        return InformativeType.FILLER
-
-    # 4. DEFINITION
-    if any(p in text_lower for p in {
-        "is defined as",
-        "refers to",
-        "means",
-        "is a type of"
-    }):
+    # 3. DEFINITION (The Authority Check)
+    # Check for "X is a Y" where X is a Subject and Y is a Complement
+    has_copula = any(t.lemma_ == "be" and t.dep_ == "ROOT" for t in doc)
+    if has_copula:
+        # If the root is 'be' and it connects a subject to a noun/adj, it's a definition or observation
         return InformativeType.DEFINITION
 
-    # linguistic definition pattern: Noun + is + Noun
-    if (
-        len(doc) > 3
-        and doc[0].pos_ in {"NOUN", "PROPN"}
-        and doc[1].lower_ == "is"
-        and doc[2].pos_ in {"DET", "NOUN", "ADJ"}
-    ):
-        return InformativeType.DEFINITION
+    # 4. PREDICTION (Future Outlook)
+    # Look for 'will' or 'going to' which your C# code counts as Expertise
+    if any(t.lemma_ == "will" and t.pos_ == "AUX" for doc_t in doc for t in doc):
+         return InformativeType.PREDICTION
 
-    # 6. STATISTIC
-    if any(ent.label_ in {"PERCENT", "MONEY", "QUANTITY"} for ent in doc.ents):
-        return InformativeType.STATISTIC
-
-    # 7. FACT (authoritative entities)
-    if any(ent.label_ in {"DATE", "GPE", "LAW", "ORG"} for ent in doc.ents):
-        return InformativeType.FACT
-        
-    if any(t.dep_ == "aux" and t.lemma_ in {"need", "must", "should", "have"} for t in doc):
-        return InformativeType.SUGGESTION   
-        # 5. UNCERTAIN
-    if any(t.lemma_ in {"might", "could", "may", "perhaps", "likely"} for t in doc):
+    # 5. UNCERTAIN
+    if any(t.lemma_ in {"might", "could", "may", "possibly", "suggest"} for t in doc):
         return InformativeType.UNCERTAIN
 
-    # 8. DEFAULT
-    return InformativeType.CLAIM
+    # 6. STATISTIC & FACT (Entity-Based)
+    if doc.ents:
+        if any(ent.label_ in {"PERCENT", "MONEY", "QUANTITY", "CARDINAL"} for ent in doc.ents):
+            return InformativeType.STATISTIC
+        if any(ent.label_ in {"DATE", "GPE", "LAW", "ORG", "PERSON"} for ent in doc.ents):
+            return InformativeType.FACT
 
+    # 7. FILLER / NOISE
+    # Short fragments without verbs are usually headers or noise
+    if len(doc) < 4 and not any(t.pos_ == "VERB" for t in doc):
+        return InformativeType.FILLER
+
+    # 8. CLAIM (Default)
+    # If it's a full sentence but doesn't meet the above, it's a general claim.
+    return InformativeType.CLAIM
 def detect_info_quality_merged(doc, text: str) -> str:
     text_lower = text.lower()
     

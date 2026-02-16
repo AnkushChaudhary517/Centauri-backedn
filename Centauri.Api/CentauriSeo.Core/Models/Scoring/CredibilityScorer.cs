@@ -54,7 +54,7 @@ public static class CredibilityScorer
             }
             else 
             {
-                //if (s.Source != SourceType.Unknown) C += 1;
+                if (s.Source != SourceType.Unknown) C += 1;
             }
             // others contribute 0
         }

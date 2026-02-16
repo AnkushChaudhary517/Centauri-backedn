@@ -1,4 +1,6 @@
-﻿using CentauriSeo.Core.Models.Scoring;
+﻿using CentauriSeo.Core.Models.Input;
+using CentauriSeo.Core.Models.Outputs;
+using CentauriSeo.Core.Models.Scoring;
 using CentauriSeo.Core.Models.Sentences;
 using System;
 using System.Collections;
@@ -37,6 +39,8 @@ public class SeoResponse
     public Level4Scores Level4Scores { get; set; } = new();
     public double SeoScore { get; set; }
     public List<string> RecommendationsLegacy { get; set; } = new();
+    public OrchestratorResponse? Level2InputResponse { get; set; }
+    public SeoRequest Request { get; set; }
 }
 
 public class InputIntegrity

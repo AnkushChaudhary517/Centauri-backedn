@@ -163,15 +163,11 @@ public static class KeywordScorer
         switch (variant2Type)
         {
             case Variant2Type.Exact:
-                return 1;
             case Variant2Type.Lexical:
-                return 0.95;
             case Variant2Type.Semantic:
-                return 0.90;
             case Variant2Type.SearchDerived:
-                return 0.85;
             case Variant2Type.Morphological:
-                return 0.80;
+                return 1;
         }
         return 0.0;
     }

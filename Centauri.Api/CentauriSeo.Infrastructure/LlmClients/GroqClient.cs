@@ -38,6 +38,60 @@ public class GroqClient
         _aiCallTracker = aiCallTracker;
     }
 
+    public async Task<string> UpdateInformativeType(string userContent)
+    {
+        string endpoint = "https://api.groq.com/openai/v1/chat/completions";
+
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+        var requestBody = new
+        {
+            model = "llama-3.3-70b-versatile",
+            messages = new[] {
+            new { role = "system", content = $@"
+        Please update the userContent where informative Type is wrong and return the data in same format just update the informative type value
+
+Classify as FACT only if the sentence contains specific data, statistics, or universally verifiable truths. Classify as CLAIM if the sentence makes a promotional statement about a product's capabilities, quality, or internal design intent.
+
+Analyze the article and return ONLY a plain JSON ARRAY of objects. 
+Do NOT wrap the response in a ""data"" or ""updatedData"" key. 
+Do NOT include any conversational text or markdown blocks (```json).
+Format(Array of objects):
+      [
+        {{
+          ""InformativeType"": ""Enum_Value"",
+          ""Sentence"": ""The actual sentence text""
+        }}
+      ]
+
+    Allowed Enum Values:
+    - Question, Suggestion, Definition, Fact, Statistic, Claim, Uncertain, Opinion, Filler, Prediction
+
+Default value is Uncertain only if there are geninuly no other value possible." 
+            
+     },
+            new { role = "user", content = userContent }
+        },
+            response_format = new { type = "json_object" },
+            temperature = 0 // Lowest temperature for maximum logic 
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+        try
+        {
+            var response = await client.PostAsync(endpoint, content);
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            return data;
+        }
+        catch (Exception ex)
+        {
+            return null;
+        }
+
+    } 
     public async Task<List<string>> GetGroqCategorization(List<string> h2Tags)
     {
         string endpoint = "https://api.groq.com/openai/v1/chat/completions";

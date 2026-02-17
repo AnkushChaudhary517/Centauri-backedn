@@ -41,7 +41,7 @@ public static class CredibilityScorer
             {
                 if (s.Source != SourceType.Unknown) C += 1;
             }
-            else if (s.InformativeType == InformativeType.Claim)
+            else if (s.InformativeType == InformativeType.Fact)
             {
                 //if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source == SourceType.Unknown)
                 //{
@@ -54,12 +54,13 @@ public static class CredibilityScorer
             }
             else 
             {
-                if (s.Source != SourceType.Unknown) C += 1;
+               // if (s.Source != SourceType.Unknown) C += 1;
             }
             // others contribute 0
         }
-
-        double credibilityPercent = (C / (double)list.Count) * 10.0;
+        var totalCount = list.Where(x => x.InformativeType == InformativeType.Statistic || x.InformativeType == InformativeType.Prediction || x.InformativeType == InformativeType.Definition || x.InformativeType == InformativeType.Fact).Count();
+        if(totalCount == 0) return 0.0; // avoid division by zero, and if no relevant sentences, credibility is 0
+        double credibilityPercent = (C / (double)totalCount) * 10.0;
         return Math.Clamp(credibilityPercent, 0.0, 10.0);
     }
 

@@ -2,15 +2,18 @@
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Scoring;
 using CentauriSeo.Application.Utils;
+using CentauriSeo.Core.Models.Enums;
 using CentauriSeo.Core.Models.Input;
 using CentauriSeo.Core.Models.Output;
 using CentauriSeo.Core.Models.Outputs;
+using CentauriSeo.Core.Models.Scoring;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.OpenApi.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,6 +58,12 @@ public class SeoController : ControllerBase
     {
         try
         {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+
             var ctx = _httpContextAccessor.HttpContext;
             var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
             var response = new SeoResponse
@@ -64,6 +73,10 @@ public class SeoController : ControllerBase
             var topIssues = new List<TopIssue>();
             response.InputIntegrity = EnsureInputIntegrity(request);
             var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+
+            fullLocalLlmTags.Sentences?.RemoveAll(x => x.Sentence.ToLower().Contains("meta title")
+            || x.Sentence.ToLower().Contains("meta description") || x.Sentence.ToLower().Contains("url slug"));
+
             var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
             var headings = fullLocalLlmTags.Sentences.Where(s => s.HtmlTag?.ToLower() != "h1" && s.HtmlTag.StartsWith("h", StringComparison.InvariantCultureIgnoreCase))
                 .Select(s => s.Sentence).ToList();
@@ -71,12 +84,15 @@ public class SeoController : ControllerBase
             //{
             //    request.SecondaryKeywords = SecondaryKeywordGenerator.ExtractSecondaryKeywords(request.PrimaryKeyword, headings);
             //}
+            await UpdateInformativeTypeFromGroq(options, fullLocalLlmTags);
+
+            //return JsonSerializer.Deserialize<SeoResponse>(System.IO.File.ReadAllText("Data/Response.json"), options);
             _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
 
-            OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request,fullLocalLlmTags);
+            OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
             orchestratorResponse.Sections = sections;
             //start recommendations
-            
+
 
             var level1 = orchestratorResponse?.ValidatedSentences?.ToList()?.ConvertAll(x => new Level1Sentence()
             {
@@ -130,11 +146,14 @@ public class SeoController : ControllerBase
             }).ToList();
 
             // --- Compute scores (scorers will internally respect missing primary_keyword where required) ---
+
+            response.Level2InputResponse = orchestratorResponse;
+            response.Request = request;
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
 
             l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
             //l2.SectionScore = orchestratorResponse?.SectionScore /10.0?? 1.0;
-            
+
             var l3 = Level3Engine.Compute(l2);
             var l4 = Level4Engine.Compute(l2, l3);
 
@@ -190,6 +209,38 @@ public class SeoController : ControllerBase
         return StatusCode(500, "Internal server error occurred during analysis.");
     }
 
+    private async Task UpdateInformativeTypeFromGroq(JsonSerializerOptions options, AiIndexinglevelLocalLlmResponse fullLocalLlmTags)
+    {
+        try
+        {
+            var requestData = fullLocalLlmTags.Sentences.Select(x => new { Sentence = x.Sentence, InformativeType = x.InformativeType.GetDisplayName() }).Take(200).ToList();
+            var res = await _groqClient.UpdateInformativeType(JsonSerializer.Serialize(requestData));
+            var d = JsonSerializer.Deserialize<List<UpdatedData>>(res, options);
+
+            fullLocalLlmTags.Sentences.ForEach(s =>
+            {
+                var groqData = d?.Where(x => x.Sentence == s.Sentence)?.FirstOrDefault();
+                if (groqData != null)
+                {
+                    if (groqData.InformativeType != s.InformativeType)
+                    {
+                        s.InformativeType = groqData.InformativeType;
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+
+        }
+    }
+
+    [HttpPost("Level2Scores")]
+    public Level2Scores GetLevel2Scores([FromBody] Level2ScoreRequest request)
+    {
+        if (request == null) return null;
+        return Level2Engine.Compute(request.Request, request.OrchestratorResponse);
+    }
     private InputIntegrity EnsureInputIntegrity(SeoRequest request)
     {
 
@@ -304,6 +355,12 @@ public class SeoController : ControllerBase
     [HttpPost("recommendations")]
     public async Task<ActionResult<RecommendationResponseDTO>> GetRecommendations([FromBody] SeoRequest request)
     {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
+        //return JsonSerializer.Deserialize<RecommendationResponseDTO>(System.IO.File.ReadAllText("Data/Recommendations.json"),options);
         var correlationId = _httpContextAccessor?.HttpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
         // Basic input validation
         if (request == null || string.IsNullOrWhiteSpace(request.Article.Raw))
@@ -353,5 +410,15 @@ public class SeoController : ControllerBase
         }
         return null;
     }
+    public class Level2ScoreRequest
+    {
+        public SeoRequest Request { get; set; }
+        public OrchestratorResponse OrchestratorResponse { get; set; }
+    }
 
+    public class UpdatedData
+    {
+        public InformativeType InformativeType { get; set; }
+        public string Sentence { get; set; }
+    }
 }

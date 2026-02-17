@@ -499,12 +499,54 @@ def analyze(request: AnalysisRequest):
         results.append(res)
     return AnalysisResponse(sentences=results, answerPositionIndex=first_id)
 
+import re
+
+def extract_seo_label_generic(text: str):
+    """
+    Generic SEO Label Extractor: 
+    Handles: 'Step 1:', 'v)', '1.1.', 'Capability #2 -', 'Phase A =>'
+    Separators: :, :-, --, -, |, ., ), ~, =>
+    """
+    if not text:
+        return None, ""
+
+    # 1. List markers like 'v)', '1.', 'a)'
+    list_marker = r"(?:[ivxclm]+|[a-z]|\d+(?:\.\d+)*)\s?[.)\-]+"
+    
+    # 2. SEO Keywords like 'Step 1', 'Capability #2'
+    anchors = r"(?:Step|Capability|Component|Part|Point|Phase|Requirement|Module|Factor|Section|Level|Task)\s?#?[a-zA-Z0-9]+"
+    
+    # 3. All common separators used in SEO headers
+    # Isme humne covers kiye: :, :-, --, |, ., ), ~, =>, aur Em-dash
+    separators = r"(?:\s?[:-]{1,2}|\s?[:.\-|—~]|\s?=>|\s?\))*"
+    
+    # Combined Regex: Match start of string with either marker or anchor + any separator
+    # Group 1 captures the actual label for your records
+    full_pattern = rf"^((?:{list_marker}|{anchors}){separators})\s*"
+    
+    match = re.match(full_pattern, text, re.IGNORECASE)
+    
+    if match:
+        label_part = match.group(1).strip()
+        # Pure match length (including trailing spaces) ko uda rahe hain
+        cleaned_content = text[len(match.group(0)):].strip()
+        
+        # Cleanup: Agar cleaning ke baad pehla char lowercase hai (jaise label ke baad space ho)
+        if cleaned_content:
+            cleaned_content = cleaned_content[0].upper() + cleaned_content[1:]
+            
+        return label_part, cleaned_content
+    
+    # Agar kuch match nahi hua toh original text return karo
+    return None, text
+    
+    
+    
 @app.post("/process-article", response_model=AnalysisResponse)
 def process_article(request: ArticleRequest):
     soup = BeautifulSoup(request.htmlContent, "html.parser")
     results, first_id, s_count, p_count = [], None, 1, 1
     
-    # Primary keyword setting
     kw_doc = nlp(request.primaryKeyword.lower())
     state = {"is_keyword_active": True}
     processed_texts = set()
@@ -513,45 +555,58 @@ def process_article(request: ArticleRequest):
         if any(is_block_element(p) for p in block.parents): 
             continue
             
-        # 1. Pura Block Text extract karna
         raw_text = block.get_text(separator=" ", strip=True)
         if not raw_text or raw_text in processed_texts: 
             continue
 
-        # 2. Table Rows (TR) special handling
+        # 1. TR Handling
         if block.name == 'tr':
             raw_text = " - ".join([td.get_text(strip=True) for td in block.find_all('td') if td.get_text(strip=True)])
 
-        # --- CHANGE START: Logical Sentence Splitting ---
-        # SpaCy ka use karke text ko semantic sentences mein split karenge
+        # --- NEW CLEANING LOGIC START ---
+        # Agar block header hai, toh sentence splitting se PEHLE label udao
+        if block.name in ["h1", "h2", "h3", "h4", "h5", "h6"]:
+            # extract_seo_label_generic sirf label return karega aur bacha hua mal-paani
+            _, cleaned_text = extract_seo_label_generic(raw_text)
+            
+            # Agar cleaning ke baad kuch bacha, toh usey hi use karo
+            # Varna agar sirf label hi tha header mein, toh raw_text ko empty kar do skip karne ke liye
+            raw_text = cleaned_text if cleaned_text.strip() else ""
+        # --- NEW CLEANING LOGIC END ---
+
+        if not raw_text: # Skip if the header became empty after cleaning
+            continue
+
+        # 2. Logical Sentence Splitting (Ab cleaned text pe split hoga)
         doc = nlp(raw_text)
         sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
 
         for sentence_text in sentences:
-            # Har sentence ko ab alag analyze karenge
             res = analyze_logic(
                 text=sentence_text, 
                 s_id=f"S{s_count}", 
                 keyword_doc=kw_doc, 
                 state=state, 
                 h_tag=block.name, 
-                p_id=f"P{p_count}" # Same block ke liye p_id same rahegi
+                p_id=f"P{p_count}"
             )
 
-            # First Answer Detection
+            # Agar analyze_logic None return kare (additional safety), toh skip
+            if res is None:
+                continue
+
             if res.answerSentenceFlag == 1 and first_id is None: 
                 first_id = res.SentenceId
                 
             results.append(res)
             s_count += 1 
         
-        # --- CHANGE END ---
-
         processed_texts.add(raw_text)
-        p_count += 1 # Sirf block khatam hone par paragraph count badhao
+        p_count += 1
 
     return AnalysisResponse(sentences=results, answerPositionIndex=first_id)
-
+    
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

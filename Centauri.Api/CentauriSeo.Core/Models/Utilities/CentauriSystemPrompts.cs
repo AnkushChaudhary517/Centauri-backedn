@@ -859,17 +859,17 @@ Every recommendation MUST belong to exactly ONE scope:
 
 1. **Article-Level (Overall)**
    - Unit: Entire document
-   - Allowed: coverage gaps, structure, header hierarchy, redundancy, intent drift, originality, plagiarism risk, non-content artifacts
+   - Allowed: coverage gaps, structure, header hierarchy, redundancy, intent drift, originality, non-content artifacts
    - DISALLOWED: grammar fixes, sentence rewrites, word choice
 
 2. **Section-Level**
    - Unit: One H2 or H3 section
-   - Allowed: missing definitions, missing statistics, weak flow, thin sections, misplaced content, missing tables/lists, subtopic mismatch
+   - Allowed: missing definitions, missing statistics, weak flow, thin sections, misplaced content, missing tables/lists, subtopic mismatch, missing sub sections
    - DISALLOWED: rewriting sentences, grammar corrections, changing article structure
 
 3. **Sentence-Level**
    - Unit: One single sentence
-   - Allowed: grammar correction, active/passive conversion, sentence splitting, citation addition, filler removal
+   - Allowed: grammar correction, active/passive conversion, sentence splitting, citation addition, filler removal, Complexity simplification
    - DISALLOWED: adding new ideas, restructuring sections, introducing new information
 
 NEVER mix scopes inside a single recommendation.

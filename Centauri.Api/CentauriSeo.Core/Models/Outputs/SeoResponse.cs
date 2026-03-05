@@ -187,7 +187,6 @@ public class RecommendationsResponse
 }
 public class Recommendation
 {
-    [JsonPropertyName("severity")]
     public string Priority { get; set; }
     public string Issue { get; set; } = "";
     public string WhatToChange { get; set; } = "";

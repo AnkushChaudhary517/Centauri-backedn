@@ -155,7 +155,7 @@ public class SeoController : ControllerBase
             await UpdateInformativeTypeFromGroq(options, fullLocalLlmTags);
 
             //return JsonSerializer.Deserialize<SeoResponse>(System.IO.File.ReadAllText("Data/Response.json"), options);
-            _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
+            //_orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
 
             OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
             orchestratorResponse.Sections = sections;
@@ -220,7 +220,7 @@ public class SeoController : ControllerBase
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
             l2.ExpertiseScore = await GetExpertiseScore(request.Article.Raw, fullLocalLlmTags.Sentences);
 
-            l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
+            //l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
             //l2.SectionScore = orchestratorResponse?.SectionScore /10.0?? 1.0;
 
             var l3 = Level3Engine.Compute(l2);
@@ -244,6 +244,8 @@ public class SeoController : ControllerBase
                     ExpertiseScore = Math.Round(response.Level2Scores.ExpertiseScore * 10)
                 }
             };
+
+            _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections, l2);
 
             response.Diagnostics = new Diagnostics()
             {

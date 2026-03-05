@@ -619,7 +619,8 @@ public class Phase1And2OrchestratorService
         };
     }
 
-    public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(string article, List<GeminiSentenceTag> level1, List<Section> sections)
+    public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(string article, List<GeminiSentenceTag> level1, List<Section> sections,
+        Level2Scores level2Scores = null)
     {
         int offset = 100;
         var response = new RecommendationResponseDTO()
@@ -642,6 +643,7 @@ public class Phase1And2OrchestratorService
             var request = JsonSerializer.Serialize(new
             {
                 Sections=sections,
+                Scores = level2Scores,
                 Sentences = level1.Select(x => new
                 {
                     Id = x.SentenceId,

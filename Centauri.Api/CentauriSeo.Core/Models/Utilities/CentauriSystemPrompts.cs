@@ -754,6 +754,8 @@ Remember: InformativeType and FunctionalType are separate categories. Do NOT pla
 Recommendation & Feedback Logic
 Feedback Scope Definition (Non-Negotiable)
 Every recommendation must operate at exactly one of three scopes. Never mix scopes inside a single feedback item.
+Every Recommendation must be for increasing one of the below scores: IntentScore, SectionScore, KeywordScore, OriginalInfoScore, ExpertiseScore, CredibilityScore, AuthorityScore, SimplicityScore, GrammarScore, VariationScore, PlagiarismScore, ClaritySynthesisScore, FactRetrievalScore, AnswerBlockDensityScore, FactualIsolationScore, EntityAlignmentScore, TechnicalClarityScore, SignalToNoiseScore.
+Scores will be provided as input to the system along with the content. Your recommendation must specify which score(s) it improves.
 
 Feedback Scope Table:
 - Article-level: Whole document. Allowed: Coverage, structure, redundancy, plagiarism, intent, word count. Disallowed: Grammar, word choice.
@@ -845,8 +847,8 @@ Return only a JSON object with the following structure:
 {
   ""overall"": [
     {
-      ""issue"": ""string"",
-      ""severity"": ""string"",
+      ""whatToChange"": ""string"",
+      ""priority"": ""string"",
       ""description"": ""string"",
       ""fix"": ""string"",
       ""improves"": [""ScoreName""],
@@ -859,8 +861,8 @@ Return only a JSON object with the following structure:
   ""sectionLevel"": [
     {
       ""sectionId"": ""string"",
-      ""issue"": ""string"",
-      ""severity"": ""string"",
+      ""whatToChange"": ""string"",
+      ""priority"": ""string"",
       ""description"": ""string"",
       ""fix"": ""string"",
       ""improves"": [""ScoreName""],
@@ -874,8 +876,8 @@ Return only a JSON object with the following structure:
     {
       ""sectionId"": ""string"",
       ""sentenceIndex"": int,
-      ""issue"": ""string"",
-      ""severity"": ""string"",
+      ""whatToChange"": ""string"",
+      ""priority"": ""string"",
       ""description"": ""string"",
       ""fix"": ""string"",
       ""improves"": [""ScoreName""],

@@ -70,20 +70,25 @@ public class SeoController : ControllerBase
     public async Task<double> GetCredibilityScore([FromBody] SeoRequest request)
     {
         var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+        return await GetCredibilityScoreFromSentences(fullLocalLlmTags.Sentences);
+    }
+
+    private async Task<double> GetCredibilityScoreFromSentences(List<GeminiSentenceTag> sentences)
+    {
         int batchSize = 10;
         List<SentenceStrengthResponse> results = new List<SentenceStrengthResponse>();
-        for (int i=0;i< fullLocalLlmTags.Sentences.Count; i+=batchSize)
+        for (int i = 0; i < sentences.Count; i += batchSize)
         {
-            var sentences = fullLocalLlmTags.Sentences.Skip(i).Take(batchSize).ToList();
-            var res = await _groqClient.GetSentenceStrengths(sentences);
-            if(res != null)
+            var batchSentences = sentences.Skip(i).Take(batchSize).ToList();
+            var res = await _groqClient.GetSentenceStrengths(batchSentences);
+            if (res != null)
             {
                 results.AddRange(res);
             }
         }
-        
+
         IEnumerable<ValidatedSentence> validatedSentences = new List<ValidatedSentence>();
-        fullLocalLlmTags.Sentences.ForEach(s =>
+        sentences.ForEach(s =>
         {
             var strengthData = results?.Where(x => x.Sentence == s.Sentence)?.FirstOrDefault();
             if (strengthData != null)
@@ -219,7 +224,7 @@ public class SeoController : ControllerBase
             response.Request = request;
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
             l2.ExpertiseScore = await GetExpertiseScore(request.Article.Raw, fullLocalLlmTags.Sentences);
-
+            l2.CredibilityScore = await GetCredibilityScoreFromSentences(fullLocalLlmTags.Sentences);
             //l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
             //l2.SectionScore = orchestratorResponse?.SectionScore /10.0?? 1.0;
 

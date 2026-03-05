@@ -756,6 +756,7 @@ Feedback Scope Definition (Non-Negotiable)
 Every recommendation must operate at exactly one of three scopes. Never mix scopes inside a single feedback item.
 Every Recommendation must be for increasing one of the below scores: IntentScore, SectionScore, KeywordScore, OriginalInfoScore, ExpertiseScore, CredibilityScore, AuthorityScore, SimplicityScore, GrammarScore, VariationScore, PlagiarismScore, ClaritySynthesisScore, FactRetrievalScore, AnswerBlockDensityScore, FactualIsolationScore, EntityAlignmentScore, TechnicalClarityScore, SignalToNoiseScore.
 Scores will be provided as input to the system along with the content. Your recommendation must specify which score(s) it improves.
+All Scores are in range 0-10. so give recommendation only when score is less than 10 and your recommendation can improve it by at least 1 point. Do not give recommendation if score is already 10 or if your recommendation cannot improve the score by at least 1 point.
 
 Feedback Scope Table:
 - Article-level: Whole document. Allowed: Coverage, structure, redundancy, plagiarism, intent, word count. Disallowed: Grammar, word choice.

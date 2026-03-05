@@ -27,7 +27,7 @@ public static class Level2Engine
 
             OriginalInfoScore = OriginalInfoScorer.Score(validated),
             //ExpertiseScore = ExpertiseScorer.Score(validated),
-            CredibilityScore = CredibilityScorer.Score(validated),
+            //CredibilityScore = CredibilityScorer.Score(validated),
             AuthorityScore = AuthorityScorer.Score(validated),
 
             SimplicityScore = SimplicityScorer.Score(validated),

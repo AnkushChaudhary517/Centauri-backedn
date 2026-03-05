@@ -230,7 +230,7 @@ public class Phase1And2OrchestratorService
                 {
                     Id = $"S{sectionCounter++}",
                     SectionText = sentence.Sentence,
-                    SentenceIds = new List<string>()
+                    Sentences = new List<string>()
                 };
             }
             else
@@ -238,7 +238,7 @@ public class Phase1And2OrchestratorService
                 // Content sentence → attach to current section
                 if (currentSection != null)
                 {
-                    currentSection.SentenceIds.Add(sentence.SentenceId);
+                    currentSection.Sentences.Add(sentence.Sentence);
                 }
                 // else: content before first header → ignored by definition
             }
@@ -641,7 +641,7 @@ public class Phase1And2OrchestratorService
             List<Task<RecommendationsResponse>> tasks = new List<Task<RecommendationsResponse>>();
             var request = JsonSerializer.Serialize(new
             {
-                //Sections=sections,
+                Sections=sections,
                 Sentences = level1.Select(x => new
                 {
                     Id = x.SentenceId,
@@ -651,12 +651,12 @@ public class Phase1And2OrchestratorService
                 }).ToList()
             });
             response.Recommendations = await GenerateRecommendationsAsync(request);
-            
-           // for (int i = 0; i < level1.Count; i += offset)
-           // {
-           //     var chunk = level1.Skip(i).Take(offset).ToList();
-           //     var level1Sentences = string.Join(" ", chunk.Select(s => new { Text = s.Text, HtmlTag = s.HtmlTag }));
-           //     tasks.Add(GenerateRecommendationsAsync(level1Sentences));
+
+            // for (int i = 0; i < level1.Count; i += offset)
+            // {
+            //     var chunk = level1.Skip(i).Take(offset).ToList();
+            //     var level1Sentences = string.Join(" ", chunk.Select(s => new { Text = s.Text, HtmlTag = s.HtmlTag }));
+            //     tasks.Add(GenerateRecommendationsAsync(level1Sentences));
 
             // }
             //var res = await Task.WhenAll(tasks);
@@ -664,12 +664,13 @@ public class Phase1And2OrchestratorService
             //{
             //    response.Recommendations.Add(r);
             //});
-
-            if (response?.Recommendations?.Overall != null && response.Recommendations.Overall.Count > 0)
-            {
-                response.Status = "Completed";
-                await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(response));
-            }
+            response.Status = "Completed";
+            await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(response));
+            //if (response?.Recommendations?.Overall != null && response.Recommendations.Overall.Count > 0)
+            //{
+            //    response.Status = "Completed";
+            //    await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(response));
+            //}
               
 
         }

@@ -1,4 +1,6 @@
-﻿using Centauri_Api.Model;
+﻿using Amazon.Runtime.Internal;
+using Azure.Core;
+using Centauri_Api.Model;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Scoring;
 using CentauriSeo.Application.Utils;
@@ -52,6 +54,72 @@ public class SeoController : ControllerBase
         var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
         var recommendations =await _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
         return Ok(recommendations);
+    }
+
+    [HttpPost("expertise")]
+    public async Task<double> GetExpertiseScore([FromBody] SeoRequest request)
+    {
+        var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+        var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
+        var res = await _groqClient.AnalyzeArticleExpertise(request.Article.Raw);
+
+        return _groqClient.CalculateArticleExpertiseScore(res,fullLocalLlmTags.Sentences);
+    }
+
+    [HttpPost("credibility")]
+    public async Task<double> GetCredibilityScore([FromBody] SeoRequest request)
+    {
+        var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+        int batchSize = 10;
+        List<SentenceStrengthResponse> results = new List<SentenceStrengthResponse>();
+        for (int i=0;i< fullLocalLlmTags.Sentences.Count; i+=batchSize)
+        {
+            var sentences = fullLocalLlmTags.Sentences.Skip(i).Take(batchSize).ToList();
+            var res = await _groqClient.GetSentenceStrengths(sentences);
+            if(res != null)
+            {
+                results.AddRange(res);
+            }
+        }
+        
+        IEnumerable<ValidatedSentence> validatedSentences = new List<ValidatedSentence>();
+        fullLocalLlmTags.Sentences.ForEach(s =>
+        {
+            var strengthData = results?.Where(x => x.Sentence == s.Sentence)?.FirstOrDefault();
+            if (strengthData != null)
+            {
+                validatedSentences = validatedSentences.Append(new ValidatedSentence()
+                {
+                    Text = s.Sentence,
+                    InformativeType = s.InformativeType,
+                    Structure = s.Structure,
+                    Voice = s.Voice,
+                    HtmlTag = s.HtmlTag,
+                    HasCitation = s.ClaimsCitation,
+                    IsGrammaticallyCorrect = s.IsGrammaticallyCorrect,
+                    IsPlagiarized = s.IsPlagiarized,
+                    AnswerSentenceFlag = s.AnswerSentenceFlag,
+                    Strength = strengthData.Strength,
+                });
+            }
+        });
+        return CredibilityScorer.Score(validatedSentences);
+    }
+    private  async Task<double> GetExpertiseScore(string articleText, List<GeminiSentenceTag> sentences)
+    {
+        var res = await _groqClient.AnalyzeArticleExpertise(articleText);
+
+        return _groqClient.CalculateArticleExpertiseScore(res, sentences);
+    }
+
+    [HttpPost("authority")]
+    public async Task<double> GetAuthorityScore([FromBody] SeoRequest request)
+    {
+        var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+        var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
+        var res = await _groqClient.AnalyzeExpertise(sections);
+        OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
+        return AuthorityScorer.Score(orchestratorResponse.ValidatedSentences);
     }
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
@@ -150,6 +218,7 @@ public class SeoController : ControllerBase
             response.Level2InputResponse = orchestratorResponse;
             response.Request = request;
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
+            l2.ExpertiseScore = await GetExpertiseScore(request.Article.Raw, fullLocalLlmTags.Sentences);
 
             l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
             //l2.SectionScore = orchestratorResponse?.SectionScore /10.0?? 1.0;

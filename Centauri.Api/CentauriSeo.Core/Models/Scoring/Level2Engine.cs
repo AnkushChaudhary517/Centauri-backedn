@@ -26,7 +26,7 @@ public static class Level2Engine
                                             //  request?.MetaTitle, request?.MetaDescription, request?.Url),
 
             OriginalInfoScore = OriginalInfoScorer.Score(validated),
-            ExpertiseScore = ExpertiseScorer.Score(validated),
+            //ExpertiseScore = ExpertiseScorer.Score(validated),
             CredibilityScore = CredibilityScorer.Score(validated),
             AuthorityScore = AuthorityScorer.Score(validated),
 

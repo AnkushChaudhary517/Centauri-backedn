@@ -14,53 +14,89 @@ public static class CredibilityScorer
         var list = sentences.ToList();
         if (!list.Any()) return 0.0;
 
-        int C = 0;
+        double C = 0.0;
 
         // First pass: if any Statistic without citation => immediate 0 (strict rule)
-        if (list.Any(s => s.InformativeType == InformativeType.Statistic && s.Source == SourceType.Unknown))
-            return 0.0;
+        //if (list.Any(s => s.InformativeType == InformativeType.Statistic && s.Source == SourceType.Unknown))
+        //    return 0.0;
 
         foreach (var s in list)
         {
 
-            if (s.InformativeType == InformativeType.Statistic)
+            switch(s.InformativeType)
             {
-                if (s.Source != SourceType.Unknown)
-                {
-                    C += 1;
-                } 
+                case InformativeType.Statistic:
+                    if (s.Strength.ToLower() =="strong") C += 1;
+                    if (s.Strength.ToLower() == "medium") C += 0.8;
+                    if (s.Strength.ToLower() == "strong") C += 0.5;
+                    break;
+                case InformativeType.Prediction:
+                    if (s.Strength.ToLower() == "strong") C += 0.7;
+                    if (s.Strength.ToLower() == "medium") C += 0.5;
+                    if (s.Strength.ToLower() == "strong") C += 0.3;
+                    break;
+                case InformativeType.Definition:
+                case InformativeType.Fact:
+                    if (s.Strength.ToLower() == "strong") C += 1.0;
+                    if (s.Strength.ToLower() == "medium") C += 0.7;
+                    if (s.Strength.ToLower() == "strong") C += 0.4;
+                    if(s.Strength.ToLower()=="none")
+                    {
+                        if(s.InfoQuality == InfoQuality.WellKnown)
+                        {
+                            C += 0.4;
+                        }
+                    }
+                    break;
+                case InformativeType.Opinion:
+                    if(s.Source != SourceType.Unknown)
+                    {
+                        C += 0.4;
+                    }
+                    break;
+                default:
+                    // others contribute 0
+                    break;
             }
-            else if (s.InformativeType == InformativeType.Prediction)
-            {
-                if (s.Source != SourceType.Unknown)
-                {
-                    C += 1;
-                }
-            }
-            else if (s.InformativeType == InformativeType.Definition)
-            {
-                if (s.Source != SourceType.Unknown) C += 1;
-            }
-            else if (s.InformativeType == InformativeType.Fact)
-            {
-                //if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source == SourceType.Unknown)
-                //{
-                //    C += 1;
-                //}
-                if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source != SourceType.Unknown) C += 1;
-                //if (s.HasCitation) C += 1;
-                else if ((s.InfoQuality == InfoQuality.WellKnown || s.InfoQuality == InfoQuality.Unique) && s.Source != SourceType.Unknown)
-                    C += 1;
-            }
-            else 
-            {
-               // if (s.Source != SourceType.Unknown) C += 1;
-            }
+            //if (s.InformativeType == InformativeType.Statistic)
+            //{
+            //    if (s.Source != SourceType.Unknown)
+            //    {
+            //        C += 1;
+            //    } 
+            //}
+            //else if (s.InformativeType == InformativeType.Prediction)
+            //{
+            //    if (s.Source != SourceType.Unknown)
+            //    {
+            //        C += 1;
+            //    }
+            //}
+            //else if (s.InformativeType == InformativeType.Definition)
+            //{
+            //    if (s.Source != SourceType.Unknown) C += 1;
+            //}
+            //else if (s.InformativeType == InformativeType.Fact)
+            //{
+            //    //if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source == SourceType.Unknown)
+            //    //{
+            //    //    C += 1;
+            //    //}
+            //    if (s.InfoQuality == InfoQuality.PartiallyKnown && s.Source != SourceType.Unknown) C += 1;
+            //    //if (s.HasCitation) C += 1;
+            //    else if ((s.InfoQuality == InfoQuality.WellKnown || s.InfoQuality == InfoQuality.Unique) && s.Source != SourceType.Unknown)
+            //        C += 1;
+            //}
+            //else 
+            //{
+            //   // if (s.Source != SourceType.Unknown) C += 1;
+            //}
             // others contribute 0
         }
-        var totalCount = list.Where(x => x.InformativeType == InformativeType.Statistic || x.InformativeType == InformativeType.Prediction || x.InformativeType == InformativeType.Definition || x.InformativeType == InformativeType.Fact).Count();
-        if(totalCount == 0) return 0.0; // avoid division by zero, and if no relevant sentences, credibility is 0
-        double credibilityPercent = (C / (double)totalCount) * 10.0;
+        //var totalCount = list.Where(x => x.InformativeType == InformativeType.Statistic || x.InformativeType == InformativeType.Prediction || x.InformativeType == InformativeType.Definition || x.InformativeType == InformativeType.Fact).Count();
+        //if(totalCount == 0) return 0.0; // avoid division by zero, and if no relevant sentences, credibility is 0
+
+        double credibilityPercent = list.Count ==0? 0 :(C / (double)list.Count) * 10.0;
         return Math.Clamp(credibilityPercent, 0.0, 10.0);
     }
 

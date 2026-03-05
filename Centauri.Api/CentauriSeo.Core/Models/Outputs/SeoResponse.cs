@@ -5,6 +5,7 @@ using CentauriSeo.Core.Models.Sentences;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace CentauriSeo.Core.Models.Output;
@@ -186,6 +187,7 @@ public class RecommendationsResponse
 }
 public class Recommendation
 {
+    [JsonPropertyName("severity")]
     public string Priority { get; set; }
     public string Issue { get; set; } = "";
     public string WhatToChange { get; set; } = "";

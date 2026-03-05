@@ -31,6 +31,7 @@ public class ValidatedSentence
     public bool HasCitation { get; init; }
     public double Confidence { get; init; } // 0–1 arbitration confidence
     public bool HasPronoun { get; set; }
+    public string Strength { get; set; } = "";
     public bool IsGrammaticallyCorrect { get; set; }
     public bool IsPlagiarized { get; set; }
     public int AnswerSentenceFlag { get; set; }
@@ -42,7 +43,7 @@ public class ValidatedSentence
 public class Section
 {
     public string Id { get; set; }
-    public List<string> SentenceIds { get; set; } = new List<string>();
+    public List<string> Sentences { get; set; } = new List<string>();
     public string SectionText { get; set; }
 }
 

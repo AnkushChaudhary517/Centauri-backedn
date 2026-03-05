@@ -6,7 +6,7 @@ public class Level2Scores
     public double SectionScore { get; set; }
     public double KeywordScore { get; init; }
     public double OriginalInfoScore { get; init; }
-    public double ExpertiseScore { get; init; }
+    public double ExpertiseScore { get; set; }
     public double CredibilityScore { get; init; }
     public double AuthorityScore { get; set; }
     public double SimplicityScore { get; init; }

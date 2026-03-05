@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Mscc.GenerativeAI.Types;
 using System;
+using System.IO;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -317,7 +318,7 @@ JSON Schema:
 
     public async Task<string> GenerateRecommendationsAsync(string article)
     {
-        return await ProcessContent(CentauriSystemPrompts.RecommendationsPrompt, article);
+        return await ProcessContent(CentauriSystemPrompts.RecommendationsPrompt, article, false);
     }
 
     public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)
@@ -497,38 +498,71 @@ JSON Schema:
                 .Trim();
     }
 
+    public static async Task<bool> IsCacheValid(string cacheName, string apiKey)
+    {
+        using (var client = new HttpClient())
+        {
+            var url = $"https://generativelanguage.googleapis.com/v1beta/{cacheName}?key={apiKey}";
+
+            var response = await client.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Cache zinda hai!
+                var content = await response.Content.ReadAsStringAsync();
+                // Yahan tu expireTime bhi check kar sakta hai response body se
+                return true;
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Cache expire ho kar delete ho gaya hai
+                return false;
+            }
+
+            return false;
+        }
+    }
     public static async Task<string> CreateHugeContentCache(string systemInstruction, string apiKey)
     {
-        var client = new HttpClient();
 
-        var cacheRequest = new
+
+        var cacheKey = File.ReadAllText("CacheData.txt");
+        var isCacheValid = await IsCacheValid(cacheKey, apiKey);
+        if(!isCacheValid)
         {
-            model = $"models/{ModelId}",
-            // Instructions are part of the cache
-            //system_instruction = new
-            //{
-            //    parts = new[] { new { text = systemInstruction } }
-            //},
-            // Put your HUGE XML here to cross the 2,048 token limit
-            contents = new[]
+            var client = new HttpClient();
+
+            var cacheRequest = new
             {
+                model = $"models/{ModelId}",
+                // Instructions are part of the cache
+                //system_instruction = new
+                //{
+                //    parts = new[] { new { text = systemInstruction } }
+                //},
+                // Put your HUGE XML here to cross the 2,048 token limit
+                contents = new[]
+                {
             new {
                 role = "user",
                 parts = new[] { new { text = systemInstruction } }
             }
         },
-            ttl = "3600s" // Cache for 1 hour
-        };
+                ttl = "3600s" // Cache for 1 hour
+            };
 
-        var response = await client.PostAsJsonAsync(
-            $"https://generativelanguage.googleapis.com/v1beta/cachedContents?key={apiKey}",
-            cacheRequest
-        );
+            var response = await client.PostAsJsonAsync(
+                $"https://generativelanguage.googleapis.com/v1beta/cachedContents?key={apiKey}",
+                cacheRequest
+            );
 
-        var result = await response.Content.ReadAsStringAsync();
-        var cacheName = ParseCacheNameFromJson(result);
+            var result = await response.Content.ReadAsStringAsync();
+            var cacheName = ParseCacheNameFromJson(result);
+            File.WriteAllText("CacheData.txt", cacheName);
+            return cacheName;
+        }
+        return cacheKey;
         // This returns a JSON containing the "name" (e.g., "cachedContents/abcdef123")
-        return cacheName;
     }
 
     public static async Task<int> GetTokenCount(string apiKey, string prompt, string xmlContent)

@@ -854,28 +854,28 @@ Return only a JSON object with the following structure:
       ""fix"": ""string"",
       ""improves"": [""ScoreName""],
      ""examples"": { 
-         ""bad"": ""Exact HTML Quote"", 
+         ""bad"": ""it should only contain the sentence text. Never add any other json request data.Do not write any sentence id or section id"", 
          ""good"""": ""Rewritten text OR one-liner action if rewrite is impossible"""" 
       },
     }
   ],
   ""sectionLevel"": [
     {
-      ""sectionId"": ""string"",
+      ""text"": ""string(section level text passed in the request)"",
       ""whatToChange"": ""string"",
       ""priority"": ""string"",
       ""description"": ""string"",
       ""fix"": ""string"",
       ""improves"": [""ScoreName""],
       ""examples"": { 
-         ""bad"": ""Exact HTML Quote"", 
+         ""bad"": ""it should only contain the sentence text. Never add any other json request data.Do not write any sentence id or section id"", 
          ""good"""": ""Rewritten text OR one-liner action if rewrite is impossible"""" 
       }
     }
   ],
   ""sentenceLevel"": [
     {
-      ""sectionId"": ""string"",
+      ""text"": ""string(sentence text)"",
       ""sentenceIndex"": int,
       ""whatToChange"": ""string"",
       ""priority"": ""string"",
@@ -883,12 +883,14 @@ Return only a JSON object with the following structure:
       ""fix"": ""string"",
       ""improves"": [""ScoreName""],
       ""examples"": { 
-         ""bad"": ""Exact HTML Quote"", 
+         ""bad"": "" it should only contain the sentence text. Never add any other json request data. Do not write any sentence id or section id"", 
          ""good"""": ""Rewritten text OR one-liner action if rewrite is impossible"""" 
       }
     }
   ]
-}";
+}
+
+";
             public const string RecommendationsPrompt11 = @"
 ### SYSTEM REQUIREMENT DOCUMENT: RECOMMENDATION & FEEDBACK LOGIC
 

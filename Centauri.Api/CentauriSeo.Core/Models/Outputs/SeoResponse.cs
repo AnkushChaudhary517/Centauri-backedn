@@ -187,6 +187,8 @@ public class RecommendationsResponse
 }
 public class Recommendation
 {
+    public string ImproveText { get; set; } = "";
+    public string Text { get; set; }
     public string Priority { get; set; }
     public string Issue { get; set; } = "";
     public string WhatToChange { get; set; } = "";

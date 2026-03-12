@@ -642,14 +642,16 @@ public class Phase1And2OrchestratorService
             List<Task<RecommendationsResponse>> tasks = new List<Task<RecommendationsResponse>>();
             var request = JsonSerializer.Serialize(new
             {
-                Sections=sections,
+                Sections=sections?.Select(x => new
+                {
+                    SectionText = x.SectionText,
+                    Sentences = x.Sentences
+                }).ToList(),
                 Scores = level2Scores,
                 Sentences = level1.Select(x => new
                 {
-                    Id = x.SentenceId,
                     Text = x.Sentence,
                     HtmlTag = x.HtmlTag,
-                    //ParagraphId = x.ParagraphId,
                 }).ToList()
             });
             response.Recommendations = await GenerateRecommendationsAsync(request);

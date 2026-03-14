@@ -33,9 +33,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="CacheData.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="Data\centauri_requirement.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

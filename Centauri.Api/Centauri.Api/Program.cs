@@ -1,4 +1,5 @@
 using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DataModel;
 using Amazon.S3;
 using Centauri_Api.Impl;
 using Centauri_Api.Interface;
@@ -6,6 +7,7 @@ using Centauri_Api.Middleware;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
 using CentauriSeo.Core.Models.Utilities;
+using CentauriSeo.Core.Modules.Notification;
 using CentauriSeo.Infrastructure.Data;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.Services;
@@ -13,10 +15,18 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using Stripe;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+var awsOptions = builder.Configuration.GetAWSOptions();
+builder.Services.AddDefaultAWSOptions(awsOptions);
 
+// DynamoDB client
+builder.Services.AddAWSService<IAmazonDynamoDB>();
+
+// DynamoDBContext for DI
+builder.Services.AddSingleton<IDynamoDBContext, DynamoDBContext>();
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSwaggerGen();
@@ -100,7 +110,9 @@ builder.Services.AddHttpClient<PerplexityClient>(c =>
     c.BaseAddress = new Uri("https://api.perplexity.ai");
     c.DefaultRequestHeaders.Add("Authorization", "Bearer YOUR_KEY");
 });
-
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<IEmailVerificationRepository,EmailVerificationRepository>();
+builder.Services.AddSingleton<EmailVerificationService>();
 
 // register orchestrator service
 builder.Services.AddSingleton<Phase1And2OrchestratorService>();
@@ -111,8 +123,20 @@ builder.Services.AddAWSService<IAmazonDynamoDB>();
 // Register your repository
 builder.Services.AddSingleton<IDynamoDbService, DynamoDbService>();
 // Application services
-builder.Services.AddSingleton<ITokenService, TokenService>();
+builder.Services.AddSingleton<ITokenService,Centauri_Api.Impl.TokenService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();
+
+// Register billing services & repositories (DynamoDB client is already registered earlier)
+//builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.StripeService>();
+builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.Repositories.SubscriptionRepository>();
+builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.Repositories.CreditLedgerRepository>();
+builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.Repositories.ArticleRepository>();
+builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.Repositories.ProcessedEventRepository>();
+
+// Business services
+builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.CreditService>();
+builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.ArticleUsageService>();
+//builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.BillingService>();
 
 var app = builder.Build();
 app.UseMiddleware<GlobalExceptionMiddleware>();

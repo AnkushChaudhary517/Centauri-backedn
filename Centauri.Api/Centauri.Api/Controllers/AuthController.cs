@@ -1,6 +1,7 @@
 ﻿
 using Centauri_Api.Interface;
 using Centauri_Api.Model;
+using CentauriSeo.Core.Modules.Notification;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity.Data;
@@ -22,15 +23,18 @@ public class AuthController : ControllerBase
     private readonly IDynamoDbService _dynamoDbService;
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly EmailVerificationService _verificationService;
 
     public AuthController(IAuthService authService, IDynamoDbService dynamoDbService,
-        IConfiguration config, IHttpClientFactory httpClientFactory
+        IConfiguration config, IHttpClientFactory httpClientFactory,
+        EmailVerificationService verificationService
         )
     {
         _authService = authService;
         _dynamoDbService = dynamoDbService;
         _config = config;
         _httpClientFactory = httpClientFactory;
+        _verificationService = verificationService;
     }
 
     [HttpPost("login")]
@@ -77,6 +81,28 @@ public class AuthController : ControllerBase
         }
 
         return CreatedAtAction(nameof(Register), ApiResponseHelper.Success("Account created successfully. Please verify your email."));
+    }
+    [HttpPost("send-verification")]
+    public async Task<IActionResult> SendVerification([FromBody] string email)
+    {
+        await _verificationService.SendVerificationCodeAsync(email);
+
+        return Ok(new { message = "Verification code sent" });
+    }
+
+    [HttpPost("verify-email")]
+    public async Task<IActionResult> VerifyEmail([FromBody]Model.VerifyEmailRequest request)
+    {
+        var result = await _verificationService.VerifyCodeAsync(request?.Email, request?.Code);
+
+        if (!result)
+            return BadRequest("Invalid or expired code");
+
+        return Ok(new
+        {
+            Success = result,
+            Message = "Email verified"
+        });
     }
     //[Authorize]
     [HttpPost("logout")]

@@ -43,10 +43,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy("DefaultCorsPolicy", policy =>
     {
         policy.AllowAnyOrigin()
-              .WithOrigins(allowedOrigins)
-              .AllowAnyHeader().AllowAnyMethod()
+              .AllowAnyHeader()
               .AllowAnyMethod();
-              //.AllowCredentials();
     });
 });
 

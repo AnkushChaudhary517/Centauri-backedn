@@ -158,7 +158,8 @@ if (app.Environment.IsDevelopment())
 app.UseRouting();
 // MUST call UseCors before MapControllers / endpoints
 app.UseCors("DefaultCorsPolicy");
-
+app.UseAuthentication();              // since you configured JWT
+app.UseAuthorization();
 app.MapControllers();
 app.Run();
 

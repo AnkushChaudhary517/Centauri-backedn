@@ -42,9 +42,13 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultCorsPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        policy.WithOrigins(
+            "https://getcentauri.com",
+            "https://www.getcentauri.com",
+            "http://localhost:8080"
+          )
+          .AllowAnyHeader()
+          .AllowAnyMethod();
     });
 });
 
@@ -151,7 +155,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
+app.UseRouting();
 // MUST call UseCors before MapControllers / endpoints
 app.UseCors("DefaultCorsPolicy");
 

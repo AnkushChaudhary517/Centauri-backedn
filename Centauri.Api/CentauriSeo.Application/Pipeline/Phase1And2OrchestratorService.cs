@@ -628,7 +628,7 @@ public class Phase1And2OrchestratorService
             Recommendations = new RecommendationsResponse(),
             Status = "InProgress"
         };
-        var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true };
+        var options = new JsonSerializerOptions() { PropertyNameCaseInsensitive = true ,NumberHandling= JsonNumberHandling.AllowNamedFloatingPointLiterals };
         var cacheKey = _cache.ComputeRequestKey(article, "GeminiRecommendations:Complete");
         var cached = await _cache.GetAsync(cacheKey);
         if (!string.IsNullOrEmpty(cached))
@@ -653,7 +653,7 @@ public class Phase1And2OrchestratorService
                     Text = x.Sentence,
                     HtmlTag = x.HtmlTag,
                 }).ToList()
-            });
+            }, options);
             response.Recommendations = await GenerateRecommendationsAsync(request);
 
             // for (int i = 0; i < level1.Count; i += offset)

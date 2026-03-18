@@ -43,6 +43,7 @@ public class SeoResponse
     public List<string> RecommendationsLegacy { get; set; } = new();
     public OrchestratorResponse? Level2InputResponse { get; set; }
     public SeoRequest Request { get; set; }
+    public string Error { get; set; }
 }
 
 public class InputIntegrity

@@ -114,9 +114,9 @@ JSON Schema:
 {
   ""keyword"": ""string"",
   ""competitors"": [
-    { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""string"" }
+    { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""Informational|Navigational|Transactional|Commercial"" }
   ],
-  ""intent"": ""string"",
+  ""intent"": ""Informational|Navigational|Transactional|Commercial"",
   ""variants"": [{""text"":""variant text value"", ""variantType"":""Exact|Lexical|Semantic|Morphological|SearchDerived""}]
 }
 

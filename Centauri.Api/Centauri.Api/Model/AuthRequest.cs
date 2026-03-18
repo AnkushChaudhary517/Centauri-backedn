@@ -1,19 +1,41 @@
-﻿namespace Centauri_Api.Model
+﻿using System.Text.Json.Serialization;
+
+namespace Centauri_Api.Model
 {
 
     public class LoginRequest
     {
+        [JsonPropertyName("email")]
         public string Email { get; set; } = string.Empty;
+        [JsonPropertyName("password")]
         public string Password { get; set; } = string.Empty;
     }
 
     public class RegisterRequest
     {
+        [JsonPropertyName("email")]
         public string Email { get; set; } = string.Empty;
+        [JsonPropertyName("password")]
         public string Password { get; set; } = string.Empty;
+        [JsonPropertyName("acceptTerms")]
         public bool AcceptTerms { get; set; } = true;        
     }
 
+    public class UpdateProfileRequest
+    {
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+        [JsonPropertyName("password")]
+        public string Password { get; set; } = string.Empty;
+        [JsonPropertyName("firstName")]
+        public string FirstName { get; set; }
+        [JsonPropertyName("lastName")]
+        public string LastName { get; set; }
+        [JsonPropertyName("company")]
+        public string Company { get; set; }
+        [JsonPropertyName("contactNumber")]
+        public string ContactNumber { get; set; }
+    }
     public class GoogleLoginRequest
     {
         public string Name { get; set; } = string.Empty;

@@ -82,6 +82,49 @@ public class AuthController : ControllerBase
 
         return CreatedAtAction(nameof(Register), ApiResponseHelper.Success("Account created successfully. Please verify your email."));
     }
+
+    [HttpPost("updateprofile")]
+    public async Task<ActionResult<ApiResponse<RegisterResponse>>> UpdateProfile(UpdateProfileRequest request)
+    {
+        if (request == null || string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+        {
+            return BadRequest(ApiResponseHelper.Error<RegisterResponse>(
+                "INVALID_REQUEST",
+                "Invalid update request. Please provide all required fields.",
+                400
+            ));
+        }
+        var existingUser = await _dynamoDbService.GetUserByEmail(request.Email.ToLower());
+        if(existingUser != null)
+        {
+            return BadRequest(ApiResponseHelper.Error<RegisterResponse>(
+               "INVALID_REQUEST",
+               "User Already exists",
+               400
+           ));
+        }
+        var user = new Entitites.CentauriUser
+        {
+            Email = request.Email?.ToLower(),
+            FirstName = request.FirstName,
+            LastName = request.LastName,
+            Company = request.Company,
+            ContactNumber = request.ContactNumber,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            CreditsAdded = 5,
+            EmailVerified = true,
+            Id = Guid.NewGuid().ToString(),
+            Plan = "FREE",
+            SubscriptionEndsAt = DateTime.UtcNow.AddDays(14),
+            TrialEndsAt = DateTime.UtcNow.AddDays(14)
+            
+        };
+         await _dynamoDbService.CreateUserAsync(user);
+
+        return CreatedAtAction(nameof(Register), ApiResponseHelper.Success("Account created successfully. Please verify your email."));
+    }
     [HttpPost("send-verification")]
     public async Task<IActionResult> SendVerification([FromBody] string email)
     {
@@ -89,7 +132,31 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "Verification code sent" });
     }
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] string email)
+    {
+        await _verificationService.SendVerificationCodeAsync(email,"ForgotPassword");
 
+        return Ok(new { message = "Verification code sent" });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        var success = await _verificationService.VerifyCodeAsync(request.Email, request.ResetToken);
+        if(!success)
+        {
+            return BadRequest(ApiResponseHelper.Error<RegisterResponse>(
+              "INVALID_REQUEST",
+              "Wrong verification code provided",
+              400
+          ));
+        }
+        var user = await _dynamoDbService.GetUserByEmail(request.Email);
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        await _dynamoDbService.UpdateUserAsync(user);
+        return Ok(new { message = "password reset successfully" });
+    }
     [HttpPost("verify-email")]
     public async Task<IActionResult> VerifyEmail([FromBody]Model.VerifyEmailRequest request)
     {

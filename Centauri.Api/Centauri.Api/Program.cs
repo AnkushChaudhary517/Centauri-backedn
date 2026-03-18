@@ -37,7 +37,7 @@ builder.Services.AddSingleton<AiCallTracker>();
 
 // CORS - allow React dev origin by default, configurable via appsettings.json
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-                     ?? new[] { "http://localhost:8080", "https://api.getcentauri.com" };
+                     ?? new[] { "http://localhost:8080", "http://localhost:8081", "https://api.getcentauri.com" };
 
 builder.Services.AddCors(options =>
 {
@@ -46,7 +46,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "https://getcentauri.com",
             "https://www.getcentauri.com",
-            "http://localhost:8080"
+            "http://localhost:8080",
+            "http://localhost:8081"
           )
           .AllowAnyHeader()
           .AllowAnyMethod();

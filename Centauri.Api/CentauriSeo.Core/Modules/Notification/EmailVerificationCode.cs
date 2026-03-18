@@ -19,6 +19,7 @@ namespace CentauriSeo.Core.Modules.Notification
         public string Email { get; set; }
 
         public string Code { get; set; }
+        public string Type { get; set; }
 
         public long ExpiryTime { get; set; }
 

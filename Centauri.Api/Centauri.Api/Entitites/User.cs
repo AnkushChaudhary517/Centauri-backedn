@@ -28,9 +28,11 @@ namespace Centauri_Api.Entitites
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         public string Plan { get; set; } = "Free";
-        public DateTime TrialEndsAt { get; set; } = DateTime.UtcNow.AddDays(15);
+        public DateTime TrialEndsAt { get; set; } = DateTime.UtcNow.AddDays(14);
         public DateTime SubscriptionEndsAt { get; set; }
         public int CreditsAdded { get; set; }
+        public string ContactNumber { get; set; }
+        public string Company { get; set; }
     }
 
     [DynamoDBTable("CentauriArticle")]

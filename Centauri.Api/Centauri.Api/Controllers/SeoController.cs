@@ -1,6 +1,8 @@
 ﻿using Amazon.Runtime.Internal;
 using Azure;
 using Azure.Core;
+using Centauri_Api.Entitites;
+using Centauri_Api.Interface;
 using Centauri_Api.Model;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Scoring;
@@ -15,6 +17,7 @@ using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -37,14 +40,15 @@ public class SeoController : ControllerBase
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly GroqClient _groqClient;
     private readonly IMemoryCache _cache;
-
+    private readonly IDynamoDbService _dynamoDbService;
     public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor, GroqClient groqClient,
-        IMemoryCache cache)
+        IMemoryCache cache, IDynamoDbService dynamoDbService)
     {
         _orchestrator = orchestrator;
         _httpContextAccessor = httpContextAccessor;
         _groqClient = groqClient;
         _cache = cache;
+        _dynamoDbService = dynamoDbService;
     }
 
     [HttpPost("categories-test")]
@@ -133,9 +137,20 @@ public class SeoController : ControllerBase
         OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
         return AuthorityScorer.Score(orchestratorResponse.ValidatedSentences);
     }
+    [Authorize]
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = await _dynamoDbService.GetUserAsync(userId);
+        if(TrialEnded(user))
+        {
+            throw new Exception("Free trial ended for user. Please upgrade the subscription or add credits");
+        }
+        if(user == null ||user.CreditsAdded <= 0)
+        {
+                throw new Exception("No credits left");
+        }
         var analyzeResponse = new SeoResponse();
         var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
         var cacheKey2 = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}_isAnalysisStarted";
@@ -164,7 +179,7 @@ public class SeoController : ControllerBase
             else
             {
                 _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
-                GetAnalysisResult(request);
+                GetAnalysisResult(request, userId);
             }               
         }
         catch(Exception ex)
@@ -180,7 +195,24 @@ public class SeoController : ControllerBase
         return analyzeResponse;
     }
 
-    private async Task<SeoResponse> GetAnalysisResult(SeoRequest request)
+    private bool TrialEnded(CentauriUser? user)
+    {
+        bool trialEnded = false;
+        try
+        {
+           if( user.TrialEndsAt< DateTime.UtcNow)
+            {
+                trialEnded = true;
+            }
+        }
+        catch
+        {
+
+        }
+        return trialEnded;
+    }
+
+    private async Task<SeoResponse> GetAnalysisResult(SeoRequest request, string userId)
     {
         var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
         var options = new JsonSerializerOptions
@@ -217,6 +249,7 @@ public class SeoController : ControllerBase
 
             OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
             orchestratorResponse.Sections = sections;
+
             //start recommendations
 
 
@@ -330,6 +363,9 @@ public class SeoController : ControllerBase
             }
             response.IsCompleted = true;
             _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
+            var user = await _dynamoDbService.GetUserAsync(userId);
+            user.CreditsAdded -= 1;
+            await _dynamoDbService.UpdateUserAsync(user);
             return response;
 
         }

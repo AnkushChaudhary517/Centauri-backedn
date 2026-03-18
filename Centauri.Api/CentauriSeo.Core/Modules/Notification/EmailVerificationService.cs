@@ -21,7 +21,7 @@ namespace CentauriSeo.Core.Modules.Notification
             _repository = repository;
         }
 
-        public async Task SendVerificationCodeAsync(string email)
+        public async Task SendVerificationCodeAsync(string email, string type="EmailVerification")
         {
             var code = GenerateCode();
 
@@ -30,11 +30,12 @@ namespace CentauriSeo.Core.Modules.Notification
                 Email = email,
                 Code = code,
                 ExpiryTime = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds(),
-                IsUsed = false
+                IsUsed = false,
+                Type = type
             };
 
             await _repository.SaveCodeAsync(verification);
-
+            
             var subject = "Your verification code";
 
             var body = $@"
@@ -44,10 +45,19 @@ namespace CentauriSeo.Core.Modules.Notification
             <p>This code will expire in 10 minutes.</p>
         ";
 
+            if (type.ToLower() == "forgotpassword")
+            {
+                subject = "Your password reset code";
+                body = $@"
+                <h2>Password Reset</h2>
+                <p>Your password reset code is:</p>
+                <h3>{code}</h3>
+                <p>This code will expire in 10 minutes.</p>";
+            }
             await _emailSender.SendEmailAsync(email, subject, body);
         }
 
-        public async Task<bool> VerifyCodeAsync(string email, string code)
+        public async Task<bool> VerifyCodeAsync(string email, string code,string type= "EmailVerification")
         {
             var record = await _repository.GetCodeAsync(email);
 

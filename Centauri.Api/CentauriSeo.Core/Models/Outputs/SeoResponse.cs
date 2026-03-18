@@ -15,6 +15,7 @@ namespace CentauriSeo.Core.Models.Output;
 // Consumers can still read Level2Scores/Level3Scores/Level4Scores for backwards compatibility.
 public class SeoResponse
 {
+    public bool IsCompleted { get; set; } = false;  
     public string RequestId { get; set; } = Guid.NewGuid().ToString();
     public string Status { get; set; } = "partial";
 

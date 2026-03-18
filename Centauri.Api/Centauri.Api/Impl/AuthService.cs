@@ -25,7 +25,7 @@ namespace Centauri_Api.Impl
                 await RegisterAsync(new RegisterRequest()
                 {
                     Email = googleLoginRequest.Email,
-                    Name = googleLoginRequest.Name,
+                    //Name = googleLoginRequest.Name,
                     Password = Guid.NewGuid().ToString(),
                     AcceptTerms = true
                 });
@@ -97,16 +97,21 @@ namespace Centauri_Api.Impl
 
                 var user = new CentauriUser
                 {
-                    Email = request.Email,
-                    FirstName = request.Name.Split(' ')[0],
-                    LastName = request.Name.Contains(' ') ? request.Name.Split(' ')[1] : "",
+                    Email = request.Email?.ToLower(),
+                    //FirstName = request.Name.Split(' ')[0],
+                    //LastName = request.Name.Contains(' ') ? request.Name.Split(' ')[1] : "",
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
                     VerificationToken = Guid.NewGuid().ToString(),
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
+                    Plan = "FREE",
+                    TrialEndsAt = DateTime.UtcNow.AddDays(14),
+                    CreditsAdded = 5
                 };
 
+
                 await _dynamoDbService.CreateUserAsync(user);
+
                 //_context.Users.Add(user);
                 //await _context.SaveChangesAsync();
 
@@ -114,7 +119,7 @@ namespace Centauri_Api.Impl
                 {
                     UserId = user.Id,
                     Email = user.Email,
-                    Name = request.Name,
+                    //Name = request.Name,
                     EmailVerified = false,
                     VerificationToken = user.VerificationToken,
                     CreatedAt = user.CreatedAt

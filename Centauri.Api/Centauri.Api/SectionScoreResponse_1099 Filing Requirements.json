@@ -1,0 +1,83 @@
+{
+  "keyword": "1099 Filing Requirements",
+  "competitors": [
+    {
+      "url": "https://www.tipalti.com/blog/1099-filing-rules/",
+      "headings": [
+        "Key Takeaways",
+        "The $600 Rule and the Royalty Exception",
+        "What are the new e-filing rules for 2025?",
+        "The Hard Deadline for NEC Forms",
+        "The Split Schedule for MISC Forms"
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://www.tax1099.com/blog/1099-filing-requirements",
+      "headings": [
+        "What's New in 2025?",
+        "Who Needs to File 1099 forms?",
+        "Reminders for 2024 TY",
+        "Key Deadlines for 1099 Forms"
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://www.uschamber.com/co/taxes/guide-to-issuing-1099-tax-forms",
+      "headings": [
+        "Deadlines for sending 1099 forms and filing with the IRS",
+        "Reporting non-employee compensation on Form 1099-NEC",
+        "Situations that don't require 1099s",
+        "The IRS provides the following examples of who should receive 1099s:"
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://www.patriotsoftware.com/payroll/taxes/1099/state-filing-requirements/",
+      "headings": [
+        "1099 State Filing Requirements",
+        "Form 1099-NEC IRS Due Date: January 31 or the following business day if it falls on a weekend.",
+        "Form 1099-MISC IRS Due Date: February 28 (paper) or March 31 (electronic) or the following business day if it falls on a weekend."
+      ],
+      "intent": "Informational"
+    },
+    {
+      "url": "https://www.irs.gov/instructions/i1099misc",
+      "headings": [
+        "Filing dates",
+        "Statements to Recipients",
+        "Specific Instructions for Form 1099-MISC.",
+        "At least $10 in royalties (see the instructions for box 2) or broker payments in lieu of dividends or tax-exempt interest (see the instructions for box 8).",
+        "At least $600 in: Rents (box 1); Prizes and awards, including certain non-government grants (box 3); Other income payments (box 3); Generally, the cash paid from a notional principal contract to an individual, partnership, or estate (box 3); Any fishing boat proceeds (box 5); Medical and health care payments (box 6);"
+      ],
+      "intent": "Informational"
+    }
+  ],
+  "intent": "Informational",
+  "variants": [
+    "1099 filing requirement",
+    "1099 form filing requirements",
+    "filing 1099 requirements",
+    "1099s filing requirements",
+    "1099 required filing",
+    "1099 filing guidance",
+    "requirements for filing 1099",
+    "1099 reporting rules",
+    "1099 tax requirements",
+    "1099 tax filing",
+    "1099 compliance",
+    "1099 reporting thresholds",
+    "1099 obligations",
+    "1099 guidelines",
+    "1099 filing rules",
+    "new 1099 filing requirements",
+    "guide to issuing 1099 tax forms",
+    "1099 state filing requirements",
+    "instructions for forms 1099-MISC and 1099-NEC",
+    "who needs to file 1099",
+    "1099 deadlines",
+    "e-filing rules 1099",
+    "1099-NEC filing requirements",
+    "1099-MISC filing requirements"
+  ]
+}

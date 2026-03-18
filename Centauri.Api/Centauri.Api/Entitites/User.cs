@@ -27,6 +27,33 @@ namespace Centauri_Api.Entitites
         public DateTime? ResetTokenExpiry { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public string Plan { get; set; } = "Free";
+        public DateTime TrialEndsAt { get; set; } = DateTime.UtcNow.AddDays(15);
+        public DateTime SubscriptionEndsAt { get; set; }
+        public int CreditsAdded { get; set; }
     }
 
+    [DynamoDBTable("CentauriArticle")]
+    public class CentauriArticle
+    {
+        [DynamoDBHashKey]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        [DynamoDBRangeKey] 
+        public string UserId { get; set; } = Guid.NewGuid().ToString();
+        public string FirstName { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    [DynamoDBTable("CentauriPayment")]
+    public class CentauriPayment
+    {
+        [DynamoDBHashKey]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        [DynamoDBRangeKey] 
+        public string UserId { get; set; } = Guid.NewGuid().ToString();
+        public double Amount { get; set; }
+        public string Type { get; set; }
+        public int CreditsAdded { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
 }

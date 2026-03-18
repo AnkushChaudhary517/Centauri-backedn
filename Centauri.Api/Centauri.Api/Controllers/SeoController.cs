@@ -15,7 +15,10 @@ using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Extensions;
+using Stripe.Forwarding;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -32,12 +35,15 @@ public class SeoController : ControllerBase
     private readonly Phase1And2OrchestratorService _orchestrator;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly GroqClient _groqClient;
+    private readonly IMemoryCache _cache;
 
-    public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor, GroqClient groqClient)
+    public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor, GroqClient groqClient,
+        IMemoryCache cache)
     {
         _orchestrator = orchestrator;
         _httpContextAccessor = httpContextAccessor;
         _groqClient = groqClient;
+        _cache = cache;
     }
 
     [HttpPost("categories-test")]
@@ -129,14 +135,59 @@ public class SeoController : ControllerBase
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
+        var analyzeResponse = new SeoResponse();
+        var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+        var cacheKey2 = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}_isAnalysisStarted";
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
         try
         {
-            var options = new JsonSerializerOptions
+            var cachedData = _cache.Get(cacheKey);
+            var isAnalysisStarted = _cache.Get(cacheKey2);
+            if(isAnalysisStarted != null)
             {
-                PropertyNameCaseInsensitive = true,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-            };
+                //it means analysis already started
+                if (cachedData != null)
+                {
+                    return JsonSerializer.Deserialize<SeoResponse>(cachedData?.ToString(), options);
+                }
+                else
+                {
 
+                    return analyzeResponse;
+                }
+            }
+            else
+            {
+                _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
+                GetAnalysisResult(request);
+            }               
+        }
+        catch(Exception ex)
+        {
+            await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
+            return new SeoResponse()
+            {
+                IsCompleted = true
+            };
+        }
+
+        return analyzeResponse;
+    }
+
+    private async Task<SeoResponse> GetAnalysisResult(SeoRequest request)
+    {
+        var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
+        try
+        {
             var ctx = _httpContextAccessor.HttpContext;
             var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
             var response = new SeoResponse
@@ -275,14 +326,20 @@ public class SeoController : ControllerBase
                 response.InputIntegrity.Status = "success";
                 response.Status = "success";
             }
+            response.IsCompleted = true;
+            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
+            return response;
 
-            return Ok(response);
         }
-        catch (Exception ex)
+        catch(Exception ex)
         {
             await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
+            return new SeoResponse()
+            {
+                IsCompleted=true
+            };
         }
-        return StatusCode(500, "Internal server error occurred during analysis.");
+        
     }
 
     private async Task UpdateInformativeTypeFromGroq(JsonSerializerOptions options, AiIndexinglevelLocalLlmResponse fullLocalLlmTags)
@@ -436,7 +493,7 @@ public class SeoController : ControllerBase
             PropertyNameCaseInsensitive = true,
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
-        //return JsonSerializer.Deserialize<RecommendationResponseDTO>(System.IO.File.ReadAllText("Data/Recommendations.json"),options);
+        //return JsonSerializer.Deserialize<RecommendationResponseDTO>(System.IO.File.ReadAllText("Data/Recommendations.json"), options);
         var correlationId = _httpContextAccessor?.HttpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
         // Basic input validation
         if (request == null || string.IsNullOrWhiteSpace(request.Article.Raw))

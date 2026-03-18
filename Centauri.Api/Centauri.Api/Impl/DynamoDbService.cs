@@ -47,7 +47,7 @@ namespace Centauri_Api.Impl
             };
 
             var results = await _context.QueryAsync<CentauriUser>(
-                email,                   // GSI partition key value
+                email?.ToLower(),                   // GSI partition key value
                 queryConfig
             ).GetRemainingAsync();
 

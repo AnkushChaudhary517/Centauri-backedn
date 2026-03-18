@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="RazorPay.Core" Version="1.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\CentauriSeo.Core\CentauriSeo.Core.csproj" />
     <ProjectReference Include="..\CentauriSeo.Infrastructure\CentauriSeo.Infrastructure.csproj" />
   </ItemGroup>

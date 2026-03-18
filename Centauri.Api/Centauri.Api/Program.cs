@@ -8,6 +8,7 @@ using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Core.Modules.Notification;
+using CentauriSeo.Core.Modules.Payment;
 using CentauriSeo.Infrastructure.Data;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.Services;
@@ -124,6 +125,7 @@ builder.Services.AddAWSService<IAmazonDynamoDB>();
 
 // Register your repository
 builder.Services.AddSingleton<IDynamoDbService, DynamoDbService>();
+builder.Services.AddSingleton<IRazorpayService, RazorpayService>();
 // Application services
 builder.Services.AddSingleton<ITokenService,Centauri_Api.Impl.TokenService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();

@@ -1,4 +1,5 @@
 ﻿using Amazon.Runtime.Internal;
+using Azure;
 using Azure.Core;
 using Centauri_Api.Model;
 using CentauriSeo.Application.Pipeline;
@@ -171,7 +172,8 @@ public class SeoController : ControllerBase
             await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
             return new SeoResponse()
             {
-                IsCompleted = true
+                IsCompleted = true,
+                Error = ex.ToString()
             };
         }
 
@@ -334,10 +336,13 @@ public class SeoController : ControllerBase
         catch(Exception ex)
         {
             await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
-            return new SeoResponse()
+            var response = new SeoResponse()
             {
-                IsCompleted=true
+                IsCompleted = true,
+                Error = ex.ToString()
             };
+            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
+            return response ;
         }
         
     }

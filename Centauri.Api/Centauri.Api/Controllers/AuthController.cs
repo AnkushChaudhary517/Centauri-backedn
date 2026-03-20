@@ -132,6 +132,26 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "Verification code sent" });
     }
+    [Authorize]
+    [HttpPost("add-credits")]
+    public async Task<IActionResult> AddCredits([FromBody] CreditsAddRequest request)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = await _dynamoDbService.GetUserAsync(userId);
+        if (user == null)
+        {
+            throw new Exception("Wrong user");
+        }
+        if(request?.Plan?.ToLower()=="regular")
+        {
+            user.CreditsAdded += 15;
+            user.SubscriptionEndsAt = DateTime.UtcNow.AddDays(15);
+            user.TrialEndsAt = DateTime.UtcNow.AddDays(15);
+            await _dynamoDbService.UpdateUserAsync(user);
+        }
+        
+        return Ok(new { message = "Credits added successfully" });
+    }
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] string email)
     {
@@ -171,7 +191,7 @@ public class AuthController : ControllerBase
             Message = "Email verified"
         });
     }
-    //[Authorize]
+    [Authorize]
     [HttpPost("logout")]
     public async Task<ActionResult<ApiResponse<LogoutResponse>>> Logout(RefreshTokenRequest request)
     {
@@ -179,7 +199,7 @@ public class AuthController : ControllerBase
         if (string.IsNullOrEmpty(userId))
         {
             return Unauthorized(ApiResponseHelper.Error<LogoutResponse>(
-                "UNAUTHORIZED",
+                "UNAUTHORIZEAUTHORIZED",
                 "User not authenticated",
                 401
             ));

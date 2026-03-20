@@ -218,7 +218,8 @@ public class SeoController : ControllerBase
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+            NumberHandling=JsonNumberHandling.AllowNamedFloatingPointLiterals
         };
         try
         {

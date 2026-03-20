@@ -82,5 +82,9 @@ namespace Centauri_Api.Model
     {
         public string RefreshToken { get; set; } = string.Empty;
     }
+    public class CreditsAddRequest
+    {
+        public string Plan { get; set; } = "regular";
+    }
 
 }

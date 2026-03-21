@@ -1,4 +1,6 @@
-﻿using Amazon.Runtime.Telemetry.Tracing;
+﻿using Amazon.DynamoDBv2.Model;
+using Amazon.Runtime.Telemetry.Tracing;
+using Azure.Core;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
@@ -13,6 +15,7 @@ using Microsoft.Identity.Client;
 using Mscc.GenerativeAI.Types;
 using System;
 using System.IO;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -35,7 +38,10 @@ public class GeminiClient
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     // Use a stable model version unless you are specifically testing 2.0/2.5 previews
-    private const string ModelId = "gemini-2.5-flash";
+    //private const string ModelId = "gemini-2.5-flash";
+    private const string ModelId = "gemini-2.5-pro";
+    private readonly string _accessToken;
+    private const string _apiURL =$"https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0445687823/locations/us-central1/publishers/google/models/{ModelId}:generateContent";
     public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config, AiCallTracker aiCallTracker,
         IHttpContextAccessor httpContextAccessor)
     {
@@ -43,6 +49,7 @@ public class GeminiClient
         _cache = cache;
         _config = config;
         _apiKey = _config["GeminiApiKey"]?.DecodeBase64();
+        _accessToken = _config["GeminiAccessToken"]?.DecodeBase64(); ;
         _logger = new FileLogger();
         _aiCallTracker = aiCallTracker;
         _httpContextAccessor = httpContextAccessor;
@@ -300,7 +307,7 @@ JSON Schema:
         }
         try
         {
-            var responseContent = await ProcessContent(prompt, xmlContent,false, cached_article_key);
+            var responseContent = await ProcessContent(prompt, xmlContent,false, null);
             var res = JsonSerializer.Deserialize<List<GeminiSentenceTag>>(responseContent, options);
             if (res != null)
             {
@@ -323,34 +330,34 @@ JSON Schema:
 
     public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)
     {
-        if(cachePrompt)
-        {
+        //if(cachePrompt)
+        //{
 
-            var cacheKey = _cache.ComputeRequestKey(prompt, "prompt:caching");
-            var cacheName = await _cache.GetAsync(cacheKey);
-            if (string.IsNullOrEmpty(cacheName))
-            {
-                // STEP A: Create Cache
-                cacheName = await CreateHugeContentCache(prompt, _apiKey);
-                if (!string.IsNullOrEmpty(cacheName))
-                {
-                    await _cache.SaveAsync(cacheKey, cacheName);
-                }
-            }
+            //var cacheKey = _cache.ComputeRequestKey(prompt, "prompt:caching");
+            //var cacheName = await _cache.GetAsync(cacheKey);
+            //if (string.IsNullOrEmpty(cacheName))
+            //{
+            //    // STEP A: Create Cache
+            //    cacheName = await CreateHugeContentCache(prompt, _apiKey);
+            //    if (!string.IsNullOrEmpty(cacheName))
+            //    {
+            //        await _cache.SaveAsync(cacheKey, cacheName);
+            //    }
+            //}
 
-            return await GetAnalysisFromCache(_apiKey, cacheName, xmlData);
-        }
-        else
-        {
-            if (!string.IsNullOrEmpty(cachedArticleKey))
-            {
-                var r = await GetAnalysisFromCache(_apiKey, cachedArticleKey, prompt);
-                return r;
-            }
+            //return await GetAnalysisFromCache(_apiKey, cacheName, xmlData);
+        //}
+        //else
+        //{
+            //if (!string.IsNullOrEmpty(cachedArticleKey))
+            //{
+            //    var r = await GetAnalysisFromCache(_apiKey, cachedArticleKey, prompt);
+            //    return r;
+            //}
             var res = await GenerateSentenceTagsDirect(prompt, xmlData,enableGoogleSearch);
             return res;
 
-        }
+        //}
     }
 
     private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent, bool enableSearch=false)
@@ -409,19 +416,20 @@ JSON Schema:
             requestBody,
                 async () =>
                 {
-                    var response = await client.PostAsJsonAsync(
-                    $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:generateContent?key={_apiKey}",
-                    requestBody
-                    );
+                    //var response = await client.PostAsJsonAsync(
+                    //$"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:generateContent?key={_apiKey}",
+                    //requestBody
+                    //);
 
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var error = await response.Content.ReadAsStringAsync();
-                        await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
-                        throw new Exception($"Gemini API Error: {error}");
-                    }
-                    generationConfig = generationConfig;
-                    var res = await response.Content.ReadAsStringAsync();
+                    //if (!response.IsSuccessStatusCode)
+                    //{
+                    //    var error = await response.Content.ReadAsStringAsync();
+                    //    await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
+                    //    throw new Exception($"Gemini API Error: {error}");
+                    //}
+                    //generationConfig = generationConfig;
+                    //var res = await response.Content.ReadAsStringAsync();
+                    var res = await GetGeminiApiResponseAsync(requestBody);
                    return (res, (JsonSerializer.Deserialize<GeminiResponse>(res, options))?.Usage);
 
                 },
@@ -439,6 +447,19 @@ JSON Schema:
                 .Trim();
 
 
+    }
+
+    public async Task<string> GetGeminiApiResponseAsync(object requestBody)
+    {
+        var client = new HttpClient();
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        httpRequest.Content = JsonContent.Create(requestBody);
+
+        var response = await client.SendAsync(httpRequest);
+
+        var result = await response.Content.ReadAsStringAsync();
+        return result;
     }
 
     private static string ParseCacheNameFromJson(string jsonResponse)
@@ -460,43 +481,38 @@ JSON Schema:
         }
     }
 
-    public static async Task<string> GetAnalysisFromCache(string apiKey, string cacheName, string userContent)
-    {
-        var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
+    //public async Task<string> GetAnalysisFromCache(string apiKey, string cacheName, string userContent)
+    //{
+    //    var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
 
-        var generateRequest = new
-        {
-            cached_content = cacheName,
-            contents = new[]
-            {
-            new {
-                role = "user",
-                parts = new[] { new { text = userContent } }
-            }
-        },
-            // YEH SECTION ADD KIYA HAI: Markdown hatane ke liye
-            generation_config = new
-            {
-                response_mime_type = "application/json"
-            }
-        };
+    //    var generateRequest = new
+    //    {
+    //        cached_content = cacheName,
+    //        contents = new[]
+    //        {
+    //        new {
+    //            role = "user",
+    //            parts = new[] { new { text = userContent } }
+    //        }
+    //    },
+    //        // YEH SECTION ADD KIYA HAI: Markdown hatane ke liye
+    //        generation_config = new
+    //        {
+    //            response_mime_type = "application/json"
+    //        }
+    //    };
 
-        var response = await client.PostAsJsonAsync(
-            $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:generateContent?key={apiKey}",
-            generateRequest
-        );
-
-        var jsonResponse = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(jsonResponse);
-        return doc.RootElement
-            .GetProperty("candidates")[0]
-            .GetProperty("content")
-            .GetProperty("parts")[0]
-            .GetProperty("text")
-            .GetString().Replace("```json", "")
-                .Replace("```", "")
-                .Trim();
-    }
+    //    var jsonResponse = await GetGeminiApiResponseAsync(generateRequest);
+    //    using var doc = JsonDocument.Parse(jsonResponse);
+    //    return doc.RootElement
+    //        .GetProperty("candidates")[0]
+    //        .GetProperty("content")
+    //        .GetProperty("parts")[0]
+    //        .GetProperty("text")
+    //        .GetString().Replace("```json", "")
+    //            .Replace("```", "")
+    //            .Trim();
+    //}
 
     public static async Task<bool> IsCacheValid(string cacheName, string apiKey)
     {
@@ -522,82 +538,82 @@ JSON Schema:
             return false;
         }
     }
-    public static async Task<string> CreateHugeContentCache(string systemInstruction, string apiKey)
-    {
+    //public static async Task<string> CreateHugeContentCache(string systemInstruction, string apiKey)
+    //{
 
 
-        var cacheKey = File.ReadAllText("CacheData.txt");
-        var isCacheValid = await IsCacheValid(cacheKey, apiKey);
-        if(!isCacheValid)
-        {
-            var client = new HttpClient();
+    //    var cacheKey = File.ReadAllText("CacheData.txt");
+    //    var isCacheValid = await IsCacheValid(cacheKey, apiKey);
+    //    if(!isCacheValid)
+    //    {
+    //        var client = new HttpClient();
 
-            var cacheRequest = new
-            {
-                model = $"models/{ModelId}",
-                // Instructions are part of the cache
-                //system_instruction = new
-                //{
-                //    parts = new[] { new { text = systemInstruction } }
-                //},
-                // Put your HUGE XML here to cross the 2,048 token limit
-                contents = new[]
-                {
-            new {
-                role = "user",
-                parts = new[] { new { text = systemInstruction } }
-            }
-        },
-                ttl = "3600s" // Cache for 1 hour
-            };
+    //        var cacheRequest = new
+    //        {
+    //            model = $"models/{ModelId}",
+    //            // Instructions are part of the cache
+    //            //system_instruction = new
+    //            //{
+    //            //    parts = new[] { new { text = systemInstruction } }
+    //            //},
+    //            // Put your HUGE XML here to cross the 2,048 token limit
+    //            contents = new[]
+    //            {
+    //        new {
+    //            role = "user",
+    //            parts = new[] { new { text = systemInstruction } }
+    //        }
+    //    },
+    //            ttl = "3600s" // Cache for 1 hour
+    //        };
 
-            var response = await client.PostAsJsonAsync(
-                $"https://generativelanguage.googleapis.com/v1beta/cachedContents?key={apiKey}",
-                cacheRequest
-            );
+    //        var response = await client.PostAsJsonAsync(
+    //            $"https://generativelanguage.googleapis.com/v1beta/cachedContents?key={apiKey}",
+    //            cacheRequest
+    //        );
 
-            var result = await response.Content.ReadAsStringAsync();
-            var cacheName = ParseCacheNameFromJson(result);
-            File.WriteAllText("CacheData.txt", cacheName);
-            return cacheName;
-        }
-        return cacheKey;
-        // This returns a JSON containing the "name" (e.g., "cachedContents/abcdef123")
-    }
+    //        var result = await response.Content.ReadAsStringAsync();
+    //        var cacheName = ParseCacheNameFromJson(result);
+    //        File.WriteAllText("CacheData.txt", cacheName);
+    //        return cacheName;
+    //    }
+    //    return cacheKey;
+    //    // This returns a JSON containing the "name" (e.g., "cachedContents/abcdef123")
+    //}
 
-    public static async Task<int> GetTokenCount(string apiKey, string prompt, string xmlContent)
-    {
-        using var client = new HttpClient();
+    //public static async Task<int> GetTokenCount(string apiKey, string prompt, string xmlContent)
+    //{
+    //    using var client = new HttpClient();
 
-        var countRequest = new
-        {
-            model = $"models/{ModelId}",
-            contents = new[]
-            {
-            new {
-                role = "user",
-                parts = new[] { new { text = prompt + "\n" + xmlContent } }
-            }
-        }
-        };
+    //    var countRequest = new
+    //    {
+    //        model = $"models/{ModelId}",
+    //        contents = new[]
+    //        {
+    //        new {
+    //            role = "user",
+    //            parts = new[] { new { text = prompt + "\n" + xmlContent } }
+    //        }
+    //    }
+    //    };
 
-        var response = await client.PostAsJsonAsync(
-            $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:countTokens?key={apiKey}",
-            countRequest
-        );
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
-        if (response.IsSuccessStatusCode)
-        {
-            var json = await response.Content.ReadAsStringAsync();
-            return (JsonSerializer.Deserialize<TokenCount>(json,options)).totalTokens;
-        }
+    //    var response = await client.PostAsJsonAsync(
+    //        $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:countTokens?key={apiKey}",
+    //        countRequest
+    //    );
+    //    var options = new JsonSerializerOptions
+    //    {
+    //        PropertyNameCaseInsensitive = true,
+    //        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    //    };
+    //    if (response.IsSuccessStatusCode)
+    //    {
+    //        var json = await response.Content.ReadAsStringAsync();
+    //        return (JsonSerializer.Deserialize<TokenCount>(json,options)).totalTokens;
+    //    }
 
-        return 0;
-    }
+    //    return 0;
+    //}
 }
 
 public class TokenDetail

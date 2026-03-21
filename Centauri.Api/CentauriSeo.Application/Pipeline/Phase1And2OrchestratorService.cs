@@ -45,80 +45,80 @@ public class Phase1And2OrchestratorService
         _logger = new FileLogger();
     }
 
-    public async Task<(IReadOnlyList<GeminiSentenceTag>, IReadOnlyList<PerplexitySentenceTag>)> ParallelTaggingAsync(List<Sentence> sentences)
-    {
-        // 1. Prepare chunks
-        int chunkSize = 150;
-        var chunks = sentences.Chunk(chunkSize).ToList();
+    //public async Task<(IReadOnlyList<GeminiSentenceTag>, IReadOnlyList<PerplexitySentenceTag>)> ParallelTaggingAsync(List<Sentence> sentences)
+    //{
+    //    // 1. Prepare chunks
+    //    int chunkSize = 150;
+    //    var chunks = sentences.Chunk(chunkSize).ToList();
 
-        // 2. Initialize Task lists for both providers
-        var geminiTasks = new List<Task<IReadOnlyList<GeminiSentenceTag>>>();
-        var groqTasks = new List<Task<IReadOnlyList<PerplexitySentenceTag>>>();
+    //    // 2. Initialize Task lists for both providers
+    //    var geminiTasks = new List<Task<IReadOnlyList<GeminiSentenceTag>>>();
+    //    var groqTasks = new List<Task<IReadOnlyList<PerplexitySentenceTag>>>();
 
-        // 3. Fire all requests immediately without awaiting
-        foreach (var chunk in chunks)
-        {
-            var minifiedJson = JsonSerializer.Serialize(chunk);
+    //    // 3. Fire all requests immediately without awaiting
+    //    foreach (var chunk in chunks)
+    //    {
+    //        var minifiedJson = JsonSerializer.Serialize(chunk);
 
-            // Start Gemini task and add to list
-            geminiTasks.Add(_gemini.TagArticleAsync(
-                SentenceTaggingPrompts.GeminiSentenceTagPrompt,
-                minifiedJson,
-                "gemini:tagging"
-            ));
+    //        // Start Gemini task and add to list
+    //        geminiTasks.Add(_gemini.TagArticleAsync(
+    //            SentenceTaggingPrompts.GeminiSentenceTagPrompt,
+    //            minifiedJson,
+    //            "gemini:tagging"
+    //        ));
 
-            // Start Groq task and add to list
-            groqTasks.Add(_groq.TagSentencesAsync(minifiedJson, string.Empty));
-        }
-        var startTime = DateTime.UtcNow;
-        // 4. Await everything at once (Total parallelism)
-        await Task.WhenAll(geminiTasks.Cast<Task>().Concat(groqTasks));
-        var endTime = DateTime.UtcNow;
-        // 5. Aggregate the results using SelectMany
-        var allGeminiResults = geminiTasks.SelectMany(t => t.Result).ToList();
-        var allGroqResults = groqTasks.SelectMany(t => t.Result).ToList();
-        return (allGeminiResults, allGroqResults);
-    }
+    //        // Start Groq task and add to list
+    //        groqTasks.Add(_groq.TagSentencesAsync(minifiedJson, string.Empty));
+    //    }
+    //    var startTime = DateTime.UtcNow;
+    //    // 4. Await everything at once (Total parallelism)
+    //    await Task.WhenAll(geminiTasks.Cast<Task>().Concat(groqTasks));
+    //    var endTime = DateTime.UtcNow;
+    //    // 5. Aggregate the results using SelectMany
+    //    var allGeminiResults = geminiTasks.SelectMany(t => t.Result).ToList();
+    //    var allGroqResults = groqTasks.SelectMany(t => t.Result).ToList();
+    //    return (allGeminiResults, allGroqResults);
+    //}
 
-    public async Task<AiIndexinglevelLocalLlmResponse> GetSentenceTaggingFromLocalLLP(string primaryKeyword, List<Sentence> sentences)
-    {
-         HttpClient client = new HttpClient();
-        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
-        //string apiUrl = "http://localhost:8000/analyze";
-        try
-        {
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-            };
-            var inputData = JsonSerializer.Serialize(new { 
-            sentences=sentences,
-            primaryKeyword= primaryKeyword
-            });
-            Console.WriteLine("Sending request to Centauri NLP Service...");
-            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
-            // 3. Make the POST request
-            var response = await client.PostAsync(apiUrl, content);
+    //public async Task<AiIndexinglevelLocalLlmResponse> GetSentenceTaggingFromLocalLLP(string primaryKeyword, List<Sentence> sentences)
+    //{
+    //     HttpClient client = new HttpClient();
+    //    string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/analyze";
+    //    //string apiUrl = "http://localhost:8000/analyze";
+    //    try
+    //    {
+    //        var options = new JsonSerializerOptions
+    //        {
+    //            PropertyNameCaseInsensitive = true,
+    //            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    //        };
+    //        var inputData = JsonSerializer.Serialize(new { 
+    //        sentences=sentences,
+    //        primaryKeyword= primaryKeyword
+    //        });
+    //        Console.WriteLine("Sending request to Centauri NLP Service...");
+    //        var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+    //        // 3. Make the POST request
+    //        var response = await client.PostAsync(apiUrl, content);
 
-            if (response.IsSuccessStatusCode)
-            {
-                // 4. Deserialize the response
-                var res = await response.Content.ReadAsStringAsync();
-                var results = JsonSerializer.Deserialize<AiIndexinglevelLocalLlmResponse>(res, options);
-                return results;
-            }
-            else
-            {
-            }
-        }
-        catch (Exception ex)
-        {
-        }
-        return null;
-    }
-    // Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
-    // then returns the validated sentence map using the existing Phase2_ArbitrationEngine.Execute flow.
+    //        if (response.IsSuccessStatusCode)
+    //        {
+    //            // 4. Deserialize the response
+    //            var res = await response.Content.ReadAsStringAsync();
+    //            var results = JsonSerializer.Deserialize<AiIndexinglevelLocalLlmResponse>(res, options);
+    //            return results;
+    //        }
+    //        else
+    //        {
+    //        }
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //    }
+    //    return null;
+    //}
+    //// Runs Groq + Gemini tagging, detects mismatches, asks OpenAI (ChatGPT) for arbitration when needed,
+    //// then returns the validated sentence map using the existing Phase2_ArbitrationEngine.Execute flow.
     public async Task<OrchestratorResponse> RunAsync(SeoRequest request, AiIndexinglevelLocalLlmResponse fullLocalLlmTags)
     {
         var sectionScore = await GetSectionScoreInfo(request.PrimaryKeyword,request.SecondaryKeywords, fullLocalLlmTags.Sentences);

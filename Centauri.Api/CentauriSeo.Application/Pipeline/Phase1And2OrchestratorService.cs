@@ -498,6 +498,10 @@ public class Phase1And2OrchestratorService
     {
         var response = await GetSectionScoreResAsync(keyword);
         int match = 0;
+        if(response?.Competitors == null || response.Competitors.Count == 0)
+        {
+            return 0.0;
+        }
         response.Competitors?.ToList()?.ForEach(c =>
         {
             if (c.Intent == response.Intent)

@@ -1,4 +1,5 @@
 ﻿using Amazon.DynamoDBv2.Model;
+using Amazon.Runtime;
 using Amazon.Runtime.Telemetry.Tracing;
 using Azure.Core;
 using CentauriSeo.Core.Models.Sentences;
@@ -8,6 +9,8 @@ using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using GenerativeAI;
 using GenerativeAI.Types;
+using Google.Apis.Auth.OAuth2;
+using Google.Cloud.AIPlatform.V1;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
@@ -22,6 +25,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
 using static CentauriSeo.Core.Models.Utilities.SentenceTaggingPrompts;
+using GenerateContentRequest = Google.Cloud.AIPlatform.V1.GenerateContentRequest;
+using GoogleSearchRetrieval = Google.Cloud.AIPlatform.V1.GoogleSearchRetrieval;
 using Tool = Mscc.GenerativeAI.Types.Tool;
 
 namespace CentauriSeo.Infrastructure.LlmClients;
@@ -38,10 +43,11 @@ public class GeminiClient
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     // Use a stable model version unless you are specifically testing 2.0/2.5 previews
-    //private const string ModelId = "gemini-2.5-flash";
-    private const string ModelId = "gemini-2.5-pro";
+    private const string ModelId = "gemini-2.5-flash";
+    //private const string ModelId = "gemini-2.5-pro";
     private readonly string _accessToken;
-    private const string _apiURL =$"https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0445687823/locations/us-central1/publishers/google/models/{ModelId}:generateContent";
+    private const string Endpoint = $"projects/gen-lang-client-0445687823/locations/us-central1/publishers/google/models/{ModelId}";
+    private const string _apiURL =$"https://us-central1-aiplatform.googleapis.com/v1/{Endpoint}:generateContent";
     public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config, AiCallTracker aiCallTracker,
         IHttpContextAccessor httpContextAccessor)
     {
@@ -55,46 +61,46 @@ public class GeminiClient
         _httpContextAccessor = httpContextAccessor;
     }
 
-    public async Task<List<string>> GetCompetitorUrls(string keyword)
-    {
-        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
-        string userContent = @"
-Role: SEO Expert & Content Strategist
-Task: Use the Google Search tool to find the top 5 organic results for the keyword.
+//    public async Task<List<string>> GetCompetitorUrls(string keyword)
+//    {
+//        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
+//        string userContent = @"
+//Role: SEO Expert & Content Strategist
+//Task: Use the Google Search tool to find the top 5 organic results for the keyword.
 
-Constraints:
-- Output MUST be valid JSON. 
-- No preamble, no explanation, no markdown backticks.
-- If a URL cannot be accessed, skip it and move to the next organic result.
+//Constraints:
+//- Output MUST be valid JSON. 
+//- No preamble, no explanation, no markdown backticks.
+//- If a URL cannot be accessed, skip it and move to the next organic result.
 
-Output will be list of string.
-";
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
-        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:CompetitorUrls");
-        var cachedResponse = await _cache.GetAsync(cacheKey);
-        if (cachedResponse != null)
-        {
-            return JsonSerializer.Deserialize<List<string>>(cachedResponse,options);
-        }
-        try
-        {
-            var responseContent = await ProcessContent(systemPrompt, userContent, false, null, true);
-            if (!string.IsNullOrEmpty(responseContent))
-            {
-                await _cache.SaveAsync(cacheKey, responseContent);
-                return JsonSerializer.Deserialize<List<string>>(cachedResponse, options);
-            }
-        }
-        catch (Exception ex)
-        {
-            await _logger.LogErrorAsync($"Error occured in get getting competitor urls :  {ex.Message}:{ex.StackTrace}");
-        }
-        return null;
-    }
+//Output will be list of string.
+//";
+//        var options = new JsonSerializerOptions
+//        {
+//            PropertyNameCaseInsensitive = true,
+//            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+//        };
+//        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:CompetitorUrls");
+//        var cachedResponse = await _cache.GetAsync(cacheKey);
+//        if (cachedResponse != null)
+//        {
+//            return JsonSerializer.Deserialize<List<string>>(cachedResponse,options);
+//        }
+//        try
+//        {
+//            var responseContent = await ProcessContent(systemPrompt, userContent, false, null, true);
+//            if (!string.IsNullOrEmpty(responseContent))
+//            {
+//                await _cache.SaveAsync(cacheKey, responseContent);
+//                return JsonSerializer.Deserialize<List<string>>(cachedResponse, options);
+//            }
+//        }
+//        catch (Exception ex)
+//        {
+//            await _logger.LogErrorAsync($"Error occured in get getting competitor urls :  {ex.Message}:{ex.StackTrace}");
+//        }
+//        return null;
+//    }
     public async Task<string> GetSectionScore(string keyword)
     {
         //var urls = await GetCompetitorUrls(keyword);
@@ -394,26 +400,27 @@ JSON Schema:
                 temperature = 0.1
             };
         }
-            // Standard GenerateContent request body
-            var requestBody = new
-            {
-                system_instruction = new
-                {
-                    parts = new[] { new { text = prompt } }
-                },
-                contents = new[]
-                {
-            new {
-                role = "user",
-                parts = new[] { new { text = xmlContent } }
-                }
-            },
-                tools = toolsList.Any() ? toolsList.ToArray() : null,
+        var reqBody = ConvertToGenerateContentRequest(prompt,xmlContent,toolsList);
+        //    // Standard GenerateContent request body
+        //    var requestBody = new 
+        //    {
+        //        system_instruction = new
+        //        {
+        //            parts = new[] { new { text = prompt } }
+        //        },
+        //        contents = new[]
+        //        {
+        //    new {
+        //        role = "user",
+        //        parts = new[] { new { text = xmlContent } }
+        //        }
+        //    },
+        //        tools = toolsList.Any() ? toolsList.ToArray() : null,
                 
-            };
+        //    };
 
         var result = await _aiCallTracker.TrackAsync(
-            requestBody,
+            reqBody,
                 async () =>
                 {
                     //var response = await client.PostAsJsonAsync(
@@ -429,39 +436,120 @@ JSON Schema:
                     //}
                     //generationConfig = generationConfig;
                     //var res = await response.Content.ReadAsStringAsync();
-                    var res = await GetGeminiApiResponseAsync(requestBody);
-                   return (res, (JsonSerializer.Deserialize<GeminiResponse>(res, options))?.Usage);
+                    var res = await GetGeminiApiResponseAsync(reqBody);
+                   return (res, res?.UsageMetadata);
 
                 },
                 $"gemini-{ModelId}"
         );
         // Extract only the text content from the Gemini response wrapper
-        using var doc = JsonDocument.Parse(result);
-        return doc.RootElement
-            .GetProperty("candidates")[0]
-            .GetProperty("content")
-            .GetProperty("parts")[0]
-            .GetProperty("text")
-            .GetString().Replace("```json", "")
-                .Replace("```", "")
-                .Trim();
+        return CleanGeminiJson(result.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
 
 
     }
-
-    public async Task<string> GetGeminiApiResponseAsync(object requestBody)
+    public string CleanGeminiJson(string rawResponse)
     {
-        var client = new HttpClient();
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-        httpRequest.Content = JsonContent.Create(requestBody);
+        if (string.IsNullOrWhiteSpace(rawResponse)) return rawResponse;
 
-        var response = await client.SendAsync(httpRequest);
+        // Remove opening ```json or ```
+        if (rawResponse.StartsWith("```"))
+        {
+            // Find the end of the first line (the identifier like ```json)
+            int firstNewLine = rawResponse.IndexOf('\n');
+            if (firstNewLine != -1)
+            {
+                rawResponse = rawResponse.Substring(firstNewLine).Trim();
+            }
+        }
 
-        var result = await response.Content.ReadAsStringAsync();
-        return result;
+        // Remove closing ```
+        if (rawResponse.EndsWith("```"))
+        {
+            rawResponse = rawResponse.Substring(0, rawResponse.Length - 3).Trim();
+        }
+
+        return rawResponse.Trim();
+    }
+    public async Task<string> GetGeminiApiResponseAsync2(object requestBody)
+    {
+        try
+        {
+            var client = new HttpClient();
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken.DecodeBase64());
+            httpRequest.Content = JsonContent.Create(requestBody);
+
+            var response = await client.SendAsync(httpRequest);
+
+            var result = await response.Content.ReadAsStringAsync();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
+            return null;
+            //throw new Exception($"Gemini API Call Failed: {ex.Message}");
+        }
     }
 
+    public async Task<Google.Cloud.AIPlatform.V1.GenerateContentResponse> GetGeminiApiResponseAsync(GenerateContentRequest requestBody)
+    {
+        try
+        {
+            // 1. Initialize the client using the Builder for specific regions
+            var client = await new PredictionServiceClientBuilder
+            {
+                Endpoint = "us-central1-aiplatform.googleapis.com"
+            }.BuildAsync();
+
+            // 2. Make the call
+            // Note: Ensure requestBody.Model is set to: 
+            // "projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/{MODEL_ID}"
+            var response = await client.GenerateContentAsync(requestBody);
+            return response;
+            // 3. Extract the text safely
+            //if (response.Candidates.Count > 0 && response.Candidates[0].Content.Parts.Count > 0)
+            //{
+            //    return CleanGeminiJson(response.Candidates[0].Content.Parts[0].Text);
+            //}
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occurred in Gemini API call: {ex.Message}");
+            // In a production environment, consider if returning null or rethrowing is better for your flow
+            return null;
+        }
+    }
+    public async Task<string> GetGeminiApiResponseAsync3(object requestBody)
+    {
+        try
+        {
+            System.Environment.SetEnvironmentVariable("AWS_REGION", "ap-south-1");
+            System.Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", "ap-south-1");
+            var credential = await GoogleCredential.GetApplicationDefaultAsync();
+
+            var token = await credential
+                .UnderlyingCredential
+                .GetAccessTokenForRequestAsync();
+
+            using var client = new HttpClient();
+
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            httpRequest.Content = JsonContent.Create(requestBody);
+
+            var response = await client.SendAsync(httpRequest);
+
+            var content = await response.Content.ReadAsStringAsync();
+            return content;
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
+            return null;
+            //throw new Exception($"Gemini API Call Failed: {ex.Message}");
+        }
+    }
     private static string ParseCacheNameFromJson(string jsonResponse)
     {
         try
@@ -537,6 +625,51 @@ JSON Schema:
 
             return false;
         }
+    }
+    public static Google.Cloud.AIPlatform.V1.GenerateContentRequest ConvertToGenerateContentRequest(
+    string prompt,
+    string xmlContent,
+    System.Collections.Generic.IEnumerable<dynamic> toolsList)
+    {
+        // Create request
+        var request = new Google.Cloud.AIPlatform.V1.GenerateContentRequest
+        {
+            Model = Endpoint,
+            SystemInstruction = new Google.Cloud.AIPlatform.V1.Content
+            {
+                Parts =
+            {
+                new Google.Cloud.AIPlatform.V1.Part
+                {
+                    Text = prompt
+                }
+            }
+            }
+        };
+
+        // Add user content
+        request.Contents.Add(new Google.Cloud.AIPlatform.V1.Content
+        {
+            Role = "user",
+            Parts =
+        {
+            new Google.Cloud.AIPlatform.V1.Part
+            {
+                Text = xmlContent
+            }
+        }
+        });
+
+        // Add tools if available
+        if (toolsList != null && toolsList.Count()>0)
+        {
+            request.Tools.Add(new Google.Cloud.AIPlatform.V1.Tool
+            {
+                GoogleSearch = new Google.Cloud.AIPlatform.V1.Tool.Types.GoogleSearch()
+            });
+        }
+
+        return request;
     }
     //public static async Task<string> CreateHugeContentCache(string systemInstruction, string apiKey)
     //{

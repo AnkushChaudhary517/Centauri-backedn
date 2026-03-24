@@ -21,6 +21,8 @@ namespace CentauriSeo.Core.Models.Scoring
                 return 0.0;
             }else
             {
+                if (orchestratorResponse?.AnswerPositionIndex?.FirstAnswerSentenceId == null)
+                    return 0.0;
                 var index = Int32.Parse(orchestratorResponse.AnswerPositionIndex.FirstAnswerSentenceId.TrimStart('S'))-1;
                 return CalculateDensity(index,orchestratorResponse.AnswerPositionIndex.PositionScore);
             }

@@ -496,6 +496,15 @@ JSON Schema:
     {
         try
         {
+            var exist = File.Exists("/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json");
+            if(!exist)
+            {
+                //System.Environment.SetEnvironmentVariable(
+                //    "GOOGLE_APPLICATION_CREDENTIALS",
+                //"/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json"
+                //);
+                await _logger.LogErrorAsync($"File does not exist");
+            }
             // 1. Initialize the client using the Builder for specific regions
             var client = await new PredictionServiceClientBuilder
             {

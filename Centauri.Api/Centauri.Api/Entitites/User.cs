@@ -33,6 +33,7 @@ namespace Centauri_Api.Entitites
         public int CreditsAdded { get; set; }
         public string ContactNumber { get; set; }
         public string Company { get; set; }
+        public string Subscription { get; set; }
     }
 
     [DynamoDBTable("CentauriArticle")]

@@ -86,5 +86,33 @@ namespace Centauri_Api.Model
     {
         public string Plan { get; set; } = "regular";
     }
+    public class SelectSubscriptionRequest
+    {
+        public string PlanId { get; set; }
+        public string PlanName { get; set; }
+        public string Plan { get; set; }
+        public string BillingCycle { get; set; }
+        public decimal MonthlyPrice { get; set; }
+        public int ArticleAnalysesPerMonth { get; set; }
+    }
 
+
+    public class CreditsAvailableResponse
+    {
+        public int Available { get; set; }
+        public int Used { get; set; }
+        public int Total { get; set; }
+        public string ExpiresAt { get; set; }
+    }
+    public class CurrentSuscription
+    {
+        public string PlanId { get; set; }
+        public string Name { get; set; }
+        public string PriceLabel { get; set; }
+        public string BillingCycle { get; set; }
+        public decimal MonthlyPrice { get; set; }
+        public string Status { get; set; }
+        public string RenewalDate { get; set; }
+        public int ArticleAnalysesPerMonth { get; set; }
+    }
 }

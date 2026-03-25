@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using System.Text.Json;
 using ForgotPasswordRequest = Centauri_Api.Model.ForgotPasswordRequest;
 using LoginRequest = Centauri_Api.Model.LoginRequest;
@@ -116,7 +117,7 @@ public class AuthController : ControllerBase
             CreditsAdded = 5,
             EmailVerified = true,
             Id = Guid.NewGuid().ToString(),
-            Plan = "FREE",
+            Plan = "free-trial",
             SubscriptionEndsAt = DateTime.UtcNow.AddDays(14),
             TrialEndsAt = DateTime.UtcNow.AddDays(14)
             
@@ -151,6 +152,93 @@ public class AuthController : ControllerBase
         }
         
         return Ok(new { message = "Credits added successfully" });
+    }
+
+[Authorize]
+    [HttpGet("subscription/current")]
+    public async Task<IActionResult> GetCurrentSubscription()
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = await _dynamoDbService.GetUserAsync(userId);
+        if (user == null)
+        {
+            throw new Exception("Wrong user");
+        }
+        var isTrial = true;
+        
+        var response = new CurrentSuscription()
+        {
+            PlanId = "trial-14-day",
+            ArticleAnalysesPerMonth = 5,
+            BillingCycle = "monthly",
+            MonthlyPrice = 0,
+            Name ="Free Trial",
+            PriceLabel = "Free",
+            RenewalDate = user.SubscriptionEndsAt.ToShortDateString(),
+            Status = "trial"
+        };
+        if (!user.Plan.ToLower().Contains("trial"))
+        {
+            response = new CurrentSuscription()
+            {
+                PlanId = "starter",
+                ArticleAnalysesPerMonth = 10,
+                BillingCycle = "monthly",
+                MonthlyPrice = 15,
+                Name = "Starter",
+                PriceLabel = "15$",
+                RenewalDate = user.SubscriptionEndsAt.ToShortDateString(),
+                Status = "starter"
+            };
+        }
+        return Ok(response);
+    }
+    [HttpGet("credits/remaining")]
+    [Authorize]
+    public async Task<IActionResult> GetAvailableCredits()
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = await _dynamoDbService.GetUserAsync(userId);
+        if (user == null)
+        {
+            throw new Exception("Wrong user");
+        }
+        var total = user.Plan.ToLower().Contains("trial") ? 5 : 10;
+        var availabelle = user.CreditsAdded;
+        return Ok(new CreditsAvailableResponse()
+        {
+            Available = availabelle,
+            Total = total,
+            Used = total-availabelle,
+            ExpiresAt = user.SubscriptionEndsAt.ToShortDateString()
+        });
+    }
+
+    [HttpPost("subscription/select")]
+    [Authorize]
+    public async Task<IActionResult> SelectSubscription([FromBody] SelectSubscriptionRequest request)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = await _dynamoDbService.GetUserAsync(userId);
+        if (user == null)
+        {
+            throw new Exception("Wrong user");
+        }
+        // Basic validation
+        if (request == null || string.IsNullOrEmpty(request.PlanId))
+            return BadRequest("Invalid request");
+
+        // TODO: Save to DB / call service
+        if (request?.Plan?.ToLower() == "starter-monthly")
+        {
+            user.CreditsAdded += 10;
+            user.SubscriptionEndsAt = DateTime.UtcNow.AddDays(30);
+            user.TrialEndsAt = DateTime.UtcNow.AddDays(30);
+            user.Plan = "starter-monthly";
+            await _dynamoDbService.UpdateUserAsync(user);
+        }
+
+        return Ok(new { message = "Starter monthly Subscription added successfully" });
     }
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] string email)

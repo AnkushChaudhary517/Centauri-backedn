@@ -314,7 +314,7 @@ public class AuthController : ControllerBase
             "https://accounts.google.com/o/oauth2/v2/auth" +
             "?response_type=code" +
             $"&client_id={_config["GoogleAuth:ClientId"]}" +
-            $"&redirect_uri={Uri.EscapeDataString(GetCallbackUrl())}" +
+            $"&redirect_uri={redirect_uri}" +
             "&scope=openid%20email%20profile" +
             "&access_type=offline" +
             "&prompt=consent" +
@@ -339,7 +339,7 @@ public class AuthController : ControllerBase
                 { "code", code },
                 { "client_id", _config["GoogleAuth:ClientId"] },
                 { "client_secret", _config["GoogleAuth:ClientSecret"] },
-                { "redirect_uri", GetCallbackUrl() },
+                { "redirect_uri", $"{Uri.EscapeDataString(GetCallbackUrl())}" },
                 { "grant_type", "authorization_code" }
             })
         );
@@ -465,8 +465,8 @@ public class AuthController : ControllerBase
 
     private string GetCallbackUrl()
     {
-        return $"http://ec2-13-126-103-12.ap-south-1.compute.amazonaws.com:3000/api/v1/auth/callback";
-        //return $"{Request.Scheme}://{Request.Host}/api/v1/auth/callback";
+        //return $"http://ec2-13-126-103-12.ap-south-1.compute.amazonaws.com:3000/api/v1/auth/callback";
+        return $"{Request.Scheme}://{Request.Host}/api/v1/auth/callback";
     }
     private async Task<GoogleJsonWebSignature.Payload> ValidateIdToken(string idToken)
     {

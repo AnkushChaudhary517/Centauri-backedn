@@ -1,0 +1,121 @@
+{
+  "recommendations": {
+    "overall": [
+      {
+        "improveText": "",
+        "text": null,
+        "priority": "High",
+        "issue": "",
+        "whatToChange": "Lack of external citations and supporting data for claims.",
+        "examples": {
+          "bad": "Many Journey Builders also support consent tracking, audit logs, and rule-based messaging windows to ensure communication stays within regulatory bounds, especially critical in sectors like healthcare, finance, and education.",
+          "good": "According to [Source e.g., Gartner Report on Marketing Automation 2023], many leading Journey Builders also support consent tracking, audit logs, and rule-based messaging windows to ensure communication stays within regulatory bounds, especially critical in sectors like healthcare, finance, and education."
+        },
+        "improves": [
+          "CredibilityScore",
+          "AuthorityScore",
+          "ExpertiseScore"
+        ]
+      },
+      {
+        "improveText": "",
+        "text": null,
+        "priority": "Medium",
+        "issue": "",
+        "whatToChange": "Repetitive use of core terminology and limited keyword variation.",
+        "examples": {
+          "bad": "What sets a Journey Builder apart from a basic automation studio or campaign scheduler are 5 capabilities that support both flexibility and accountability:",
+          "good": "What differentiates a customer journey orchestration platform from a basic automation studio or campaign scheduler are 5 capabilities that support both flexibility and accountability:"
+        },
+        "improves": [
+          "KeywordScore",
+          "VariationScore",
+          "SimplicityScore"
+        ]
+      }
+    ],
+    "sectionLevel": [
+      {
+        "improveText": "",
+        "text": "Key Components of A Journey Builder",
+        "priority": "Medium",
+        "issue": "",
+        "whatToChange": "Lengthy bullet points containing multiple distinct ideas.",
+        "examples": {
+          "bad": "A CRM record change such as a lead being created, a case being escalated, or a status field being updated can automatically trigger a journey.",
+          "good": "Split this into multiple bullet points: 'A CRM record change (e.g., lead being created).', 'A case being escalated.', 'A status field being updated.'"
+        },
+        "improves": [
+          "SimplicityScore",
+          "AnswerBlockDensityScore",
+          "TechnicalClarityScore"
+        ]
+      },
+      {
+        "improveText": "",
+        "text": "How to Build a Multi-Channel Journey with Conversive",
+        "priority": "Medium",
+        "issue": "",
+        "whatToChange": "The step-by-step guide is presented as general paragraphs.",
+        "examples": {
+          "bad": "Start by defining what event should launch the journey. In Conversive, you can map this to any Salesforce record change like when a new lead is created, or a lead status moves to \"Interested.\" This ensures the journey begins as soon as a qualifying action occurs.",
+          "good": "Convert to an ordered list item: '1. Set the Trigger in Salesforce (e.g., lead created): Define the event (e.g., new lead, status change) that launches the journey.'"
+        },
+        "improves": [
+          "SimplicityScore",
+          "AnswerBlockDensityScore",
+          "ClaritySynthesisScore"
+        ]
+      }
+    ],
+    "sentenceLevel": [
+      {
+        "improveText": "",
+        "text": "A Journey Builder is a platform that lets you design and automate conversations across channels using data and logic to control how each interaction unfolds.",
+        "priority": "Medium",
+        "issue": "",
+        "whatToChange": "Sentence complexity and length.",
+        "examples": {
+          "bad": "A Journey Builder is a platform that lets you design and automate conversations across channels using data and logic to control how each interaction unfolds.",
+          "good": "A Journey Builder is a platform that lets you design and automate conversations across channels. It uses data and logic to control how each interaction unfolds."
+        },
+        "improves": [
+          "SimplicityScore",
+          "TechnicalClarityScore"
+        ]
+      },
+      {
+        "improveText": "",
+        "text": "Instead of relying on static campaigns or fixed schedules, it builds conditional paths based on real-time triggers, customer behavior, and business rules.",
+        "priority": "Medium",
+        "issue": "",
+        "whatToChange": "Combining multiple dependent clauses into one long sentence.",
+        "examples": {
+          "bad": "Instead of relying on static campaigns or fixed schedules, it builds conditional paths based on real-time triggers, customer behavior, and business rules.",
+          "good": "It builds conditional paths instead of relying on static campaigns or fixed schedules. These paths are based on real-time triggers, customer behavior, and business rules."
+        },
+        "improves": [
+          "SimplicityScore",
+          "TechnicalClarityScore"
+        ]
+      },
+      {
+        "improveText": "",
+        "text": "Messages can be sent through SMS, WhatsApp, voice calls, email, or push notification depending on the user’s preferences, the urgency, or the regulatory requirement.",
+        "priority": "Medium",
+        "issue": "",
+        "whatToChange": "Combining multiple conditions in a single sentence.",
+        "examples": {
+          "bad": "Messages can be sent through SMS, WhatsApp, voice calls, email, or push notification depending on the user’s preferences, the urgency, or the regulatory requirement.",
+          "good": "Messages can be sent through SMS, WhatsApp, voice calls, email, or push notifications. The choice depends on user preferences, urgency, or regulatory requirements."
+        },
+        "improves": [
+          "SimplicityScore",
+          "TechnicalClarityScore"
+        ]
+      }
+    ]
+  },
+  "status": "Completed",
+  "requestId": "d3fa1978-8854-4197-9bff-e393e0fb6395"
+}

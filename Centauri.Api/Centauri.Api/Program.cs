@@ -6,6 +6,7 @@ using Centauri_Api.Interface;
 using Centauri_Api.Middleware;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Services;
+using CentauriSeo.Core.Invoice;
 using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Core.Modules.Notification;
 using CentauriSeo.Core.Modules.Payment;
@@ -34,6 +35,8 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 builder.Services.AddSingleton<AiUsageRepository>();
 builder.Services.AddSingleton<AiCallTracker>();
+builder.Services.AddSingleton<IInvoiceService,CentauriSeo.Core.Invoice.InvoiceService>();
+builder.Services.AddSingleton<IPdfService, CentauriSeo.Core.Invoice.PdfService>();
 
 // CORS - allow React dev origin by default, configurable via appsettings.json
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 

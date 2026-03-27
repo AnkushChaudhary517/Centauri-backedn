@@ -22,18 +22,13 @@ namespace CentauriSeo.Core.Modules.Payment
             _secret = config["Razorpay:Secret"];
         }
 
-        public string CreateOrder(decimal amount, string currency = "INR")
+        public string GetKeyId()
+        {
+            return _key;
+        }
+        public string CreateOrder(Dictionary<string, object> options)
         {
             var client = new RazorpayClient(_key, _secret);
-
-            Dictionary<string, object> options = new Dictionary<string, object>
-        {
-            { "amount", amount * 100 }, // paise
-            { "currency", currency },
-            { "receipt", Guid.NewGuid().ToString() },
-            { "payment_capture", 1 }
-        };
-
             Order order = client.Order.Create(options);
             return order["id"].ToString();
         }

@@ -96,6 +96,17 @@ namespace Centauri_Api.Model
         public int ArticleAnalysesPerMonth { get; set; }
     }
 
+    public class RazorPayOrderRequest
+    {
+        public decimal MonthlyPrice { get; set; }
+    }
+    public class RazorPayOrderResponse
+    {
+        public string OrderId { get; set; }
+        public decimal Amount { get; set; }
+        public string Currency { get; set; }
+        public string KeyId { get; set; }
+    }
 
     public class CreditsAvailableResponse
     {

@@ -14,8 +14,8 @@ namespace CentauriSeo.Core.Modules.Notification
     {
         private readonly string _smtpHost = "smtp.gmail.com";
         private readonly int _smtpPort = 587;
-        private readonly string _username = "contact@thedigna.com";
-        private readonly string _password = "sjld nmrn ipzc vowb";
+        private readonly string _username = "contact@getcentauri.com";//"contact@thedigna.com";
+        private readonly string _password = "sjrf tmwb bvyi kyfe";//"sjld nmrn ipzc vowb";
 
         public async Task SendEmailAsync(string to, string subject, string body)
         {

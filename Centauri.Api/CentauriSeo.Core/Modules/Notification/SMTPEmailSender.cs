@@ -1,4 +1,5 @@
-﻿using SendGrid;
+﻿using CentauriSeo.Core.Models.Utilities;
+using SendGrid;
 using SendGrid.Helpers.Mail;
 using System;
 using System.Collections.Generic;
@@ -17,7 +18,7 @@ namespace CentauriSeo.Core.Modules.Notification
         private readonly string _smtpHost = "smtp.sendgrid.net";
         private readonly int _smtpPort = 465;
         private readonly string _username = "apikey";//"contact@thedigna.com";
-        private readonly string _password = "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";//"rrqewydeeugqnkqw";//"sjld nmrn ipzc vowb";
+        private readonly string _password = "U0cuMkxKOWFEaUxRWW16di1LRzZVQjJ3QS5LSUhfa3AyTllnQk1xbE93UF94WXA4eVUyd050d1hCMXBfdkc3cWZIOFpv";//"rrqewydeeugqnkqw";//"sjld nmrn ipzc vowb";
 
         public async Task SendEmailAsync(string toEmail, string subject, string body)
         {
@@ -28,7 +29,7 @@ namespace CentauriSeo.Core.Modules.Notification
                     Port = 587,
                     Credentials = new NetworkCredential(
                _username,                 // fixed
-               _password  // your API key
+               _password.DecodeBase64()  // your API key
                     ),
                     EnableSsl = true
                 };

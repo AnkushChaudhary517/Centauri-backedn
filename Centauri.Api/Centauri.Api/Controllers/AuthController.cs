@@ -123,13 +123,36 @@ public class AuthController : ControllerBase
             
         };
          await _dynamoDbService.CreateUserAsync(user);
+        await _dynamoDbService.CreateUserSubscription(new Entitites.CentauriUserSubscription()
+        {
+            UserId = user.Id,
+            Email = user.Email,
+            FirstName = user.FirstName,
+            MidEmailSent = false,
+            Reminder48hAt = DateTime.UtcNow.AddDays(12),
+            Reminder48hSent = false,
+            Status = "active",
+            TrialEndedEmailSent = false,
+            TrialEndsAt = DateTime.UtcNow.AddDays(14),
+            TrialStartAt = DateTime.UtcNow
+        });
+        _verificationService.SendVerificationCodeAsync(request.Email, "freetrial",request.FirstName);
 
         return CreatedAtAction(nameof(Register), ApiResponseHelper.Success("Account created successfully. Please verify your email."));
     }
     [HttpPost("send-verification")]
     public async Task<IActionResult> SendVerification([FromBody] string email)
     {
-        await _verificationService.SendVerificationCodeAsync(email);
+        var existingUser = await _dynamoDbService.GetUserByEmail(email.ToLower());
+        if (existingUser != null)
+        {
+            return BadRequest(ApiResponseHelper.Error<RegisterResponse>(
+               "INVALID_REQUEST",
+               "User Already exists",
+               400
+           ));
+        }
+        await _verificationService.SendVerificationCodeAsync(email,"signup");
 
         return Ok(new { message = "Verification code sent" });
     }
@@ -150,7 +173,7 @@ public class AuthController : ControllerBase
             user.TrialEndsAt = DateTime.UtcNow.AddDays(15);
             await _dynamoDbService.UpdateUserAsync(user);
         }
-        
+
         return Ok(new { message = "Credits added successfully" });
     }
 

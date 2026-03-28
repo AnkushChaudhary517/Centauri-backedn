@@ -11,6 +11,8 @@ namespace Centauri_Api.Interface
         Task UpdateUserAsync(CentauriUser user);
         Task DeleteUserAsync(string userId);
         Task<CentauriUser?> GetUserByEmail(string email);
-      
+        Task CreateUserSubscription(CentauriUserSubscription centauriUserSubscription);
+
+
     }
 }

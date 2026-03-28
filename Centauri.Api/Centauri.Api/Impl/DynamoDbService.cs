@@ -18,6 +18,13 @@ namespace Centauri_Api.Impl
             _logger = logger;
         }
 
+        public async Task CreateUserSubscription(CentauriUserSubscription centauriUserSubscription)
+        {
+            // Create new subscription
+            centauriUserSubscription.UserId = centauriUserSubscription.UserId; // Ensure UserId is set
+            await _context.SaveAsync(centauriUserSubscription);
+            _logger.LogInformation("User subscription created: {UserId}", centauriUserSubscription.UserId);
+        }
         public async Task CreateUserAsync(CentauriUser user)
         {
             user.Id = Guid.NewGuid().ToString();

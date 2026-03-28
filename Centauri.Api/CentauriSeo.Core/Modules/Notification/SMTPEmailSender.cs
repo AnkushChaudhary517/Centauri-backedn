@@ -18,18 +18,19 @@ namespace CentauriSeo.Core.Modules.Notification
         private readonly string _smtpHost = "smtp.sendgrid.net";
         private readonly int _smtpPort = 465;
         private readonly string _username = "apikey";//"contact@thedigna.com";
-        private readonly string _password = "U0cuMkxKOWFEaUxRWW16di1LRzZVQjJ3QS5LSUhfa3AyTllnQk1xbE93UF94WXA4eVUyd050d1hCMXBfdkc3cWZIOFpv";//"rrqewydeeugqnkqw";//"sjld nmrn ipzc vowb";
+        private readonly string _password = "U0cuOTFqUFM0eVpTV0NEZlFqSUswY1RPUS5sSmdtWmpLRlNqQ21GRTVfa3J4bC1wTDk3SllpaW4yT1ZMOXY5TnNrZElj";//"rrqewydeeugqnkqw";//"sjld nmrn ipzc vowb";
 
         public async Task SendEmailAsync(string toEmail, string subject, string body)
         {
             try
             {
+                var p = _password.DecodeBase64();
                 var smtpClient = new SmtpClient(_smtpHost)
                 {
                     Port = 587,
                     Credentials = new NetworkCredential(
                _username,                 // fixed
-               _password.DecodeBase64()  // your API key
+               p  // your API key
                     ),
                     EnableSsl = true
                 };
@@ -43,7 +44,7 @@ namespace CentauriSeo.Core.Modules.Notification
                 };
 
                 message.To.Add(toEmail);
-
+                System.Net.ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
                 await smtpClient.SendMailAsync(message);
             }
             catch (Exception ex)

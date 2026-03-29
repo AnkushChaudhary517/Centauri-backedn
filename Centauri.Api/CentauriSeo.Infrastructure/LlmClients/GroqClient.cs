@@ -428,7 +428,7 @@ A sentence qualifies if it clearly contains at least 3 of:
 
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-
+        (new FileLogger()).LogErrorAsync($"Authorization + $Bearer {_apiKey}");
         var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
@@ -451,7 +451,7 @@ A sentence qualifies if it clearly contains at least 3 of:
         {
             var response = await client.PostAsync(endpoint, content);
             var jsonResponse = await response.Content.ReadAsStringAsync();
-
+            (new FileLogger()).LogErrorAsync($"JsonResponse : {jsonResponse}");
             using var doc = JsonDocument.Parse(jsonResponse);
             var data = doc.RootElement
                           .GetProperty("choices")[0]
@@ -463,8 +463,9 @@ A sentence qualifies if it clearly contains at least 3 of:
 
             return result;
         }
-        catch
+        catch(Exception ex)
         {
+            (new FileLogger()).LogErrorAsync($"Exception : {ex.ToString()}");
             return null;
         }
     }

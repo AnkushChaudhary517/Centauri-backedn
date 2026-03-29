@@ -89,16 +89,22 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
+
+if (string.IsNullOrEmpty(groqApiKey))
+{
+    throw new Exception("GROQ_API_KEY is not set");
+}
 builder.Services.AddHttpClient<GroqClient>(c =>
 {
     c.BaseAddress = new Uri("https://api.groq.com");
-    var apiKey = builder.Configuration["GroqApiKey"]?.DecodeBase64();
-    if (!string.IsNullOrWhiteSpace(apiKey))
-        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+    c.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
+
 });
 
 builder.Services.AddMemoryCache();
 var openAiKey = builder.Configuration["OpenAiKey"]?.DecodeBase64();
+
 // register LLM clients (HttpClient already configured earlier)
 builder.Services.AddHttpClient<OpenAiClient>(c =>
 {

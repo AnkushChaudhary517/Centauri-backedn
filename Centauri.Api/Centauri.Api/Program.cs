@@ -12,6 +12,7 @@ using CentauriSeo.Core.Modules.Notification;
 using CentauriSeo.Core.Modules.Payment;
 using CentauriSeo.Infrastructure.Data;
 using CentauriSeo.Infrastructure.LlmClients;
+using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -93,6 +94,7 @@ var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
 
 if (string.IsNullOrEmpty(groqApiKey))
 {
+    await (new FileLogger()).LogErrorAsync("GroqApi key is not set.");
     throw new Exception("GROQ_API_KEY is not set");
 }
 builder.Services.AddHttpClient<GroqClient>(c =>

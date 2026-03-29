@@ -18,6 +18,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using static Google.Apis.Requests.BatchRequest;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace CentauriSeo.Infrastructure.LlmClients;
@@ -325,7 +326,9 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for Eâ€‘Eâ€
         using var client = new HttpClient();
         var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
         client.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
-        
+
+        (new FileLogger()).LogWarningAsync($"groq response api key+ {groqApiKey}");
+
         var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
@@ -351,7 +354,7 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for Eâ€‘Eâ€
         }
         catch (Exception ex)
         {
-            
+            (new FileLogger()).LogWarningAsync($"error in groq response + {ex.ToString()}");
             return null;
         }
     }

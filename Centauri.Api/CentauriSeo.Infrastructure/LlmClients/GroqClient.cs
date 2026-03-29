@@ -323,7 +323,9 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for Eâ€‘Eâ€
         string endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
         using var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+        var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
+        
         var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
@@ -341,6 +343,7 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for Eâ€‘Eâ€
         {
             var response = await client.PostAsync(endpoint, content);
             var jsonResponse = await response.Content.ReadAsStringAsync();
+            (new FileLogger()).LogWarningAsync($"groq response + {jsonResponse}");
             using var doc = JsonDocument.Parse(jsonResponse);
             var data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
             var res = JsonSerializer.Deserialize<GroqBulkResponse>(data);
@@ -348,6 +351,7 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for Eâ€‘Eâ€
         }
         catch (Exception ex)
         {
+            
             return null;
         }
     }

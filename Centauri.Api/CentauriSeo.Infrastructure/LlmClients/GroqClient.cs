@@ -36,7 +36,7 @@ public class GroqClient
     {
         _http = http;
         _cache = cache;
-        _apiKey = _http.DefaultRequestHeaders.Authorization?.Parameter ?? string.Empty;
+        _apiKey =Environment.GetEnvironmentVariable("CentauriGroqApiKey");
         _baseUri = _http.BaseAddress ?? new Uri("https://api.groq.com");
         _logger = new FileLogger();
         _aiCallTracker = aiCallTracker;

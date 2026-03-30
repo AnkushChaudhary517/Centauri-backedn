@@ -75,6 +75,10 @@ Evaluate only if EntityMentionFlag.value = 1.
 Set value = 1 only if the sentence is a direct declarative statement with no hedging.
 Any modal verbs, uncertainty, soft framing, or implied claims = 0.
 
+5.Entities
+List of string having entities
+
+
 OUTPUT (STRICT)
 Return ONLY valid JSON matching this schema.
 Do not add, remove, rename, or reorder fields.
@@ -88,7 +92,8 @@ Never guess, infer intent, normalize, or rewrite text.
       ""id"": ""S1"",
       ""answerSentenceFlag"": 0|1, 
       ""entityMentionFlag"": { ""value"": 0|1(int), ""entity_count"": 0, ""entities"": [] },
-      ""entityConfidenceFlag"": 0|1
+      ""entityConfidenceFlag"": 0|1,
+""entities"":[""entity""]
     }
   ]
 }
@@ -757,11 +762,12 @@ Every recommendation must operate at exactly one of three scopes. Never mix scop
 Every Recommendation must be for increasing one of the below scores: IntentScore, SectionScore, KeywordScore, OriginalInfoScore, ExpertiseScore, CredibilityScore, AuthorityScore, SimplicityScore, GrammarScore, VariationScore, PlagiarismScore, ClaritySynthesisScore, FactRetrievalScore, AnswerBlockDensityScore, FactualIsolationScore, EntityAlignmentScore, TechnicalClarityScore, SignalToNoiseScore.
 Scores will be provided as input to the system along with the content. Your recommendation must specify which score(s) it improves.
 All Scores are in range 0-10. so give recommendation only when score is less than 10 and your recommendation can improve it by at least 1 point. Do not give recommendation if score is already 10 or if your recommendation cannot improve the score by at least 1 point.
+Suggest Keyword insertion in headers/paragraphs/sentences if needed.
 
 Feedback Scope Table:
 - Article-level: Whole document. Allowed: Coverage, structure, redundancy, plagiarism, intent, word count. Disallowed: Grammar, word choice.
 - Section-level: H2/H3 block. Allowed: Flow, missing elements, stats, definitions, subtopics. Disallowed: Sentence rewrites.
-- Sentence-level: Single sentence. Allowed: Grammar, voice, clarity, sourcing. Disallowed: Structural changes.
+- Sentence-level: Single sentence. Allowed: Grammar, voice, clarity, sourcing, keyword insertion. Disallowed: Structural changes.
 
 This separation ensures traceability from edit -> Level 1 -> Level 4.
 Guidelines for Giving Feedback (Non-Negotiable)
@@ -788,6 +794,253 @@ Good: “The definition of Form 1099-NEC is repeated in the introduction, the 10
 4. Always Include a Concrete Fix
 Bad: “This section needs more depth.”
 Good: “Add a date-based example showing how a January 31 deadline shifts when it falls on a weekend.”
+
+5.Recommendation must increase overall SEO score and AI Indexing Score.
+
+### CORE SCORE DEFINITIONS FOR RECOMMENDATIONS
+When generating recommendations, analyze which of the following scores will be improved by implementing the fix. You must decide which scores are relevant and list them in the ""improves"" field of your JSON response:
+- IntentScore, SectionScore, KeywordScore, OriginalInfoScore, ExpertiseScore, CredibilityScore, AuthorityScore, SimplicityScore, GrammarScore, VariationScore, PlagiarismScore, ClaritySynthesisScore, FactRetrievalScore, AnswerBlockDensityScore, FactualIsolationScore, EntityAlignmentScore, TechnicalClarityScore, SignalToNoiseScore.
+
+8. One Feedback Item = One Core Issue
+Each feedback item must address only one primary issue.
+
+### ARTICLE-LEVEL FEEDBACK FRAMEWORK
+Article-level feedback is limited to exactly these categories:
+- Missing Required Subtopics
+- Missing or Bad Header Structure & Hierarchy Clarity
+- External Content Overlap (Plagiarism)
+- Redundancy & Repetition
+- Intent Drift
+- Non-Content Artifacts in Body
+- Number of words
+
+Article-Level(overall) Examples:
+Issue: Coverage Gap. [High] [The article does not cover state-level 1099 filing requirements...] [To fix this, add a dedicated H2 section...]
+Issue: Header Structure. [High] The article uses unclear or missing header markers...
+Issue: Plagiarism. [High] The article contains multiple sentences that appear inspired by or closely mirroring existing public content...
+
+### SECTION-LEVEL FEEDBACK FRAMEWORK
+Allowed Section-Level Issues:
+- Missing definitions
+- Missing statistics
+- Weak flow or misplaced content
+- Thin sections
+- Missing comparison tables or lists
+- Subtopic mismatch
+
+Section-Level Examples:
+1. Missing Definitions: [Medium] The section “Who Must File Form 1099 Electronically?” references “information returns” without defining it...
+2. Missing Statistics: [Medium] The section “Penalties...” does not include any numeric penalty ranges...
+
+### SENTENCE-LEVEL FEEDBACK FRAMEWORK
+Only these actions are valid:
+- Grammar correction
+- Active -> passive conversion
+- Sentence splitting
+- Citation addition
+- Filler removal
+
+Sentence-Level Examples:
+1. Grammar Correction: [High] The sentence “If a deadline fall on a holiday...”
+4. Citation Addition: [High] The sentence “Penalties can reach $310 per form.” lacks a source...
+
+### MANDATORY ROUTING & QUALITY TABLES
+Quality Table Summary:
+- Unsourced statistics: Add clear source using hyperlink or 3rd person mention.
+- Low originality: Add at least one paragraph with first-hand observation.
+- Low authority: Convert claims into facts by removing hedging words.
+- Poor readability: Reduce complex sentences to under 30%.
+
+
+
+
+###############################################################
+### 🚀 SEO & AI INDEXING ENHANCEMENT LAYER (ADDED LOGIC)
+###############################################################
+
+### KEYWORD INPUT (MANDATORY CONTEXT)
+- Primary Keyword: {primary_keyword}
+- Secondary Keywords: {secondary_keywords}
+- Entities: {entities}
+- Search Intent: {informational / transactional / navigational}
+
+You MUST use these keywords and entities while generating recommendations. Do NOT ignore them.
+
+---
+
+### KEYWORD OPTIMIZATION RULES (STRICT)
+- Primary keyword MUST appear:
+  - In at least one H2
+  - Within the first 100 words
+- Secondary keywords must be distributed across relevant sections
+- Prefer semantic variations instead of exact repetition
+- Avoid keyword stuffing (density should not exceed natural readability)
+- Insert keywords naturally within sentences (no forced insertion)
+
+---
+
+### MANDATORY KEYWORD RECOMMENDATION RULE
+If KeywordScore < 8:
+- You MUST generate at least 2 keyword-related recommendations
+- At least one MUST be Section-level (header optimization)
+- At least one MUST be Sentence-level (natural keyword insertion)
+- Do NOT skip keyword suggestions under any condition
+
+---
+
+### ENTITY & AI INDEXING OPTIMIZATION
+If EntityAlignmentScore < 8:
+- Add entity-based recommendations
+- Suggest inclusion of named entities (tools, brands, concepts)
+- Ensure entities are contextually explained
+
+---
+
+### ANSWER BLOCK / AI READABILITY OPTIMIZATION
+If AnswerBlockDensityScore < 8:
+- Recommend adding:
+  - bullet lists
+  - short answer blocks
+  - definition-style paragraphs
+
+---
+
+### SEO PRIORITY OVERRIDE
+If any of the following scores are below 8:
+- KeywordScore
+- EntityAlignmentScore
+- AnswerBlockDensityScore
+
+THEN:
+- SEO and AI indexing improvements take priority over readability cleanup
+- DO NOT remove keywords unless clearly spammy
+- DO NOT over-optimize for simplicity at the cost of SEO
+
+---
+
+### CONTROLLED CLEANUP RULE
+- Do NOT remove promotional or descriptive words if they contribute to:
+  - keyword presence
+  - intent alignment
+  - SEO strength
+- Only remove content if it harms clarity OR is redundant
+
+---
+
+### SCORE IMPROVEMENT ASSUMPTIONS
+You MUST assume:
+- Adding missing keywords → improves KeywordScore by +1
+- Adding entities → improves EntityAlignmentScore by +1
+- Adding structured answer blocks → improves AnswerBlockDensityScore by +1
+
+---
+
+### SEO EXAMPLE (MANDATORY PATTERN)
+Example:
+Issue: Missing Keyword Optimization [High]
+The section ""Benefits of SEO"" does not include the primary keyword ""SEO tools for beginners"".
+Fix: Update the H2 to ""SEO Tools for Beginners: Benefits and Use Cases"" and include the keyword naturally in the first paragraph.
+Improves: KeywordScore, EntityAlignmentScore
+
+---
+
+### FINAL PRIORITY ORDER
+When conflicts occur, follow this order:
+1. SEO & AI Indexing
+2. Intent Alignment
+3. Structure & Coverage
+4. Readability & Cleanup
+
+
+
+### RESPONSE FORMAT (STRICTLY FOLLOW)
+Return only a JSON object with the following structure:
+{
+  ""overall"": [
+    {
+      ""whatToChange"": ""string"",
+      ""priority"": ""string"",
+      ""description"": ""string"",
+      ""fix"": ""string"",
+      ""improves"": [""ScoreName""],
+     ""examples"": { 
+         ""bad"": ""it should only contain the sentence text. Never add any other json request data.Do not write any sentence id or section id"", 
+         ""good"": ""Rewritten text OR one-liner action if rewrite is impossible"" 
+      }
+    }
+  ],
+  ""sectionLevel"": [
+    {
+      ""text"": ""string(section level text passed in the request)"",
+      ""whatToChange"": ""string"",
+      ""priority"": ""string"",
+      ""description"": ""string"",
+      ""fix"": ""string"",
+      ""improves"": [""ScoreName""],
+      ""examples"": { 
+         ""bad"": ""it should only contain the sentence text. Never add any other json request data.Do not write any sentence id or section id"", 
+         ""good"": ""Rewritten text OR one-liner action if rewrite is impossible"" 
+      }
+    }
+  ],
+  ""sentenceLevel"": [
+    {
+      ""text"": ""string(sentence text)"",
+      ""sentenceIndex"": int,
+      ""whatToChange"": ""string"",
+      ""priority"": ""string"",
+      ""description"": ""string"",
+      ""fix"": ""string"",
+      ""improves"": [""ScoreName""],
+      ""examples"": { 
+         ""bad"": "" it should only contain the sentence text. Never add any other json request data. Do not write any sentence id or section id"", 
+         ""good"": ""Rewritten text OR one-liner action if rewrite is impossible"" 
+      }
+    }
+  ]
+}";
+            public const string RecommendationsPrompt111 = @"### SYSTEM REQUIREMENT DOCUMENT: RECOMMENDATION & FEEDBACK LOGIC
+
+Recommendation & Feedback Logic
+Feedback Scope Definition (Non-Negotiable)
+Every recommendation must operate at exactly one of three scopes. Never mix scopes inside a single feedback item.
+Every Recommendation must be for increasing one of the below scores: IntentScore, SectionScore, KeywordScore, OriginalInfoScore, ExpertiseScore, CredibilityScore, AuthorityScore, SimplicityScore, GrammarScore, VariationScore, PlagiarismScore, ClaritySynthesisScore, FactRetrievalScore, AnswerBlockDensityScore, FactualIsolationScore, EntityAlignmentScore, TechnicalClarityScore, SignalToNoiseScore.
+Scores will be provided as input to the system along with the content. Your recommendation must specify which score(s) it improves.
+All Scores are in range 0-10. so give recommendation only when score is less than 10 and your recommendation can improve it by at least 1 point. Do not give recommendation if score is already 10 or if your recommendation cannot improve the score by at least 1 point.
+Suggest Keyword insertion in headers/paragraphs/sentences if needed.
+
+Feedback Scope Table:
+- Article-level: Whole document. Allowed: Coverage, structure, redundancy, plagiarism, intent, word count. Disallowed: Grammar, word choice.
+- Section-level: H2/H3 block. Allowed: Flow, missing elements, stats, definitions, subtopics. Disallowed: Sentence rewrites.
+- Sentence-level: Single sentence. Allowed: Grammar, voice, clarity, sourcing, keyword insertion. Disallowed: Structural changes.
+
+This separation ensures traceability from edit -> Level 1 -> Level 4.
+Guidelines for Giving Feedback (Non-Negotiable)
+These guidelines apply to all article-, section-, and sentence-level feedback.
+Any feedback that violates these rules is considered invalid.
+
+1. Do Not Give Vague or Unactionable Feedback
+Feedback must clearly state what is wrong and exactly how to fix it.
+Generic statements like “improve clarity,” “add more detail,” or “optimize for SEO” are not allowed.
+Bad: “Improve the structure of the article.”
+Good: “Convert numbered placeholders like ‘1.’ and ‘2.’ into explicit H2 headers to clearly mark section boundaries.”
+
+2. Operate Within One Scope Only
+Each feedback item must belong to exactly one scope.
+Article-level feedback must not mention grammar or sentence wording.
+Section-level feedback must not rewrite sentences.
+Sentence-level feedback must not introduce new ideas or restructure sections.
+
+3. Point to a Specific Location or Pattern
+Feedback must reference a clear target: a section title, a sentence, or a repeated pattern.
+Bad: “There is redundancy in the article.”
+Good: “The definition of Form 1099-NEC is repeated in the introduction, the 1099-NEC section, and the filing deadlines section with minimal variation.”
+
+4. Always Include a Concrete Fix
+Bad: “This section needs more depth.”
+Good: “Add a date-based example showing how a January 31 deadline shifts when it falls on a weekend.”
+
+5.Recommendation must increase overall SEO score and AI Indexing Score.
 
 ### CORE SCORE DEFINITIONS FOR RECOMMENDATIONS
 When generating recommendations, analyze which of the following scores will be improved by implementing the fix. You must decide which scores are relevant and list them in the ""improves"" field of your JSON response:

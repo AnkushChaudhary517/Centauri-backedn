@@ -9,7 +9,7 @@ namespace Centauri_Api.Interface
         Task<CentauriUser?> GetUserAsync(string userId);
         Task<List<CentauriUser>> GetAllUsersAsync();
         Task UpdateUserAsync(CentauriUser user);
-        Task DeleteUserAsync(string userId);
+        Task DeleteUserAsync(string userId, string email);
         Task<CentauriUser?> GetUserByEmail(string email);
         Task CreateUserSubscription(CentauriUserSubscription centauriUserSubscription);
 

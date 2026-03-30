@@ -8,5 +8,6 @@ namespace Centauri_Api.Interface
         Task<(bool success, RegisterResponse? response, string? error)> RegisterAsync(RegisterRequest request);
         Task<(bool success, LogoutResponse? response, string? error)> LogoutAsync(string userId);
         Task<LoginResponse> GoogleLoginAsync(GoogleLoginRequest googleLoginRequest);
+        Task<bool> DeleteUserAsync(string userId,string email);
     }
 }

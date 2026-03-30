@@ -56,6 +56,28 @@ public class AuthController : ControllerBase
         return Ok(ApiResponseHelper.Success(response, "Login successful"));
     }
 
+    [HttpDelete("delete-account")]
+    public async Task<ActionResult<ApiResponse<LoginResponse>>> DeleteAccount()
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = await _dynamoDbService.GetUserAsync(userId);
+        if (user == null)
+        {
+            throw new Exception("User account does not exist");
+        }
+        var success = await _authService.DeleteUserAsync(userId,user.Email);
+
+        if (!success)
+        {
+            return BadRequest(ApiResponseHelper.Error<LoginResponse>(
+                "ACCOUNT_DELETE_FAILED",
+                "Account deletion failed.",
+                400
+            ));
+        }
+
+        return Ok(ApiResponseHelper.Success(success, "Account deleted successfully"));
+    }
     [HttpPost("register")]
     public async Task<ActionResult<ApiResponse<RegisterResponse>>> Register(RegisterRequest request)
     {

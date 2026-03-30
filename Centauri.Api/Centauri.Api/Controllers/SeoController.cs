@@ -63,7 +63,7 @@ public class SeoController : ControllerBase
     {
         var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
         var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
-        var recommendations =await _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
+        var recommendations =await _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections);
         return Ok(recommendations);
     }
 
@@ -337,7 +337,8 @@ public class SeoController : ControllerBase
                 }
             };
 
-            _orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections, l2);
+            var sectionResponse = await _orchestrator.GetSectionScoreResAsync(request.PrimaryKeyword);
+            _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse);
 
             response.Diagnostics = new Diagnostics()
             {

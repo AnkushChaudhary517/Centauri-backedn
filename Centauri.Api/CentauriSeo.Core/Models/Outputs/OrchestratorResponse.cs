@@ -11,6 +11,7 @@ namespace CentauriSeo.Core.Models.Outputs
     {
         public IReadOnlyList<ValidatedSentence> ValidatedSentences { get; set; } = Array.Empty<ValidatedSentence>();
         public double PlagiarismScore { get; set; } = 0.0;
+        public SectionScoreResponse SectionScoreResponse { get; set; }
         public double SectionScore { get; set; }
         public double IntentScore { get; set; }
         public double KeywordScore { get; set; }

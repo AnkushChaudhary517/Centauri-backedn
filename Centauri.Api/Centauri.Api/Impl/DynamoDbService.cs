@@ -76,9 +76,9 @@ namespace Centauri_Api.Impl
             _logger.LogInformation("User updated: {UserId}", user.Id);
         }
 
-        public async Task DeleteUserAsync(string userId)
+        public async Task DeleteUserAsync(string userId, string email)
         {
-            await _context.DeleteAsync<CentauriUser>(userId);
+            await _context.DeleteAsync<CentauriUser>(userId,email);
             _logger.LogInformation("User deleted: {UserId}", userId);
         }
     }

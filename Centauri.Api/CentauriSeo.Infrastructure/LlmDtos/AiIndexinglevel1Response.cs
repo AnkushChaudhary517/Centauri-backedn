@@ -38,7 +38,7 @@ namespace CentauriSeo.Infrastructure.LlmDtos
                 return new AnswerPositionIndex { PositionScore = 0.0 };
             }
         }
-
+        public List<string> Entities { get; set; }
     }
 
     public class AiIndexinglevelLocalLlmResponse

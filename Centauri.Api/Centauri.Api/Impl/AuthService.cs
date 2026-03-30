@@ -46,6 +46,12 @@ namespace Centauri_Api.Impl
             };
             return response;
         }
+
+        public async Task<bool> DeleteUserAsync(string userId, string email)
+        {
+            await _dynamoDbService.DeleteUserAsync(userId, email);
+            return true;
+        }
         public async Task<(bool success, LoginResponse? response, string? error)> LoginAsync(LoginRequest request)
         {
             try

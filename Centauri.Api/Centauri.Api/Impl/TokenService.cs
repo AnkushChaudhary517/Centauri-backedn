@@ -1,5 +1,5 @@
-﻿using Centauri_Api.Entitites;
-using Centauri_Api.Interface;
+﻿using Centauri_Api.Interface;
+using CentauriSeo.Core.Entitites;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;

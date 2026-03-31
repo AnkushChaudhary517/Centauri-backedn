@@ -1,6 +1,6 @@
-﻿using Centauri_Api.Entitites;
-using Centauri_Api.Interface;
+﻿using Centauri_Api.Interface;
 using Centauri_Api.Model;
+using CentauriSeo.Core.Entitites;
 using Microsoft.EntityFrameworkCore;
 namespace Centauri_Api.Impl
 {

@@ -47,6 +47,7 @@ public class GeminiClient
 
     private readonly AiCallTracker _aiCallTracker;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IDynamoDbService _dynamoDbService;
 
     // Use a stable model version unless you are specifically testing 2.0/2.5 previews
     private const string ModelId = "gemini-2.5-flash";
@@ -55,7 +56,7 @@ public class GeminiClient
     private const string Endpoint = $"projects/gen-lang-client-0445687823/locations/us-central1/publishers/google/models/{ModelId}";
     private const string _apiURL =$"https://us-central1-aiplatform.googleapis.com/v1/{Endpoint}:generateContent";
     public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config, AiCallTracker aiCallTracker,
-        IHttpContextAccessor httpContextAccessor, ILlmCacheManager cacheManager, ILogger<LlmLogger> logger)
+        IHttpContextAccessor httpContextAccessor, ILlmCacheManager cacheManager, ILogger<LlmLogger> logger, IDynamoDbService dynamoDbService)
     {
         _http = http;
         _cache = cache;
@@ -69,48 +70,49 @@ public class GeminiClient
         _httpContextAccessor = httpContextAccessor;
 
         _llmLogger.LogInfo("GeminiClient initialized successfully");
+        _dynamoDbService = dynamoDbService;
     }
 
-//    public async Task<List<string>> GetCompetitorUrls(string keyword)
-//    {
-//        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
-//        string userContent = @"
-//Role: SEO Expert & Content Strategist
-//Task: Use the Google Search tool to find the top 5 organic results for the keyword.
+    //    public async Task<List<string>> GetCompetitorUrls(string keyword)
+    //    {
+    //        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
+    //        string userContent = @"
+    //Role: SEO Expert & Content Strategist
+    //Task: Use the Google Search tool to find the top 5 organic results for the keyword.
 
-//Constraints:
-//- Output MUST be valid JSON. 
-//- No preamble, no explanation, no markdown backticks.
-//- If a URL cannot be accessed, skip it and move to the next organic result.
+    //Constraints:
+    //- Output MUST be valid JSON. 
+    //- No preamble, no explanation, no markdown backticks.
+    //- If a URL cannot be accessed, skip it and move to the next organic result.
 
-//Output will be list of string.
-//";
-//        var options = new JsonSerializerOptions
-//        {
-//            PropertyNameCaseInsensitive = true,
-//            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-//        };
-//        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:CompetitorUrls");
-//        var cachedResponse = await _cache.GetAsync(cacheKey);
-//        if (cachedResponse != null)
-//        {
-//            return JsonSerializer.Deserialize<List<string>>(cachedResponse,options);
-//        }
-//        try
-//        {
-//            var responseContent = await ProcessContent(systemPrompt, userContent, false, null, true);
-//            if (!string.IsNullOrEmpty(responseContent))
-//            {
-//                await _cache.SaveAsync(cacheKey, responseContent);
-//                return JsonSerializer.Deserialize<List<string>>(cachedResponse, options);
-//            }
-//        }
-//        catch (Exception ex)
-//        {
-//            await _logger.LogErrorAsync($"Error occured in get getting competitor urls :  {ex.Message}:{ex.StackTrace}");
-//        }
-//        return null;
-//    }
+    //Output will be list of string.
+    //";
+    //        var options = new JsonSerializerOptions
+    //        {
+    //            PropertyNameCaseInsensitive = true,
+    //            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    //        };
+    //        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:CompetitorUrls");
+    //        var cachedResponse = await _cache.GetAsync(cacheKey);
+    //        if (cachedResponse != null)
+    //        {
+    //            return JsonSerializer.Deserialize<List<string>>(cachedResponse,options);
+    //        }
+    //        try
+    //        {
+    //            var responseContent = await ProcessContent(systemPrompt, userContent, false, null, true);
+    //            if (!string.IsNullOrEmpty(responseContent))
+    //            {
+    //                await _cache.SaveAsync(cacheKey, responseContent);
+    //                return JsonSerializer.Deserialize<List<string>>(cachedResponse, options);
+    //            }
+    //        }
+    //        catch (Exception ex)
+    //        {
+    //            await _logger.LogErrorAsync($"Error occured in get getting competitor urls :  {ex.Message}:{ex.StackTrace}");
+    //        }
+    //        return null;
+    //    }
     public async Task<string> GetSectionScore(string keyword)
     {
         const string provider = "Gemini:SectionScore";
@@ -378,7 +380,8 @@ JSON Schema:
     }
     public async Task<string> GenerateRecommendationsAsync(string article)
     {
-        return await ProcessContent(CentauriSystemPrompts.RecommendationsPrompt, article, false);
+        var prompt = await _dynamoDbService.GetPrompt("RecommendationsPrompt") ?? CentauriSystemPrompts.RecommendationsPrompt;
+        return await ProcessContent(prompt, article, false);
     }
 
     public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)

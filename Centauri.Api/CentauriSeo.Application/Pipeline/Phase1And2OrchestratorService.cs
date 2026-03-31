@@ -984,6 +984,7 @@ public class Phase1And2OrchestratorService
             _llmLogger.LogDebug($"Calling Gemini for recommendations");
 
             var genStopwatch = Stopwatch.StartNew();
+           
             var response = await _gemini.GenerateRecommendationsAsync(article);
             genStopwatch.Stop();
             _llmLogger.LogDebug($"Gemini response received | DurationMs: {genStopwatch.ElapsedMilliseconds}");

@@ -1,7 +1,7 @@
 ﻿using CentauriSeo.Core.Entitites;
 using static System.Net.Mime.MediaTypeNames;
 
-namespace Centauri_Api.Interface
+namespace CentauriSeo.Infrastructure.Services
 {
     public interface IDynamoDbService
     {

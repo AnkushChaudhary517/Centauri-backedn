@@ -1,6 +1,6 @@
 ﻿using Amazon.DynamoDBv2.DataModel;
 
-namespace Centauri_Api.Entitites
+namespace CentauriSeo.Core.Entitites
 {
 
 

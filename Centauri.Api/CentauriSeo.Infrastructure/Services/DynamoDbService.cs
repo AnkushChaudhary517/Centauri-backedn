@@ -1,11 +1,11 @@
 ﻿using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
 using Amazon.DynamoDBv2.DocumentModel;
-using Centauri_Api.Entitites;
-using Centauri_Api.Interface;
+using CentauriSeo.Core.Entitites;
+using Microsoft.Extensions.Logging;
 using static System.Net.Mime.MediaTypeNames;
 
-namespace Centauri_Api.Impl
+namespace CentauriSeo.Infrastructure.Services
 {
     public class DynamoDbService : IDynamoDbService
     {
@@ -80,6 +80,27 @@ namespace Centauri_Api.Impl
         {
             await _context.DeleteAsync<CentauriUser>(userId,email);
             _logger.LogInformation("User deleted: {UserId}", userId);
+        }
+
+        public async Task<string> GetPrompt(string promptName)
+        {
+            try
+            {
+                var conditions = new List<ScanCondition>
+            {
+                new ScanCondition("PromptName", ScanOperator.Equal, promptName)
+            };
+
+                var results = await _context.ScanAsync<CentauriPrompt>(conditions).GetRemainingAsync();
+                var prompt = results.FirstOrDefault();
+                return prompt?.Value;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving prompt: {PromptName}", promptName);
+                return null;
+            }
+            
         }
     }
 }

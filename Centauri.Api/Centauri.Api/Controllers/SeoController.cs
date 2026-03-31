@@ -1,12 +1,12 @@
 ﻿using Amazon.Runtime.Internal;
 using Azure;
 using Azure.Core;
-using Centauri_Api.Entitites;
 using Centauri_Api.Interface;
 using Centauri_Api.Model;
 using CentauriSeo.Application.Pipeline;
 using CentauriSeo.Application.Scoring;
 using CentauriSeo.Application.Utils;
+using CentauriSeo.Core.Entitites;
 using CentauriSeo.Core.Models.Enums;
 using CentauriSeo.Core.Models.Input;
 using CentauriSeo.Core.Models.Output;
@@ -33,6 +33,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using IDynamoDbService = CentauriSeo.Infrastructure.Services.IDynamoDbService;
 
 namespace CentauriSeoBackend.Controllers;
 

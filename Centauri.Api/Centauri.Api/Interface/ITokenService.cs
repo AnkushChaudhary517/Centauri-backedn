@@ -1,4 +1,5 @@
-﻿using Centauri_Api.Entitites;
+﻿
+using CentauriSeo.Core.Entitites;
 
 namespace Centauri_Api.Interface
 {

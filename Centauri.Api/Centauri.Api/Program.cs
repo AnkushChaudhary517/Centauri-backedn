@@ -67,6 +67,15 @@ builder.Services.AddCors(options =>
 // register cache service
 builder.Services.AddSingleton<ILlmCacheService, InMemoryCacheService>();
 
+// register centralized cache manager with configuration support
+builder.Services.AddSingleton<ILlmCacheManager, LlmCacheManager>();
+
+// register enhanced logging service
+builder.Services.AddSingleton(typeof(ILlmLogger), typeof(LlmLogger));
+
+// register mock data service
+builder.Services.AddSingleton<IMockDataService, MockDataService>();
+
 // JWT Configuration
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings.GetValue<string>("SecretKey") ?? "your-secret-key-that-is-at-least-32-characters-long-for-hs256";
@@ -135,8 +144,19 @@ builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
 // Register DynamoDB client for DI
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 
+// Register DynamoDB context
+builder.Services.AddSingleton(provider =>
+{
+    var dynamoDb = provider.GetRequiredService<IAmazonDynamoDB>();
+    return new DynamoDBContext(dynamoDb);
+});
+
 // Register your repository
 builder.Services.AddSingleton<IDynamoDbService, DynamoDbService>();
+
+// Register feedback service
+builder.Services.AddSingleton<IRecommendationFeedbackService, RecommendationFeedbackService>();
+
 builder.Services.AddSingleton<IRazorpayService, RazorpayService>();
 // Application services
 builder.Services.AddSingleton<ITokenService,Centauri_Api.Impl.TokenService>();

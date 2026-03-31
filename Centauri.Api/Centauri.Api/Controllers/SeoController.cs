@@ -14,17 +14,21 @@ using CentauriSeo.Core.Models.Outputs;
 using CentauriSeo.Core.Models.Scoring;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
+using CentauriSeo.Infrastructure.Exceptions;
 using CentauriSeo.Infrastructure.LlmClients;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
+using CentauriSeo.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Extensions;
 using Stripe.Forwarding;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -41,14 +45,23 @@ public class SeoController : ControllerBase
     private readonly GroqClient _groqClient;
     private readonly IMemoryCache _cache;
     private readonly IDynamoDbService _dynamoDbService;
+    private readonly ILogger<SeoController> _logger;
+    private readonly ILlmLogger _llmLogger;
+    private readonly IMockDataService _mockDataService;
+    private readonly IRecommendationFeedbackService _feedbackService;
+
     public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor, GroqClient groqClient,
-        IMemoryCache cache, IDynamoDbService dynamoDbService)
+        IMemoryCache cache, IDynamoDbService dynamoDbService, ILogger<SeoController> logger, ILlmLogger llmLogger, IMockDataService mockDataService, IRecommendationFeedbackService feedbackService)
     {
         _orchestrator = orchestrator;
         _httpContextAccessor = httpContextAccessor;
         _groqClient = groqClient;
         _cache = cache;
         _dynamoDbService = dynamoDbService;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _llmLogger = llmLogger ?? throw new ArgumentNullException(nameof(llmLogger));
+        _mockDataService = mockDataService ?? throw new ArgumentNullException(nameof(mockDataService));
+        _feedbackService = feedbackService ?? throw new ArgumentNullException(nameof(feedbackService));
     }
 
     [HttpPost("categories-test")]
@@ -141,58 +154,116 @@ public class SeoController : ControllerBase
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var user = await _dynamoDbService.GetUserAsync(userId);
-        if(TrialEnded(user))
-        {
-            throw new Exception("Free trial ended for user. Please upgrade the subscription or add credits");
-        }
-        if(user == null ||user.CreditsAdded <= 0)
-        {
-                throw new Exception("No credits left");
-        }
-        var analyzeResponse = new SeoResponse();
-        var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
-        var cacheKey2 = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}_isAnalysisStarted";
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
+        const string provider = "SeoController:Analyze";
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
-            var cachedData = _cache.Get(cacheKey);
-            var isAnalysisStarted = _cache.Get(cacheKey2);
-            if(isAnalysisStarted != null)
+            _llmLogger.LogInfo($"Analyze endpoint called | PrimaryKeyword: {request?.PrimaryKeyword}", new Dictionary<string, object> { { "Endpoint", "Analyze" } });
+
+            // Validate input
+            if (request == null)
+                throw new LlmValidationException("Request cannot be null", provider, new List<string> { "Invalid request" });
+
+            if (string.IsNullOrWhiteSpace(request.PrimaryKeyword))
+                throw new LlmValidationException("Primary keyword is required", provider, new List<string> { "PrimaryKeyword is required" });
+
+            if (request.Article == null || string.IsNullOrWhiteSpace(request.Article.Raw))
+                throw new LlmValidationException("Article content is required", provider, new List<string> { "Article is required" });
+
+            // Check if mock mode is enabled - return mock data immediately if so
+            if (_mockDataService.IsMockModeEnabled)
             {
-                //it means analysis already started
-                if (cachedData != null)
+                _llmLogger.LogInfo("📋 MOCK MODE: Returning mock analysis response");
+                var mockResponse = await _mockDataService.GetMockAnalysisResponseAsync();
+                if (mockResponse != null)
                 {
-                    return JsonSerializer.Deserialize<SeoResponse>(cachedData?.ToString(), options);
+                    mockResponse.RequestId = Guid.NewGuid().ToString();
+                    stopwatch.Stop();
+                    _llmLogger.LogApiCall(provider, "Analyze (Mock)", stopwatch.ElapsedMilliseconds, true);
+                    return Ok(mockResponse);
                 }
                 else
                 {
-
-                    return analyzeResponse;
+                    _llmLogger.LogWarning("Mock mode enabled but failed to load mock data");
                 }
             }
-            else
+
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new LlmOperationException("Unable to identify user", provider, "User context missing");
+
+            var user = await _dynamoDbService.GetUserAsync(userId);
+            if (user == null)
+                throw new LlmOperationException("User not found", provider, userId);
+
+            if (TrialEnded(user))
             {
-                _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
-                GetAnalysisResult(request, userId);
-            }               
+                _llmLogger.LogWarning($"User trial ended | UserId: {userId}", new Dictionary<string, object> { { "TrialEnd", user.TrialEndsAt } });
+                return Unauthorized(new { error = "Free trial ended for user. Please upgrade the subscription or add credits" });
+            }
+
+            if (user.CreditsAdded <= 0)
+            {
+                _llmLogger.LogWarning($"No credits available | UserId: {userId}", new Dictionary<string, object> { { "Credits", user.CreditsAdded } });
+                return Unauthorized(new { error = "No credits left" });
+            }
+
+            var analyzeResponse = new SeoResponse();
+            var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+            var cacheKey2 = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}_isAnalysisStarted";
+
+            var cachedData = _cache.Get(cacheKey);
+            var isAnalysisStarted = _cache.Get(cacheKey2);
+
+            if (isAnalysisStarted != null)
+            {
+                _llmLogger.LogDebug($"Analysis already in progress | CacheKey: {cacheKey}");
+                if (cachedData != null)
+                {
+                    stopwatch.Stop();
+                    _llmLogger.LogApiCall(provider, "Analyze (Cached)", stopwatch.ElapsedMilliseconds, true);
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
+                    return Ok(JsonSerializer.Deserialize<SeoResponse>(cachedData?.ToString(), options));
+                }
+                return Ok(analyzeResponse);
+            }
+
+            _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Analyze (Initiated)", stopwatch.ElapsedMilliseconds, true);
+
+            // Start background analysis
+            _ = GetAnalysisResult(request, userId);
+            return Ok(analyzeResponse);
         }
-        catch(Exception ex)
+        catch (LlmValidationException valEx)
         {
-            await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
-            return new SeoResponse()
+            stopwatch.Stop();
+            _llmLogger.LogWarning($"Validation error in analyze | {string.Join(", ", valEx.ValidationErrors)}", new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            _llmLogger.LogApiCall(provider, "Analyze", stopwatch.ElapsedMilliseconds, false, valEx.Message);
+            return BadRequest(new { error = valEx.Message, validationErrors = valEx.ValidationErrors });
+        }
+        catch (LlmOperationException opEx)
+        {
+            stopwatch.Stop();
+            _logger.LogError($"Operation error in analyze: {opEx.Message}");
+            _llmLogger.LogApiCall(provider, "Analyze", stopwatch.ElapsedMilliseconds, false, opEx.Message);
+            return StatusCode(500, new { error = "Analysis failed", details = opEx.Message });
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, $"Unexpected error in analyze endpoint");
+            _llmLogger.LogError($"Unexpected error in analyze | {ex.Message}", ex, new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            _llmLogger.LogApiCall(provider, "Analyze", stopwatch.ElapsedMilliseconds, false, ex.Message);
+
+            return StatusCode(500, new SeoResponse()
             {
                 IsCompleted = true,
-                Error = ex.ToString()
-            };
+                Error = "An unexpected error occurred during analysis"
+            });
         }
-
-        return analyzeResponse;
     }
 
     private bool TrialEnded(CentauriUser? user)
@@ -214,47 +285,69 @@ public class SeoController : ControllerBase
 
     private async Task<SeoResponse> GetAnalysisResult(SeoRequest request, string userId)
     {
-        var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-            NumberHandling=JsonNumberHandling.AllowNamedFloatingPointLiterals
-        };
+        const string provider = "SeoController:GetAnalysisResult";
+        var operationStopwatch = Stopwatch.StartNew();
+
         try
         {
+            _llmLogger.LogInfo($"Starting full analysis | UserId: {userId}", new Dictionary<string, object> { { "Keyword", request.PrimaryKeyword } });
+
+            var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+            };
+
             var ctx = _httpContextAccessor.HttpContext;
             var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
-            var response = new SeoResponse
-            {
-                RequestId = correlationId
-            };
-            var topIssues = new List<TopIssue>();
-            response.InputIntegrity = EnsureInputIntegrity(request);
-            var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
 
-            fullLocalLlmTags.Sentences?.RemoveAll(x => x.Sentence.ToLower().Contains("meta title")
-            || x.Sentence.ToLower().Contains("meta description") || x.Sentence.ToLower().Contains("url slug"));
+            var response = new SeoResponse { RequestId = correlationId };
+            var topIssues = new List<TopIssue>();
+
+            // Validate input integrity
+            response.InputIntegrity = EnsureInputIntegrity(request);
+
+            // Get sentence tagging from local LLM
+            var localTagStopwatch = Stopwatch.StartNew();
+            var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
+            localTagStopwatch.Stop();
+            _llmLogger.LogDebug($"Local LLM tagging completed | DurationMs: {localTagStopwatch.ElapsedMilliseconds}");
+
+            if (fullLocalLlmTags?.Sentences == null || fullLocalLlmTags.Sentences.Count == 0)
+            {
+                throw new LlmOperationException("No sentences extracted from article", provider, request.PrimaryKeyword);
+            }
+
+            fullLocalLlmTags.Sentences?.RemoveAll(x => x.Sentence?.ToLower().Contains("meta title") == true
+                || x.Sentence?.ToLower().Contains("meta description") == true
+                || x.Sentence?.ToLower().Contains("url slug") == true);
 
             var sections = Phase1And2OrchestratorService.BuildSections(fullLocalLlmTags.Sentences);
-            var headings = fullLocalLlmTags.Sentences.Where(s => s.HtmlTag?.ToLower() != "h1" && s.HtmlTag.StartsWith("h", StringComparison.InvariantCultureIgnoreCase))
-                .Select(s => s.Sentence).ToList();
-            //if (request.SecondaryKeywords == null || request.SecondaryKeywords.Count==0)
-            //{
-            //    request.SecondaryKeywords = SecondaryKeywordGenerator.ExtractSecondaryKeywords(request.PrimaryKeyword, headings);
-            //}
+            var headings = fullLocalLlmTags.Sentences
+                .Where(s => s.HtmlTag?.ToLower() != "h1" && s.HtmlTag?.StartsWith("h", StringComparison.InvariantCultureIgnoreCase) == true)
+                .Select(s => s.Sentence)
+                .ToList();
+
+            // Update informative types from Groq
             await UpdateInformativeTypeFromGroq(options, fullLocalLlmTags);
 
-            //return JsonSerializer.Deserialize<SeoResponse>(System.IO.File.ReadAllText("Data/Response.json"), options);
-            //_orchestrator.GetFullRecommendationsAsync(request.Article.Raw, fullLocalLlmTags.Sentences, sections);
+            // Run orchestrator
+            var orchestratorStopwatch = Stopwatch.StartNew();
+            OrchestratorResponse orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
+            orchestratorStopwatch.Stop();
+            _llmLogger.LogDebug($"Orchestrator completed | DurationMs: {orchestratorStopwatch.ElapsedMilliseconds}");
 
-            OrchestratorResponse orchestratorResponse = orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
+            if (orchestratorResponse?.ValidatedSentences == null || orchestratorResponse.ValidatedSentences.Count == 0)
+            {
+                throw new LlmOperationException("Orchestrator returned no validated sentences", provider, request.PrimaryKeyword);
+            }
+
             orchestratorResponse.Sections = sections;
 
-            //start recommendations
-
-
-            var level1 = orchestratorResponse?.ValidatedSentences?.ToList()?.ConvertAll(x => new Level1Sentence()
+            // Convert to Level1 format
+            var level1 = orchestratorResponse.ValidatedSentences.ToList().ConvertAll(x => new Level1Sentence()
             {
                 HasCitation = x.HasCitation,
                 HasPronoun = x.HasPronoun,
@@ -267,23 +360,18 @@ public class SeoController : ControllerBase
                 Text = x.Text
             });
 
-
             response.Level1.Summary.SentenceCount = level1.Count;
-
             response.Level1.Summary.StructureDistribution = level1
                 .GroupBy(s => s.Structure.ToString())
                 .ToDictionary(g => g.Key.ToLowerInvariant(), g => g.Count());
-
             response.Level1.Summary.InformativeTypeDistribution = level1
                 .GroupBy(s => s.InformativeType.ToString())
                 .ToDictionary(g => g.Key.ToLowerInvariant(), g => g.Count());
-
             response.Level1.Summary.CitationDistribution = new Dictionary<string, int>
             {
                 ["with_citation"] = level1.Count(s => s.HasCitation),
                 ["without_citation"] = level1.Count(s => !s.HasCitation)
             };
-
             response.Level1.Summary.GrammarDistribution = new Dictionary<string, int>
             {
                 ["correct"] = level1.Count(s => s.IsGrammaticallyCorrect),
@@ -291,7 +379,7 @@ public class SeoController : ControllerBase
             };
 
             response.Level1.SentenceMapIncluded = true;
-            response.Level1.SentenceMap = orchestratorResponse?.ValidatedSentences?.Select(v => new SentenceMapEntry
+            response.Level1.SentenceMap = orchestratorResponse.ValidatedSentences.Select(v => new SentenceMapEntry
             {
                 Id = v.Id,
                 Text = v.Text,
@@ -305,20 +393,16 @@ public class SeoController : ControllerBase
                 }
             }).ToList();
 
-            // --- Compute scores (scorers will internally respect missing primary_keyword where required) ---
-
+            // Compute scores
             response.Level2InputResponse = orchestratorResponse;
             response.Request = request;
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
             l2.ExpertiseScore = await GetExpertiseScore(request.Article.Raw, fullLocalLlmTags.Sentences);
             l2.CredibilityScore = await GetCredibilityScoreFromSentences(fullLocalLlmTags.Sentences);
-            //l2.PlagiarismScore = orchestratorResponse?.PlagiarismScore ?? 1.0;
-            //l2.SectionScore = orchestratorResponse?.SectionScore /10.0?? 1.0;
 
             var l3 = Level3Engine.Compute(l2);
             var l4 = Level4Engine.Compute(l2, l3);
 
-            // Populate simplified final blocks (detailed population done later in response shaping)
             response.Level2Scores = l2;
             response.Level3Scores = l3;
             response.Level4Scores = l4;
@@ -337,8 +421,12 @@ public class SeoController : ControllerBase
                 }
             };
 
+            // Get recommendations
+            var recommendationStopwatch = Stopwatch.StartNew();
             var sectionResponse = await _orchestrator.GetSectionScoreResAsync(request.PrimaryKeyword);
-            _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse);
+            await _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse);
+            recommendationStopwatch.Stop();
+            _llmLogger.LogDebug($"Recommendations completed | DurationMs: {recommendationStopwatch.ElapsedMilliseconds}");
 
             response.Diagnostics = new Diagnostics()
             {
@@ -346,68 +434,153 @@ public class SeoController : ControllerBase
                 TopIssues = topIssues
             };
 
-
             bool allPresent = response.InputIntegrity.Received.ArticlePresent
                               && response.InputIntegrity.Received.PrimaryKeywordPresent
                               && response.InputIntegrity.Received.MetaTitlePresent
                               && response.InputIntegrity.Received.MetaDescriptionPresent
                               && response.InputIntegrity.Received.UrlPresent;
 
-            if (!allPresent)
-            {
-                response.InputIntegrity.Status = "partial";
-                response.Status = "partial";
-            }
-            else
-            {
-                response.InputIntegrity.Status = "success";
-                response.Status = "success";
-            }
+            response.InputIntegrity.Status = allPresent ? "success" : "partial";
+            response.Status = allPresent ? "success" : "partial";
             response.IsCompleted = true;
-            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
-            var user = await _dynamoDbService.GetUserAsync(userId);
-            user.CreditsAdded -= 1;
-            await _dynamoDbService.UpdateUserAsync(user);
-            return response;
 
+            // Cache result
+            var cacheStopwatch = Stopwatch.StartNew();
+            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
+            cacheStopwatch.Stop();
+            _llmLogger.LogDebug($"Result cached | DurationMs: {cacheStopwatch.ElapsedMilliseconds}");
+
+            // Update user credits
+            try
+            {
+                var user = await _dynamoDbService.GetUserAsync(userId);
+                if (user != null)
+                {
+                    user.CreditsAdded -= 1;
+                    await _dynamoDbService.UpdateUserAsync(user);
+                    _llmLogger.LogDebug($"User credits updated | UserId: {userId} | Remaining: {user.CreditsAdded}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to update user credits for UserId: {userId}");
+                _llmLogger.LogWarning($"Failed to deduct credit | UserId: {userId} | {ex.Message}");
+            }
+
+            operationStopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "GetAnalysisResult", operationStopwatch.ElapsedMilliseconds, true);
+            return response;
         }
-        catch(Exception ex)
+        catch (LlmOperationException opEx)
         {
-            await (new FileLogger()).LogErrorAsync($"Error occured in analyze :  {ex.Message}:{ex.StackTrace}");
-            var response = new SeoResponse()
+            operationStopwatch.Stop();
+            _logger.LogError($"Operation error in analysis: {opEx.Message}");
+            _llmLogger.LogApiCall(provider, "GetAnalysisResult", operationStopwatch.ElapsedMilliseconds, false, opEx.Message);
+
+            var errorResponse = new SeoResponse()
             {
                 IsCompleted = true,
-                Error = ex.ToString()
+                Error = opEx.Message,
+                Status = "error"
             };
-            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
-            return response ;
+            
+            var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
+            _cache.Set(cacheKey, JsonSerializer.Serialize(errorResponse, options), TimeSpan.FromMinutes(15));
+            return errorResponse;
         }
-        
+        catch (Exception ex)
+        {
+            operationStopwatch.Stop();
+            _logger.LogError(ex, $"Unexpected error in analysis for keyword: {request?.PrimaryKeyword}");
+            _llmLogger.LogError($"Unexpected error in GetAnalysisResult | {ex.Message}", ex, new Dictionary<string, object> { { "DurationMs", operationStopwatch.ElapsedMilliseconds } });
+            _llmLogger.LogApiCall(provider, "GetAnalysisResult", operationStopwatch.ElapsedMilliseconds, false, ex.Message);
+
+            var errorResponse = new SeoResponse()
+            {
+                IsCompleted = true,
+                Error = "An unexpected error occurred during analysis",
+                Status = "error"
+            };
+
+            try
+            {
+                var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
+                _cache.Set(cacheKey, JsonSerializer.Serialize(errorResponse, options), TimeSpan.FromMinutes(15));
+            }
+            catch { } // Ignore cache errors
+
+            return errorResponse;
+        }
     }
 
     private async Task UpdateInformativeTypeFromGroq(JsonSerializerOptions options, AiIndexinglevelLocalLlmResponse fullLocalLlmTags)
     {
+        const string provider = "SeoController:UpdateInformativeTypeFromGroq";
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
-            var requestData = fullLocalLlmTags.Sentences.Select(x => new { Sentence = x.Sentence, InformativeType = x.InformativeType.GetDisplayName() }).Take(200).ToList();
-            var res = await _groqClient.UpdateInformativeType(JsonSerializer.Serialize(requestData));
-            var d = JsonSerializer.Deserialize<List<UpdatedData>>(res, options);
+            if (fullLocalLlmTags?.Sentences == null || fullLocalLlmTags.Sentences.Count == 0)
+            {
+                _llmLogger.LogDebug("No sentences to update informative type");
+                return;
+            }
 
+            _llmLogger.LogDebug($"Updating informative types | SentenceCount: {fullLocalLlmTags.Sentences.Count}");
+
+            var requestData = fullLocalLlmTags.Sentences
+                .Select(x => new { Sentence = x.Sentence, InformativeType = x.InformativeType.GetDisplayName() })
+                .Take(200)
+                .ToList();
+
+            var res = await _groqClient.UpdateInformativeType(JsonSerializer.Serialize(requestData));
+            
+            if (string.IsNullOrWhiteSpace(res))
+            {
+                _llmLogger.LogWarning("Groq returned empty response for informative type update");
+                return;
+            }
+
+            var d = JsonSerializer.Deserialize<List<UpdatedData>>(res, options);
+            if (d == null || d.Count == 0)
+            {
+                _llmLogger.LogWarning("Failed to deserialize Groq informative type response");
+                return;
+            }
+
+            int updateCount = 0;
             fullLocalLlmTags.Sentences.ForEach(s =>
             {
                 var groqData = d?.Where(x => x.Sentence == s.Sentence)?.FirstOrDefault();
-                if (groqData != null)
+                if (groqData != null && groqData.InformativeType != s.InformativeType)
                 {
-                    if (groqData.InformativeType != s.InformativeType)
-                    {
-                        s.InformativeType = groqData.InformativeType;
-                    }
+                    s.InformativeType = groqData.InformativeType;
+                    updateCount++;
                 }
             });
+
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "UpdateInformativeType", stopwatch.ElapsedMilliseconds, true);
+            _llmLogger.LogDebug($"Updated {updateCount} sentences with new informative types");
+        }
+        catch (JsonException jsonEx)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogWarning($"JSON parsing error in UpdateInformativeType | {jsonEx.Message}", new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            _logger.LogError(jsonEx, "Failed to parse Groq informative type response");
+        }
+        catch (LlmOperationException)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogWarning($"LLM operation error in UpdateInformativeType");
         }
         catch (Exception ex)
         {
-
+            stopwatch.Stop();
+            _logger.LogError(ex, "Error in UpdateInformativeTypeFromGroq");
+            _llmLogger.LogWarning($"Error updating informative types | {ex.Message}");
         }
     }
 
@@ -531,28 +704,9 @@ public class SeoController : ControllerBase
     [HttpPost("recommendations")]
     public async Task<ActionResult<RecommendationResponseDTO>> GetRecommendations([FromBody] SeoRequest request)
     {
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
-        //return JsonSerializer.Deserialize<RecommendationResponseDTO>(System.IO.File.ReadAllText("Data/Recommendations.json"), options);
-        var correlationId = _httpContextAccessor?.HttpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
-        // Basic input validation
-        if (request == null || string.IsNullOrWhiteSpace(request.Article.Raw))
-        {
-            return BadRequest("Invalid request: ArticleText is required.");
-        }
-        // Generate recommendations using the TextAnalysisHelper
-        var recommendations = await _orchestrator.GetRecommendationResponseAsync(request.Article.Raw);
-        recommendations.RequestId = correlationId;
-        return Ok(recommendations);
-    }
-    private async Task<AiIndexinglevelLocalLlmResponse> GetFullSentenceTaggingFromLocalLLP(string primaryKeyword, string htmlContent)
-    {
-        HttpClient client = new HttpClient();
-        string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
-        //string apiUrl = "http://localhost:8000/process-article";
+        const string provider = "SeoController:GetRecommendations";
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
             var options = new JsonSerializerOptions
@@ -560,31 +714,243 @@ public class SeoController : ControllerBase
                 PropertyNameCaseInsensitive = true,
                 Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
             };
+
+            var correlationId = _httpContextAccessor?.HttpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
+
+            // Basic input validation
+            if (request == null || string.IsNullOrWhiteSpace(request.Article?.Raw))
+            {
+                return BadRequest("Invalid request: ArticleText is required.");
+            }
+
+            // Check if mock mode is enabled - return mock data immediately if so
+            if (_mockDataService.IsMockModeEnabled)
+            {
+                _llmLogger.LogInfo("📋 MOCK MODE: Returning mock recommendations response");
+                var mockResponse = await _mockDataService.GetMockRecommendationsResponseAsync();
+                if (mockResponse != null)
+                {
+                    mockResponse.RequestId = correlationId;
+                    stopwatch.Stop();
+                    _llmLogger.LogApiCall(provider, "GetRecommendations (Mock)", stopwatch.ElapsedMilliseconds, true);
+                    return Ok(mockResponse);
+                }
+                else
+                {
+                    _llmLogger.LogWarning("Mock mode enabled but failed to load mock recommendations data");
+                }
+            }
+
+            // Generate recommendations using the orchestrator service
+            var recommendations = await _orchestrator.GetRecommendationResponseAsync(request.Article.Raw);
+            recommendations.RequestId = correlationId;
+
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "GetRecommendations", stopwatch.ElapsedMilliseconds, true);
+            return Ok(recommendations);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, "Error in GetRecommendations");
+            _llmLogger.LogError($"Error in GetRecommendations | {ex.Message}", ex, new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            return StatusCode(500, new { error = "Failed to generate recommendations", details = ex.Message });
+        }
+    }
+
+    [HttpPost("recommendations/feedback")]
+    [Authorize]
+    public async Task<ActionResult<RecommendationFeedbackResponse>> SubmitRecommendationFeedback(
+        [FromBody] RecommendationFeedbackRequest request
+    )
+    {
+        const string provider = "SeoController:SubmitRecommendationFeedback";
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            _llmLogger.LogInfo($"📧 Receiving feedback submission for recommendation: {request?.RecommendationId}" );
+
+            if (request == null)
+            {
+                throw new LlmValidationException("Feedback request cannot be null", provider, new List<string> { "Request body is empty" });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.RecommendationId))
+            {
+                throw new LlmValidationException("RecommendationId is required", provider, new List<string> { "RecommendationId is missing" });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.RequestId))
+            {
+                throw new LlmValidationException("RequestId is required", provider, new List<string> { "RequestId is missing" });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Feedback) || (request.Feedback != "up" && request.Feedback != "down"))
+            {
+                throw new LlmValidationException("Feedback must be 'up' or 'down'", provider, new List<string> { "Invalid feedback value" });
+            }
+
+            // Extract user information from claims/context
+            var userId = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? "unknown";
+
+            var userEmail = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")?.Value
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                ?? "unknown";
+
+            var ipAddress = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "unknown";
+            var userAgent = HttpContext?.Request?.Headers["User-Agent"].ToString() ?? "unknown";
+
+            _llmLogger.LogDebug($"Feedback submission details | UserId: {userId}, RecommendationId: {request.RecommendationId}, Feedback: {request.Feedback}");
+
+            // Submit feedback using the service
+            var response = await _feedbackService.SubmitFeedbackAsync(
+                userId,
+                request,
+                ipAddress,
+                userAgent
+            );
+
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "SubmitRecommendationFeedback", stopwatch.ElapsedMilliseconds, true);
+
+            if (response.Status == "success")
+            {
+                _logger.LogInformation(
+                    "Feedback submitted successfully. FeedbackId: {FeedbackId}, RecommendationId: {RecommendationId}, UserId: {UserId}, Rating: {Rating}",
+                    response.FeedbackId,
+                    request.RecommendationId,
+                    userId,
+                    request.Feedback
+                );
+                return Ok(response);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Feedback submission returned error status. RecommendationId: {RecommendationId}, Error: {Error}",
+                    request.RecommendationId,
+                    response.ErrorDetails
+                );
+                return BadRequest(response);
+            }
+        }
+        catch (LlmValidationException ex)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogError($"Validation error in feedback submission | {ex.Message}", ex);
+            _logger.LogWarning("Feedback validation error: {Message}", ex.Message);
+            return BadRequest(new
+            {
+                status = "error",
+                message = "Validation failed",
+                details = ex.Message,
+                submittedAt = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogError($"Error in SubmitRecommendationFeedback | {ex.Message}", ex, new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            _logger.LogError(ex, "Error submitting recommendation feedback");
+            return StatusCode(500, new
+            {
+                status = "error",
+                message = "Failed to submit feedback",
+                details = ex.Message,
+                submittedAt = DateTime.UtcNow
+            });
+        }
+    }
+
+    private async Task<AiIndexinglevelLocalLlmResponse> GetFullSentenceTaggingFromLocalLLP(string primaryKeyword, string htmlContent)
+    {
+        const string provider = "SeoController:GetFullSentenceTaggingFromLocalLLP";
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(primaryKeyword))
+                throw new LlmValidationException("Primary keyword is required", provider, new List<string> { "PrimaryKeyword required" });
+
+            if (string.IsNullOrWhiteSpace(htmlContent))
+                throw new LlmValidationException("HTML content is required", provider, new List<string> { "HtmlContent required" });
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            };
+
+            string apiUrl = "http://ec2-15-206-164-71.ap-south-1.compute.amazonaws.com:8000/process-article";
+
             var inputData = JsonSerializer.Serialize(new
             {
                 htmlContent = htmlContent,
                 primaryKeyword = primaryKeyword
             });
-            Console.WriteLine("Sending request to Centauri NLP Service...");
-            var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
-            // 3. Make the POST request
-            var response = await client.PostAsync(apiUrl, content);
 
-            if (response.IsSuccessStatusCode)
+            _llmLogger.LogDebug($"Calling local LLP service | Keyword: {primaryKeyword}");
+
+            using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) })
             {
-                // 4. Deserialize the response
+                var content = new StringContent(inputData, System.Text.Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(apiUrl, content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    throw new LlmApiException(
+                        "Local LLP service returned error",
+                        provider,
+                        (int?)response.StatusCode,
+                        errorContent
+                    );
+                }
+
                 var res = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(res))
+                {
+                    throw new LlmOperationException("Local LLP returned empty response", provider, primaryKeyword);
+                }
+
                 var results = JsonSerializer.Deserialize<AiIndexinglevelLocalLlmResponse>(res, options);
+                
+                if (results == null)
+                {
+                    throw new LlmParsingException("Failed to deserialize local LLP response", provider, res);
+                }
+
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "GetFullSentenceTaggingFromLocalLLP", stopwatch.ElapsedMilliseconds, true);
                 return results;
             }
-            else
-            {
-            }
+        }
+        catch (HttpRequestException httpEx)
+        {
+            stopwatch.Stop();
+            _logger.LogError(httpEx, "HTTP error calling local LLP service");
+            throw new LlmApiException("Failed to call local LLP service", provider, null, httpEx.Message, httpEx);
+        }
+        catch (TaskCanceledException timeoutEx)
+        {
+            stopwatch.Stop();
+            _logger.LogError(timeoutEx, "Local LLP service request timeout");
+            throw new LlmTimeoutException("Local LLP service timeout", provider, TimeSpan.FromSeconds(30), timeoutEx);
+        }
+        catch (LlmOperationException)
+        {
+            stopwatch.Stop();
+            throw; // Re-throw LLM exceptions
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            _logger.LogError(ex, $"Unexpected error calling local LLP service for keyword: {primaryKeyword}");
+            throw new LlmApiException("Unexpected error calling local LLP service", provider, null, ex.Message, ex);
         }
-        return null;
     }
     public class Level2ScoreRequest
     {

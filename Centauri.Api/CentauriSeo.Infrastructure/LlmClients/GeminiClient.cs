@@ -7,16 +7,20 @@ using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
+using CentauriSeo.Infrastructure.Exceptions;
 using GenerativeAI;
 using GenerativeAI.Types;
 using Google.Apis.Auth.OAuth2;
 using Google.Cloud.AIPlatform.V1;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Mscc.GenerativeAI.Types;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -35,9 +39,11 @@ public class GeminiClient
 {
     private readonly HttpClient _http;
     private readonly ILlmCacheService _cache;
+    private readonly ILlmCacheManager _cacheManager;
     private readonly IConfiguration _config;
     private readonly string _apiKey;
     private readonly FileLogger _logger;
+    private readonly ILlmLogger _llmLogger;
 
     private readonly AiCallTracker _aiCallTracker;
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -49,16 +55,20 @@ public class GeminiClient
     private const string Endpoint = $"projects/gen-lang-client-0445687823/locations/us-central1/publishers/google/models/{ModelId}";
     private const string _apiURL =$"https://us-central1-aiplatform.googleapis.com/v1/{Endpoint}:generateContent";
     public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config, AiCallTracker aiCallTracker,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor, ILlmCacheManager cacheManager, ILogger<LlmLogger> logger)
     {
         _http = http;
         _cache = cache;
+        _cacheManager = cacheManager;
         _config = config;
         _apiKey = _config["GeminiApiKey"]?.DecodeBase64();
-        _accessToken = _config["GeminiAccessToken"]?.DecodeBase64(); ;
+        _accessToken = _config["GeminiAccessToken"]?.DecodeBase64();
         _logger = new FileLogger();
+        _llmLogger = new LlmLogger(logger);
         _aiCallTracker = aiCallTracker;
         _httpContextAccessor = httpContextAccessor;
+
+        _llmLogger.LogInfo("GeminiClient initialized successfully");
     }
 
 //    public async Task<List<string>> GetCompetitorUrls(string keyword)
@@ -103,9 +113,19 @@ public class GeminiClient
 //    }
     public async Task<string> GetSectionScore(string keyword)
     {
-        //var urls = await GetCompetitorUrls(keyword);
-        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
-        string userContent = @"
+        const string provider = "Gemini:SectionScore";
+        _llmLogger.LogInfo($"GetSectionScore started | Keyword: {keyword}");
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(keyword))
+            {
+                throw new LlmValidationException("Keyword cannot be null or empty", provider, new List<string> { "Invalid keyword" });
+            }
+
+            var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
+            string userContent = @"
 Role: SEO Expert & Content Strategist
 Task: Analyze SERP for the target keyword and generate semantic variants.
 
@@ -136,32 +156,34 @@ JSON Schema:
 [Strict Rule] : VariantType is an enum with these values (Exact|Lexical|Semantic|Morphological|SearchDerived).
 ";
 
-        userContent = @$"Target keyword: ""{ keyword}""." + userContent;
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
-        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:SectionScore");
-        var cachedResponse = await _cache.GetAsync(cacheKey);
-        if (cachedResponse != null)
-        {
-            return cachedResponse;
+            userContent = @$"Target keyword: ""{ keyword}""." + userContent;
+
+            var result = await _cacheManager.ExecuteWithCacheAsync(
+                provider,
+                userContent,
+                () => ProcessContent(systemPrompt, userContent, false, null, true)
+            );
+
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Get Section Score", stopwatch.ElapsedMilliseconds, true);
+            return result ?? string.Empty;
         }
-        try
+        catch (LlmOperationException)
         {
-            var responseContent = await ProcessContent(systemPrompt, userContent, false,null, true);
-            if (!string.IsNullOrEmpty(responseContent))
-            {
-                await _cache.SaveAsync(cacheKey, responseContent);
-                return responseContent;
-            }
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Get Section Score", stopwatch.ElapsedMilliseconds, false, "LLM Operation failed");
+            throw;
         }
         catch (Exception ex)
         {
-            await _logger.LogErrorAsync($"Error occured in get section score :  {ex.Message}:{ex.StackTrace}");
+            stopwatch.Stop();
+            _llmLogger.LogError($"GetSectionScore failed | Keyword: {keyword}", ex, new Dictionary<string, object>
+            {
+                { "DurationMs", stopwatch.ElapsedMilliseconds },
+                { "Keyword", keyword }
+            });
+            throw new LlmApiException("Failed to get section score from Gemini", provider, null, ex.Message, ex);
         }
-        return string.Empty;
     }
     //public async Task<string> GetLevel1InforForAIIndexing(string primaryKeyword, List<Level1Sentence> sentences)
     //{
@@ -292,43 +314,68 @@ JSON Schema:
 
     public async Task<IReadOnlyList<GeminiSentenceTag>> TagArticleAsync(string prompt, string xmlContent, string cacheKeySuffix)
     {
+        const string provider = "Gemini:TagArticle";
+        _llmLogger.LogDebug($"TagArticleAsync started | CacheSuffix: {cacheKeySuffix}");
+        var stopwatch = Stopwatch.StartNew();
+
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
 
-        var request_article_cache_key = _cache.ComputeRequestKey(xmlContent, "article:content:huge");
-        var cached_article_key = await _cache.GetAsync(request_article_cache_key);
-        //if(cached_article_key == null)
-        //{
-        //    cached_article_key = await CreateHugeContentCache(xmlContent, _apiKey);
-        //    await _cache.SaveAsync(request_article_cache_key, cached_article_key);
-        //}
-        var cacheKey = _cache.ComputeRequestKey(xmlContent, cacheKeySuffix);
-        var cachedResponse = await _cache.GetAsync(cacheKey);
-        if (cachedResponse != null)
-        {
-            return JsonSerializer.Deserialize<List<GeminiSentenceTag>>(cachedResponse,options) ?? new List<GeminiSentenceTag>();
-        }
         try
         {
-            var responseContent = await ProcessContent(prompt, xmlContent,false, null);
-            var res = JsonSerializer.Deserialize<List<GeminiSentenceTag>>(responseContent, options);
-            if (res != null)
+            if (string.IsNullOrWhiteSpace(prompt))
+                throw new LlmValidationException("Prompt cannot be null or empty", provider, new List<string> { "Invalid prompt" });
+
+            if (string.IsNullOrWhiteSpace(xmlContent))
+                throw new LlmValidationException("XML content cannot be null or empty", provider, new List<string> { "Invalid XML content" });
+
+            var responseContent = await _cacheManager.ExecuteWithCacheAsync(
+                cacheKeySuffix,
+                xmlContent,
+                () => ProcessContent(prompt, xmlContent, false, null)
+            );
+
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                await _cache.SaveAsync(cacheKey, responseContent);
-                return res;
+                _llmLogger.LogWarning("TagArticleAsync returned empty response", new Dictionary<string, object> { { "CacheSuffix", cacheKeySuffix } });
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, true);
+                return new List<GeminiSentenceTag>();
+            }
+
+            try
+            {
+                var res = JsonSerializer.Deserialize<List<GeminiSentenceTag>>(responseContent, options);
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, true);
+                return res ?? new List<GeminiSentenceTag>();
+            }
+            catch (JsonException ex)
+            {
+                throw new LlmParsingException("Failed to parse Gemini response", provider, responseContent?.Substring(0, Math.Min(200, responseContent.Length)), ex);
             }
         }
-        catch(Exception ex)
+        catch (LlmOperationException)
         {
-            await _logger.LogErrorAsync($"Error occured in tagArticleAsync :  {ex.Message}:{ex.StackTrace}");
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, false, "Operation failed");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogError($"TagArticleAsync failed", ex, new Dictionary<string, object>
+            {
+                { "CacheSuffix", cacheKeySuffix },
+                { "DurationMs", stopwatch.ElapsedMilliseconds }
+            });
+            throw new LlmApiException("Failed to tag article", provider, null, ex.Message, ex);
         }
 
-        return new List<GeminiSentenceTag>();
     }
-
     public async Task<string> GenerateRecommendationsAsync(string article)
     {
         return await ProcessContent(CentauriSystemPrompts.RecommendationsPrompt, article, false);

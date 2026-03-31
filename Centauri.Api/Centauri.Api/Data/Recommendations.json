@@ -2,6 +2,7 @@
   "recommendations": {
     "overall": [
       {
+        "id": "00a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": null,
         "priority": "High",
@@ -18,6 +19,7 @@
         ]
       },
       {
+        "id": "11a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": null,
         "priority": "Medium",
@@ -36,6 +38,7 @@
     ],
     "sectionLevel": [
       {
+        "id": "22a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": "Key Components of A Journey Builder",
         "priority": "Medium",
@@ -52,6 +55,7 @@
         ]
       },
       {
+        "id": "33a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": "How to Build a Multi-Channel Journey with Conversive",
         "priority": "Medium",
@@ -70,6 +74,7 @@
     ],
     "sentenceLevel": [
       {
+        "id": "44a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": "A Journey Builder is a platform that lets you design and automate conversations across channels using data and logic to control how each interaction unfolds.",
         "priority": "Medium",
@@ -85,6 +90,7 @@
         ]
       },
       {
+        "id": "55a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": "Instead of relying on static campaigns or fixed schedules, it builds conditional paths based on real-time triggers, customer behavior, and business rules.",
         "priority": "Medium",
@@ -100,6 +106,7 @@
         ]
       },
       {
+        "id": "66a26b22-7673-4d0b-8409-8381e0d96a1d",
         "improveText": "",
         "text": "Messages can be sent through SMS, WhatsApp, voice calls, email, or push notification depending on the user’s preferences, the urgency, or the regulatory requirement.",
         "priority": "Medium",

@@ -4,10 +4,13 @@ using CentauriSeo.Core.Models.Utilities;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
+using CentauriSeo.Infrastructure.Exceptions;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -27,19 +30,25 @@ public class GroqClient
 {
     private readonly HttpClient _http;
     private readonly ILlmCacheService _cache;
+    private readonly ILlmCacheManager _cacheManager;
     private readonly string _apiKey;
     private readonly Uri _baseUri;
     private readonly FileLogger _logger;
+    private readonly ILlmLogger _llmLogger;
     private readonly AiCallTracker _aiCallTracker;
 
-    public GroqClient(HttpClient http, ILlmCacheService cache, AiCallTracker aiCallTracker)
+    public GroqClient(HttpClient http, ILlmCacheService cache, AiCallTracker aiCallTracker, ILlmCacheManager cacheManager, ILogger<LlmLogger> logger)
     {
         _http = http;
         _cache = cache;
-        _apiKey =Environment.GetEnvironmentVariable("CentauriGroqApiKey");
+        _cacheManager = cacheManager;
+        _apiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
         _baseUri = _http.BaseAddress ?? new Uri("https://api.groq.com");
         _logger = new FileLogger();
+        _llmLogger = new LlmLogger(logger);
         _aiCallTracker = aiCallTracker;
+
+        _llmLogger.LogInfo("GroqClient initialized successfully");
     }
 
     public async Task<string> UpdateInformativeType(string userContent)
@@ -713,38 +722,54 @@ A sentence qualifies if it clearly contains at least 3 of:
 
     public async Task<IReadOnlyList<PerplexitySentenceTag>> TagArticleAsync(string article)
     {
-        var provider = "groq:tagging";
-        var key = _cache.ComputeRequestKey(article, provider);
+        const string provider = "Groq:TagArticle";
+        _llmLogger.LogDebug("TagArticleAsync started");
+        var stopwatch = Stopwatch.StartNew();
+
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
-            Converters ={new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)}
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
-
-        var cached = await _cache.GetAsync(key);
-        if (cached != null)
-        {
-            try
-            {
-                var parsed = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(cached, options);
-                if (parsed != null) return parsed;
-            }
-            catch { /* ignore parse errors and continue */ }
-        }
 
         try
         {
-            var apiResponse = await AnalyzeAsync(article, string.Empty);
-            if (apiResponse != null)
+            if (string.IsNullOrWhiteSpace(article))
+                throw new LlmValidationException("Article cannot be null or empty", provider, new List<string> { "Invalid article" });
+
+            var apiResponse = await _cacheManager.ExecuteWithCacheAsync<List<PerplexitySentenceTag>>(
+                provider,
+                article,
+                () => AnalyzeAsync(article, string.Empty)
+            );
+
+            if (apiResponse == null || apiResponse.Count == 0)
             {
-                await _cache.SaveAsync(key, JsonSerializer.Serialize(apiResponse));
-                return apiResponse;
+                _llmLogger.LogWarning("TagArticleAsync returned empty response");
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, true);
+                return new List<PerplexitySentenceTag>();
             }
 
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, true);
+            return apiResponse;
         }
-        catch(Exception ex)
+        catch (LlmOperationException)
         {
-            await _logger.LogErrorAsync($"Error occured in TagArticleAsync : GroqClient : {ex.Message}{ex.StackTrace}");
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, false, "Operation failed");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogError("TagArticleAsync failed", ex, new Dictionary<string, object>
+            {
+                { "DurationMs", stopwatch.ElapsedMilliseconds },
+                { "Provider", provider }
+            });
+            throw new LlmApiException("Failed to tag article with Groq", provider, null, ex.Message, ex);
         }
 
         return new List<PerplexitySentenceTag>();

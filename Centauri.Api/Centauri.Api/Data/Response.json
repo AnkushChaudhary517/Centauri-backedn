@@ -1,6 +1,7 @@
 ﻿{
   "requestId": "676eb1bf-ca94-4afd-8596-5c61865e11e7",
-  "status": "partial",
+  "status": "success",
+  "isCompleted": true,
   "inputIntegrity": {
     "status": "partial",
     "received": {

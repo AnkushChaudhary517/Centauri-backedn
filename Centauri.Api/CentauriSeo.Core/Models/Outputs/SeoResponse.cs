@@ -189,6 +189,7 @@ public class RecommendationsResponse
 }
 public class Recommendation
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string ImproveText { get; set; } = "";
     public string Text { get; set; }
     public string Priority { get; set; }

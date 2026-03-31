@@ -9,9 +9,9 @@ namespace Centauri_Api.Impl
     public class AuthService : IAuthService
     {
         private readonly ITokenService _tokenService;
-        private readonly IDynamoDbService _dynamoDbService;
+        private readonly CentauriSeo.Infrastructure.Services.IDynamoDbService _dynamoDbService;
 
-        public AuthService(ITokenService tokenService, IDynamoDbService dynamoDbService)
+        public AuthService(ITokenService tokenService, CentauriSeo.Infrastructure.Services.IDynamoDbService dynamoDbService)
         {
             _tokenService = tokenService;
             _dynamoDbService = dynamoDbService;

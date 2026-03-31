@@ -126,7 +126,7 @@ public class AuthController : ControllerBase
                400
            ));
         }
-        var user = new Entitites.CentauriUser
+        var user = new CentauriSeo.Core.Entitites.CentauriUser
         {
             Email = request.Email?.ToLower(),
             FirstName = request.FirstName,
@@ -145,7 +145,7 @@ public class AuthController : ControllerBase
             
         };
          await _dynamoDbService.CreateUserAsync(user);
-        await _dynamoDbService.CreateUserSubscription(new Entitites.CentauriUserSubscription()
+        await _dynamoDbService.CreateUserSubscription(new CentauriSeo.Core.Entitites.CentauriUserSubscription()
         {
             UserId = user.Id,
             Email = user.Email,

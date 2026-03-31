@@ -20,6 +20,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Stripe;
 using System.Text;
+using IDynamoDbService = CentauriSeo.Infrastructure.Services.IDynamoDbService;
 
 var builder = WebApplication.CreateBuilder(args);
 var awsOptions = builder.Configuration.GetAWSOptions();
@@ -151,9 +152,9 @@ builder.Services.AddSingleton(provider =>
     return new DynamoDBContext(dynamoDb);
 });
 
+
 // Register your repository
 builder.Services.AddSingleton<IDynamoDbService, DynamoDbService>();
-
 // Register feedback service
 builder.Services.AddSingleton<IRecommendationFeedbackService, RecommendationFeedbackService>();
 

@@ -1,0 +1,36 @@
+{
+    "PrimaryKeyword": "1099 Filing Requirements",
+    "sections": [
+        {
+            "SectionText": "Which 1099 Forms Do You Need to File?",
+            "Sentences": [
+                "Most businesses only deal with one or two 1099 forms, but choosing the wrong one is a common reason filings get flagged.",
+                "The IRS separates non-employee compensation from other income types, and each category has its own form and rules."
+            ]
+        }
+    ],
+    "Scores": {
+        "IntentScore": 10,
+        "SectionScore": 1.43,
+        "KeywordScore": 3.6,
+        "OriginalInfoScore": 6.28,
+        "ExpertiseScore": 4.66,
+        "CredibilityScore": 1.72,
+        "AuthorityScore": 8.23,
+        "SimplicityScore": 6.15,
+        "GrammarScore": 10,
+        "VariationScore": 4.25,
+        "PlagiarismScore": 5,
+        "ClaritySynthesisScore": 7,
+        "FactRetrievalScore": 5,
+        "AnswerBlockDensityScore": 6,
+        "FactualIsolationScore": 8.06,
+        "EntityAlignmentScore": 10,
+        "TechnicalClarityScore": 6.77,
+        "SignalToNoiseScore": 8.9
+    },
+    "SearchIntent": "Informational",
+    "secondaryKeywords": [],
+    "entities": [],
+    "previousRecommendations": null
+}

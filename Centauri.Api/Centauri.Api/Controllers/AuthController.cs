@@ -223,7 +223,7 @@ public class AuthController : ControllerBase
             RenewalDate = user.SubscriptionEndsAt.ToShortDateString(),
             Status = "trial"
         };
-        if (!user.Plan.ToLower().Contains("trial"))
+        if (!user.Plan.ToLower().Contains("trial") && !user.Plan.ToLower().Contains("free"))
         {
             response = new CurrentSuscription()
             {
@@ -385,7 +385,7 @@ public class AuthController : ControllerBase
                 { "code", code },
                 { "client_id", _config["GoogleAuth:ClientId"] },
                 { "client_secret", _config["GoogleAuth:ClientSecret"] },
-                { "redirect_uri", $"{Uri.EscapeDataString(GetCallbackUrl())}" },
+                { "redirect_uri", $"{GetCallbackUrl()}" },
                 { "grant_type", "authorization_code" }
             })
         );
@@ -407,7 +407,10 @@ public class AuthController : ControllerBase
         // Redirect back to frontend
         //return Redirect($"{state}?token={idToken}");
         // After creating user and generating JWT tokens:
-        return Redirect($"{state}?token={Uri.EscapeDataString(idToken)}");
+        //https://your-frontend-or-current-origin/auth/callback?token=...&provider=google
+        var origin = _config["ClientUrl"];
+        var redirectUrl = $"{origin}/api/v1/auth/callback";
+        return Redirect($"{redirectUrl}?token={Uri.EscapeDataString(idToken)}");
     }
     [HttpPost("google/exchange")]
     public async Task<IActionResult> ExchangeGoogleToken([FromBody] GoogleTokenExchangeRequest request)

@@ -1,13 +1,14 @@
 ﻿using CentauriSeo.Core.Models.Output;
 using CentauriSeo.Core.Models.Sentences;
 using CentauriSeo.Core.Models.Utilities;
+using CentauriSeo.Infrastructure.Exceptions;
 using CentauriSeo.Infrastructure.LlmDtos;
 using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
-using CentauriSeo.Infrastructure.Exceptions;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
+using Mscc.GenerativeAI;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -50,6 +51,7 @@ public class GroqClient
 
         _llmLogger.LogInfo("GroqClient initialized successfully");
     }
+
 
     public async Task<string> UpdateInformativeType(string userContent)
     {
@@ -251,6 +253,42 @@ Apply this logic to ANY document or niche. The examples provided are for illustr
             return null;
         }
     }
+
+    public async Task<string> GetResponse(string systemRequirement, string prompt)
+    {
+        string endpoint = "https://api.groq.com/openai/v1/chat/completions";
+
+        using var client = new HttpClient();
+        var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
+        var requestBody = new
+        {
+            model = "llama-3.3-70b-versatile",
+            messages = new[] {
+            new { role = "system", content = systemRequirement },
+            new { role = "user", content = prompt }
+        },
+            response_format = new { type = "json_object" },
+            temperature = 0 // Lowest temperature for maximum logic 
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+        try
+        {
+            var response = await client.PostAsync(endpoint, content);
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            (new FileLogger()).LogWarningAsync($"groq response + {jsonResponse}");
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            return data;
+        }
+        catch (Exception ex)
+        {
+            (new FileLogger()).LogWarningAsync($"error in groq response + {ex.ToString()}");
+            return null;
+        }
+    }
     public async Task<GroqBulkResponse> GetExpertise(string payload)
     {
         string bulkSystemPrompt = @"
@@ -336,7 +374,7 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for E‑E�
         var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
         client.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
 
-        (new FileLogger()).LogWarningAsync($"groq response api key+ {groqApiKey}");
+        //(new FileLogger()).LogWarningAsync($"groq response api key+ {groqApiKey}");
 
         var requestBody = new
         {

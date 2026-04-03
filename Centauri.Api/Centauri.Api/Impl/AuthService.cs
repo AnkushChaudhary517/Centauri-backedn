@@ -10,11 +10,13 @@ namespace Centauri_Api.Impl
     {
         private readonly ITokenService _tokenService;
         private readonly CentauriSeo.Infrastructure.Services.IDynamoDbService _dynamoDbService;
+        //private readonly IAuthService _authService;
 
         public AuthService(ITokenService tokenService, CentauriSeo.Infrastructure.Services.IDynamoDbService dynamoDbService)
         {
             _tokenService = tokenService;
             _dynamoDbService = dynamoDbService;
+            //_authService = authService;
 
         }
         public async Task<LoginResponse> GoogleLoginAsync(GoogleLoginRequest googleLoginRequest)
@@ -25,9 +27,8 @@ namespace Centauri_Api.Impl
                 await RegisterAsync(new RegisterRequest()
                 {
                     Email = googleLoginRequest.Email,
-                    //Name = googleLoginRequest.Name,
-                    Password = Guid.NewGuid().ToString(),
-                    AcceptTerms = true
+                    AcceptTerms = true,
+                    IsGoogleLogin = true
                 });
                 user = await _dynamoDbService.GetUserByEmail(googleLoginRequest.Email);
             }
@@ -106,7 +107,7 @@ namespace Centauri_Api.Impl
                     Email = request.Email?.ToLower(),
                     //FirstName = request.Name.Split(' ')[0],
                     //LastName = request.Name.Contains(' ') ? request.Name.Split(' ')[1] : "",
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+                    PasswordHash =request.IsGoogleLogin? GetTemporaryPassword(request.Email) : BCrypt.Net.BCrypt.HashPassword(request.Password),
                     VerificationToken = Guid.NewGuid().ToString(),
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
@@ -137,6 +138,11 @@ namespace Centauri_Api.Impl
             {
                 return (false, null, ex.Message);
             }
+        }
+
+        private string GetTemporaryPassword(string email)
+        {
+            return BCrypt.Net.BCrypt.HashPassword($"test_get_centauri_user_{email}");
         }
 
         public async Task<(bool success, RefreshTokenResponse? response, string? error)> RefreshTokenAsync(RefreshTokenRequest request)

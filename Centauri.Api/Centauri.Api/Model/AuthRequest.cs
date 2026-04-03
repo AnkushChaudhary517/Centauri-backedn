@@ -18,7 +18,9 @@ namespace Centauri_Api.Model
         [JsonPropertyName("password")]
         public string Password { get; set; } = string.Empty;
         [JsonPropertyName("acceptTerms")]
-        public bool AcceptTerms { get; set; } = true;        
+        public bool AcceptTerms { get; set; } = true;
+        [JsonPropertyName("isGoogleLogin")]
+        public bool IsGoogleLogin { get; set; } = false;
     }
 
     public class UpdateProfileRequest

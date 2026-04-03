@@ -33,6 +33,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using static CentauriSeo.Core.Models.Utilities.SentenceTaggingPrompts;
 using IDynamoDbService = CentauriSeo.Infrastructure.Services.IDynamoDbService;
 
 namespace CentauriSeoBackend.Controllers;
@@ -266,7 +267,13 @@ public class SeoController : ControllerBase
             });
         }
     }
-
+    [HttpPost("groq-recommendations")]
+    public async Task<string> GetRecommendationsFromGroq(object input)
+    {
+        var systemRequirement = await _dynamoDbService.GetPrompt("RecommendationsPrompt");
+        var res = await _groqClient.GetResponse(systemRequirement, input?.ToString());
+        return res;
+    }
     private bool TrialEnded(CentauriUser? user)
     {
         bool trialEnded = false;

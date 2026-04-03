@@ -2,6 +2,7 @@
 using Centauri_Api.Interface;
 using Centauri_Api.Model;
 using CentauriSeo.Core.Modules.Notification;
+using CentauriSeo.Infrastructure.Logging;
 using CentauriSeo.Infrastructure.Services;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
@@ -26,9 +27,10 @@ public class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly EmailVerificationService _verificationService;
+    private readonly ILlmLogger _llmLogger;
 
     public AuthController(IAuthService authService, IDynamoDbService dynamoDbService,
-        IConfiguration config, IHttpClientFactory httpClientFactory,
+        IConfiguration config, IHttpClientFactory httpClientFactory, ILlmLogger llmLogger,
         EmailVerificationService verificationService
         )
     {
@@ -37,6 +39,7 @@ public class AuthController : ControllerBase
         _config = config;
         _httpClientFactory = httpClientFactory;
         _verificationService = verificationService;
+        _llmLogger = llmLogger;
     }
 
     [HttpPost("login")]
@@ -409,7 +412,11 @@ public class AuthController : ControllerBase
         // After creating user and generating JWT tokens:
         //https://your-frontend-or-current-origin/auth/callback?token=...&provider=google
         var origin = _config["ClientUrl"];
+        origin = string.IsNullOrEmpty(origin) ? "https:getcentauri.com" : origin;
+        _llmLogger.LogError($"redirect url : " + origin);
+        _llmLogger.LogInfo($"redirect url info: " + origin);
         var redirectUrl = $"{origin}/api/v1/auth/callback";
+        
         return Redirect($"{redirectUrl}?token={Uri.EscapeDataString(idToken)}");
     }
     [HttpPost("google/exchange")]

@@ -394,7 +394,7 @@ public class AuthController : ControllerBase
                 { "code", code },
                 { "client_id", _config["GoogleAuth:ClientId"] },
                 { "client_secret", _config["GoogleAuth:ClientSecret"] },
-                { "redirect_uri", $"{GetCallbackUrl()}" },
+                { "redirect_uri", $"https://api.getcentauri.com/api/v1/auth/callback" },
                 { "grant_type", "authorization_code" }
             })
         );
@@ -528,7 +528,7 @@ public class AuthController : ControllerBase
     private string GetCallbackUrl()
     {
         //return $"http://ec2-13-126-103-12.ap-south-1.compute.amazonaws.com:3000/api/v1/auth/callback";
-        return $"{Request.Scheme}://{Request.Host}/api/v1/auth/callback";
+        return $"https://api.getcentauri.com/api/v1/auth/callback";
     }
     private async Task<GoogleJsonWebSignature.Payload> ValidateIdToken(string idToken)
     {

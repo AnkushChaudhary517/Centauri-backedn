@@ -415,9 +415,9 @@ public class AuthController : ControllerBase
         origin = string.IsNullOrEmpty(origin) ? "https:getcentauri.com" : origin;
         _llmLogger.LogError($"redirect url : " + origin);
         _llmLogger.LogInfo($"redirect url info: " + origin);
-        var redirectUrl = $"{origin}/api/v1/auth/callback";
+        var redirectUrl = $"{origin}/#/auth/callback";
         
-        return Redirect($"{redirectUrl}?token={Uri.EscapeDataString(idToken)}");
+        return Redirect($"{redirectUrl}?token={Uri.EscapeDataString(idToken)}&provider=google");
     }
     [HttpPost("google/exchange")]
     public async Task<IActionResult> ExchangeGoogleToken([FromBody] GoogleTokenExchangeRequest request)

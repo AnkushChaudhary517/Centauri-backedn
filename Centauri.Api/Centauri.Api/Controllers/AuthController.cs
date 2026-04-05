@@ -42,6 +42,12 @@ public class AuthController : ControllerBase
         _llmLogger = llmLogger;
     }
 
+    [HttpGet("health")]
+    public async Task<ActionResult> GetHealth()
+    {
+        return Ok(_config["version"]);
+    }
+
     [HttpPost("login")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login(LoginRequest request)
     {

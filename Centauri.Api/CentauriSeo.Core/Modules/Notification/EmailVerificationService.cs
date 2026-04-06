@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Amazon.S3;
+using Amazon.S3.Model;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -298,6 +300,20 @@ namespace CentauriSeo.Core.Modules.Notification
         }
         private (string subject, string body) GetFreeTrialSubjectAndBody(string firstName)
         {
+            var fileName = "Centauri Ideal Upload File Sample.docx";
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName = "centauri-data",
+                Key = fileName,
+                Expires = DateTime.UtcNow.AddHours(24),
+                ResponseHeaderOverrides = new ResponseHeaderOverrides
+                {
+                    ContentDisposition = $"attachment; filename={fileName}",
+                    ContentType = "application/octet-stream"
+                }
+            };
+            var s3Client = new AmazonS3Client();
+            string fileUrl = s3Client.GetPreSignedURL(request);
             string subject = "You're in. Here’s what you can do with Centauri";
 
             string body = @$"
@@ -353,23 +369,47 @@ namespace CentauriSeo.Core.Modules.Notification
                         </td>
                     </tr>
 
+
+                    <tr>
+                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
+                            Centauri works best when your content is clearly structured. That’s how it identifies gaps across structure, authority, and readability.
+                        </td>
+                    </tr>
                     <tr><td height='20'></td></tr>
 
                     <tr>
                         <td style='font-size:14px; color:#555555; line-height:1.6;'>
-                            <strong>A good way to start:</strong> Pick one article you’ve already published and run it through Centauri. You’ll quickly see what’s missing and where you can improve.
+                            To help you get accurate results, we’ve created a <strong>sample file showing exactly how your content should be formatted before uploading.</strong> 
                         </td>
                     </tr>
 
-                    <tr><td height='30'></td></tr>
-
+                    <tr><td height='20'></td></tr>
+                        <tr>
+                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
+                            You can access it here:
+<a href=""{fileUrl}"" target=""_blank"">
+{fileName}
+</a>
+                        </td>
+                    </tr>
+<tr><td height='30'></td></tr>
                     <tr>
                         <td style='font-size:14px; color:#333333;'>
                             Cheers,<br/>
                             <strong>Team Centauri</strong>
                         </td>
                     </tr>
-
+<tr><td height='30'></td></tr>
+<tr>
+    <td style='font-size:14px; color:#555555; line-height:1.8;'>
+        This sample shows:
+        <ul style='margin:10px 0 0 20px; padding:0;'>
+            <li>How to mark Title, H2, H3, and paragraphs</li>
+            <li>How to structure lists and tables</li>
+            <li>How to clearly define metadata like Meta Title and Description</li>
+        </ul>
+    </td>
+</tr>
                 </table>
             </td>
         </tr>

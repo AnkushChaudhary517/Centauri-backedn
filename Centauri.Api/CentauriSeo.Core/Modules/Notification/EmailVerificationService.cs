@@ -393,13 +393,6 @@ namespace CentauriSeo.Core.Modules.Notification
                         </td>
                     </tr>
 <tr><td height='30'></td></tr>
-                    <tr>
-                        <td style='font-size:14px; color:#333333;'>
-                            Cheers,<br/>
-                            <strong>Team Centauri</strong>
-                        </td>
-                    </tr>
-<tr><td height='30'></td></tr>
 <tr>
     <td style='font-size:14px; color:#555555; line-height:1.8;'>
         This sample shows:
@@ -410,6 +403,15 @@ namespace CentauriSeo.Core.Modules.Notification
         </ul>
     </td>
 </tr>
+<tr><td height='30'></td></tr>
+
+                    <tr>
+                        <td style='font-size:14px; color:#333333;'>
+                            Cheers,<br/>
+                            <strong>Team Centauri</strong>
+                        </td>
+                    </tr>
+
                 </table>
             </td>
         </tr>

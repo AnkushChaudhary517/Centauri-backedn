@@ -821,8 +821,8 @@ public class Phase1And2OrchestratorService
     }
 
     public async Task<RecommendationResponseDTO> GetFullRecommendationsAsync(SeoRequest seoRequest, List<GeminiSentenceTag> level1, List<Section> sections,
-        Level2Scores level2Scores = null, OrchestratorResponse orchestratorResponse = null)
-    {
+        Level2Scores level2Scores = null, OrchestratorResponse orchestratorResponse = null, RecommendationResponseDTO previousRecommendations = null)
+     {
         const string provider = "Phase1And2OrchestratorService:GetFullRecommendationsAsync";
         var stopwatch = Stopwatch.StartNew();
 
@@ -876,7 +876,8 @@ public class Phase1And2OrchestratorService
                 {
                     Text = x.Sentence,
                     HtmlTag = x.HtmlTag,
-                }).ToList()
+                }).ToList(),
+                previousRecommendations = previousRecommendations?.Recommendations
             }, options);
 
             var genStopwatch = Stopwatch.StartNew();
@@ -896,6 +897,18 @@ public class Phase1And2OrchestratorService
             {
                 _logger.LogWarning(cacheEx, "Failed to cache recommendations");
             }
+
+            // Also cache result by RequestId so reanalyze can fetch it
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(seoRequest?.RequestId))
+                {
+                    var requestIdCacheKey = _cache.ComputeRequestKey(seoRequest.RequestId, "GeminiRecommendations:ByRequest");
+                    await _cache.SaveAsync(requestIdCacheKey, JsonSerializer.Serialize(response));
+                    _llmLogger.LogDebug("Recommendations cached by RequestId");
+                }
+            }
+            catch { }
 
             stopwatch.Stop();
             _llmLogger.LogApiCall(provider, "GetFullRecommendationsAsync", stopwatch.ElapsedMilliseconds, true);

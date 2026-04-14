@@ -15,5 +15,6 @@ public class SeoRequest
     public string? MetaDescription { get; set; }
     public string? Url { get; set; }
     public ContextInput? Context { get; set; }
+    public string? RequestId { get; set; }
 }
 

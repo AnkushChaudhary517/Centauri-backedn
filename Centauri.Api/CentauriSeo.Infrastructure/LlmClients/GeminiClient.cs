@@ -493,7 +493,7 @@ JSON Schema:
                 $"gemini-{ModelId}"
         );
         // Extract only the text content from the Gemini response wrapper
-        return CleanGeminiJson(result.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
+        return CleanGeminiJson(result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
 
 
     }

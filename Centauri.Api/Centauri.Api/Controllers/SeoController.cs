@@ -153,6 +153,132 @@ public class SeoController : ControllerBase
         return AuthorityScorer.Score(orchestratorResponse.ValidatedSentences);
     }
     [Authorize]
+    [HttpPost("reanalyze")]
+    public async Task<ActionResult<SeoResponse>> ReAnalyze([FromBody] SeoRequest request)
+    {
+        const string provider = "SeoController:ReAnalyze";
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+            };
+            if (string.IsNullOrWhiteSpace(request?.RequestId))
+            {
+                _llmLogger.LogError($"ReAnalyze called without RequestId");
+                return BadRequest("RequestId is required for reanalyze");
+            }
+
+            var cacheRequestKey = $"analyze__request__{request.RequestId}";
+            var existingRequest = _cache.Get<SeoRequest>(cacheRequestKey);
+            if (existingRequest == null)
+            {
+                _llmLogger.LogError($"Initial analyze request does not exist | RequestId: {request?.RequestId}");
+                return NotFound("Initial analyze request does not exist");
+            }
+            _llmLogger.LogInfo($"Analyze endpoint called | PrimaryKeyword: {request?.PrimaryKeyword}", new Dictionary<string, object> { { "Endpoint", "Analyze" } });
+
+            // Validate input
+            if (request == null)
+                throw new LlmValidationException("Request cannot be null", provider, new List<string> { "Invalid request" });
+
+            if (string.IsNullOrWhiteSpace(request.PrimaryKeyword))
+                throw new LlmValidationException("Primary keyword is required", provider, new List<string> { "PrimaryKeyword is required" });
+
+            if (request.Article == null || string.IsNullOrWhiteSpace(request.Article.Raw))
+                throw new LlmValidationException("Article content is required", provider, new List<string> { "Article is required" });
+
+            // Check if mock mode is enabled - return mock data immediately if so
+            if (_mockDataService.IsMockModeEnabled)
+            {
+                _llmLogger.LogInfo("📋 MOCK MODE: Returning mock analysis response");
+                var mockResponse = await _mockDataService.GetMockAnalysisResponseAsync();
+                if (mockResponse != null)
+                {
+                    mockResponse.RequestId = Guid.NewGuid().ToString();
+                    stopwatch.Stop();
+                    _llmLogger.LogApiCall(provider, "Analyze (Mock)", stopwatch.ElapsedMilliseconds, true);
+                    return Ok(mockResponse);
+                }
+                else
+                {
+                    _llmLogger.LogWarning("Mock mode enabled but failed to load mock data");
+                }
+            }
+
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new LlmOperationException("Unable to identify user", provider, "User context missing");
+
+            var user = await _dynamoDbService.GetUserAsync(userId);
+            if (user == null)
+                throw new LlmOperationException("User not found", provider, userId);
+
+            var analyzeResponse = new SeoResponse();
+            var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
+            var cacheKey2 = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}_isAnalysisStarted";
+
+            var cachedData = _cache.Get(cacheKey);
+            var isAnalysisStarted = _cache.Get(cacheKey2);
+
+            if (isAnalysisStarted != null)
+            {
+                _llmLogger.LogDebug($"Analysis already in progress | CacheKey: {cacheKey}");
+                if (cachedData != null)
+                {
+                    stopwatch.Stop();
+                    _llmLogger.LogApiCall(provider, "Analyze (Cached)", stopwatch.ElapsedMilliseconds, true);
+                    // reuse the 'options' instance declared earlier in this method
+                    return Ok(JsonSerializer.Deserialize<SeoResponse>(cachedData?.ToString(), options));
+                }
+                return Ok(analyzeResponse);
+            }
+
+            _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Analyze (Initiated)", stopwatch.ElapsedMilliseconds, true);
+
+            // Retrieve any previous recommendations so Gemini can avoid duplicates during reanalysis
+            var prevRecKey = $"recommendations__{request.RequestId}";
+            var previousRecommendations = _cache.Get<RecommendationResponseDTO>(prevRecKey);
+
+            // Start background analysis (pass previous recommendations if available)
+            _ = GetAnalysisResult(request, userId, previousRecommendations);
+            return Ok(analyzeResponse);
+        }
+        catch (LlmValidationException valEx)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogWarning($"Validation error in analyze | {string.Join(", ", valEx.ValidationErrors)}", new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            _llmLogger.LogApiCall(provider, "Analyze", stopwatch.ElapsedMilliseconds, false, valEx.Message);
+            return BadRequest(new { error = valEx.Message, validationErrors = valEx.ValidationErrors });
+        }
+        catch (LlmOperationException opEx)
+        {
+            stopwatch.Stop();
+            _logger.LogError($"Operation error in analyze: {opEx.Message}");
+            _llmLogger.LogApiCall(provider, "Analyze", stopwatch.ElapsedMilliseconds, false, opEx.Message);
+            return StatusCode(500, new { error = "Analysis failed", details = opEx.Message });
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, $"Unexpected error in analyze endpoint");
+            _llmLogger.LogError($"Unexpected error in analyze | {ex.Message}", ex, new Dictionary<string, object> { { "DurationMs", stopwatch.ElapsedMilliseconds } });
+            _llmLogger.LogApiCall(provider, "Analyze", stopwatch.ElapsedMilliseconds, false, ex.Message);
+
+            return StatusCode(500, new SeoResponse()
+            {
+                IsCompleted = true,
+                Error = "An unexpected error occurred during analysis"
+            });
+        }
+    }
+    [Authorize]
     [HttpPost("analyze")]
     public async Task<ActionResult<SeoResponse>> Analyze([FromBody] SeoRequest request)
     {
@@ -291,13 +417,14 @@ public class SeoController : ControllerBase
         return trialEnded;
     }
 
-    private async Task<SeoResponse> GetAnalysisResult(SeoRequest request, string userId)
+    private async Task<SeoResponse> GetAnalysisResult(SeoRequest request, string userId, RecommendationResponseDTO previousRecommendations = null)
     {
         const string provider = "SeoController:GetAnalysisResult";
         var operationStopwatch = Stopwatch.StartNew();
 
         try
         {
+            
             _llmLogger.LogInfo($"Starting full analysis | UserId: {userId}", new Dictionary<string, object> { { "Keyword", request.PrimaryKeyword } });
 
             var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
@@ -311,7 +438,15 @@ public class SeoController : ControllerBase
             var ctx = _httpContextAccessor.HttpContext;
             var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
 
-            var response = new SeoResponse { RequestId = correlationId };
+            // Ensure RequestId is set on the request so it can be referenced by ReAnalyze
+            if (string.IsNullOrWhiteSpace(request.RequestId))
+                request.RequestId = correlationId;
+
+            var cacheRequestKey = $"analyze__request__{request.RequestId}";
+            // Cache the incoming request object for later reference (e.g., reanalyze)
+            _cache.Set(cacheRequestKey, request, TimeSpan.FromMinutes(60));
+
+            var response = new SeoResponse { RequestId = request.RequestId };
             var topIssues = new List<TopIssue>();
 
             // Validate input integrity
@@ -430,11 +565,31 @@ public class SeoController : ControllerBase
             };
 
             // Get recommendations
-            var recommendationStopwatch = Stopwatch.StartNew();
+            //var recommendationStopwatch = Stopwatch.StartNew();
             var sectionResponse = await _orchestrator.GetSectionScoreResAsync(request.PrimaryKeyword);
-            await _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse);
-            recommendationStopwatch.Stop();
-            _llmLogger.LogDebug($"Recommendations completed | DurationMs: {recommendationStopwatch.ElapsedMilliseconds}");
+            RecommendationResponseDTO recommendationResponse = null;
+            try
+            {
+                recommendationResponse = await _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse, previousRecommendations);
+
+                // Cache recommendations by RequestId so they can be reused during reanalyze
+                if (recommendationResponse != null)
+                {
+                    var recCacheKey = $"recommendations__{request.RequestId}";
+                    _cache.Set(recCacheKey, recommendationResponse, TimeSpan.FromHours(24));
+
+                    // Also cache a small gemini context (article + recommendations)
+                    var geminiContext = new { Article = request.Article?.Raw, Recommendations = recommendationResponse.Recommendations };
+                    var gemCtxKey = $"gemini_context__{request.RequestId}";
+                    _cache.Set(gemCtxKey, JsonSerializer.Serialize(geminiContext, options), TimeSpan.FromHours(24));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate recommendations");
+            }
+             //recommendationStopwatch.Stop();
+            //_llmLogger.LogDebug($"Recommendations completed | DurationMs: {recommendationStopwatch.ElapsedMilliseconds}");
 
             response.Diagnostics = new Diagnostics()
             {
@@ -454,7 +609,7 @@ public class SeoController : ControllerBase
 
             // Cache result
             var cacheStopwatch = Stopwatch.StartNew();
-            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(15));
+            _cache.Set(cacheKey, JsonSerializer.Serialize(response, options), TimeSpan.FromMinutes(25));
             cacheStopwatch.Stop();
             _llmLogger.LogDebug($"Result cached | DurationMs: {cacheStopwatch.ElapsedMilliseconds}");
 

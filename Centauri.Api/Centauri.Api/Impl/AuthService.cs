@@ -1,6 +1,7 @@
 ﻿using Centauri_Api.Interface;
 using Centauri_Api.Model;
 using CentauriSeo.Core.Entitites;
+using CentauriSeo.Core.Modules.Notification;
 using Microsoft.EntityFrameworkCore;
 namespace Centauri_Api.Impl
 {
@@ -10,12 +11,15 @@ namespace Centauri_Api.Impl
     {
         private readonly ITokenService _tokenService;
         private readonly CentauriSeo.Infrastructure.Services.IDynamoDbService _dynamoDbService;
+        private readonly EmailVerificationService _verificationService;
         //private readonly IAuthService _authService;
 
-        public AuthService(ITokenService tokenService, CentauriSeo.Infrastructure.Services.IDynamoDbService dynamoDbService)
+        public AuthService(ITokenService tokenService, CentauriSeo.Infrastructure.Services.IDynamoDbService dynamoDbService,
+            EmailVerificationService verificationService)
         {
             _tokenService = tokenService;
             _dynamoDbService = dynamoDbService;
+            _verificationService = verificationService;
             //_authService = authService;
 
         }
@@ -31,6 +35,20 @@ namespace Centauri_Api.Impl
                     IsGoogleLogin = true
                 });
                 user = await _dynamoDbService.GetUserByEmail(googleLoginRequest.Email);
+                await _dynamoDbService.CreateUserSubscription(new CentauriSeo.Core.Entitites.CentauriUserSubscription()
+                {
+                    UserId = user.Id,
+                    Email = user.Email,
+                    FirstName = user.FirstName,
+                    MidEmailSent = false,
+                    Reminder48hAt = DateTime.UtcNow.AddDays(12),
+                    Reminder48hSent = false,
+                    Status = "active",
+                    TrialEndedEmailSent = false,
+                    TrialEndsAt = DateTime.UtcNow.AddDays(14),
+                    TrialStartAt = DateTime.UtcNow
+                });
+                _verificationService.SendVerificationCodeAsync(googleLoginRequest.Email, "freetrial", user.FirstName);
             }
             var token = _tokenService.GenerateAccessToken(user);
             var refreshToken = _tokenService.GenerateRefreshToken();

@@ -18,8 +18,8 @@ namespace CentauriSeo.Core.Modules.Payment
 
         public RazorpayService(IConfiguration config)
         {
-            _key = config["Razorpay:Key"];
-            _secret = config["Razorpay:Secret"];
+            _key = Environment.GetEnvironmentVariable("RAZOR_PAY_KEY");
+            _secret = Environment.GetEnvironmentVariable("RAZOR_PAY_SECRET");
         }
 
         public string GetKeyId()

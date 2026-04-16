@@ -48,7 +48,7 @@ namespace Centauri_Api.Impl
                     TrialEndsAt = DateTime.UtcNow.AddDays(14),
                     TrialStartAt = DateTime.UtcNow
                 });
-                _verificationService.SendVerificationCodeAsync(googleLoginRequest.Email, "freetrial", user.FirstName);
+                _verificationService.SendVerificationCodeAsync(googleLoginRequest.Email, "freetrial", user.FirstName, 0, true);
             }
             var token = _tokenService.GenerateAccessToken(user);
             var refreshToken = _tokenService.GenerateRefreshToken();
@@ -131,7 +131,8 @@ namespace Centauri_Api.Impl
                     UpdatedAt = DateTime.UtcNow,
                     Plan = "FREE",
                     TrialEndsAt = DateTime.UtcNow.AddDays(14),
-                    CreditsAdded = 5
+                    CreditsAdded = 5,
+                    IsGoogleLogin = request.IsGoogleLogin
                 };
 
 

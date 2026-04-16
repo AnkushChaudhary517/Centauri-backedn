@@ -23,7 +23,7 @@ namespace CentauriSeo.Core.Modules.Notification
             _repository = repository;
         }
 
-        public async Task SendVerificationCodeAsync(string email, string type="EmailVerification", string firstName=null, int hoursLeft=0)
+        public async Task SendVerificationCodeAsync(string email, string type="EmailVerification", string firstName=null, int hoursLeft=0, bool fromGoogleAuth=false)
         {
             var code = GenerateCode();
 
@@ -55,7 +55,7 @@ namespace CentauriSeo.Core.Modules.Notification
             {
                 (subject, body) = GetForgotPassowrdSubjectAndBody(code);
             }
-            else if(type.ToLower() == "freetrial" && !string.IsNullOrEmpty(firstName))
+            else if(type.ToLower() == "freetrial" && (!string.IsNullOrEmpty(firstName)|| fromGoogleAuth))
             {
                 (subject, body) = GetFreeTrialSubjectAndBody(firstName);
             } 

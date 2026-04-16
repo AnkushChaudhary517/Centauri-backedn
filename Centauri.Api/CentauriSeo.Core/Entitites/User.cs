@@ -34,6 +34,7 @@ namespace CentauriSeo.Core.Entitites
         public string ContactNumber { get; set; }
         public string Company { get; set; }
         public string Subscription { get; set; }
+        public bool IsGoogleLogin { get; set; }
     }
 
     [DynamoDBTable("CentauriArticle")]

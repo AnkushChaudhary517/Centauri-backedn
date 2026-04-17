@@ -2,7 +2,10 @@
 using Amazon.DynamoDBv2.DataModel;
 using Amazon.DynamoDBv2.DocumentModel;
 using CentauriSeo.Core.Entitites;
+using CentauriSeo.Core.Models.Output;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace CentauriSeo.Infrastructure.Services
@@ -101,6 +104,62 @@ namespace CentauriSeo.Infrastructure.Services
                 return null;
             }
             
+        }
+
+        public async Task SavePastResponseForUser(string userId,string requestId, string response)
+        {
+            try
+            {
+                await _context.SaveAsync(new CentauriPastAnalysis()
+                {
+                    UserId = userId,
+                    Responses = response,
+                    RequestId = requestId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error saving past response for user : {userId}");
+                return;
+            }
+            
+        }
+
+        public async Task<List<PastAnalysisResponse>> GetPastResponsesForUser(string userId)
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+            };
+            try
+            {
+                var conditions = new List<ScanCondition>
+            {
+                new ScanCondition("UserId", ScanOperator.Equal, userId)
+            };
+                List<PastAnalysisResponse> pastResponses = new List<PastAnalysisResponse>();
+                var result = await _context.ScanAsync<CentauriPastAnalysis>(conditions).GetRemainingAsync();
+                result?.ForEach(r =>
+                {
+                    try
+                    {
+                        var d = System.Text.Json.JsonSerializer.Deserialize<PastAnalysisResponse>(r.Responses, options);
+                        pastResponses.Add(d);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error deserializing past response for user : {userId}, requestId: {r.RequestId}");
+                    }
+                });
+                return pastResponses;
+            }
+            catch (Exception ex)
+            { 
+                _logger.LogError(ex, $"Error retrieving past responses for user : {userId}");
+                return null;
+            }
         }
     }
 }

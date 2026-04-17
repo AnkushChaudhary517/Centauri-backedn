@@ -400,6 +400,17 @@ public class SeoController : ControllerBase
         var res = await _groqClient.GetResponse(systemRequirement, input?.ToString());
         return res;
     }
+
+    [Authorize]
+    [HttpGet("past-analysis")]
+    public async Task<List<PastAnalysisResponse>> GetPastAnalysisForUser()
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new LlmOperationException("Unable to identify user", "SeoController:GetPastAnalysisForUser", "User context missing");
+        var pastAnalysis = await _dynamoDbService.GetPastResponsesForUser(userId);
+        return pastAnalysis;
+    }
     private bool TrialEnded(CentauriUser? user)
     {
         bool trialEnded = false;
@@ -571,7 +582,7 @@ public class SeoController : ControllerBase
             try
             {
                 recommendationResponse = await _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse, previousRecommendations);
-
+                
                 // Cache recommendations by RequestId so they can be reused during reanalyze
                 if (recommendationResponse != null)
                 {
@@ -632,6 +643,7 @@ public class SeoController : ControllerBase
 
             operationStopwatch.Stop();
             _llmLogger.LogApiCall(provider, "GetAnalysisResult", operationStopwatch.ElapsedMilliseconds, true);
+            SavePastAnalysis(userId, request, response, recommendationResponse);
             return response;
         }
         catch (LlmOperationException opEx)
@@ -675,6 +687,48 @@ public class SeoController : ControllerBase
             catch { } // Ignore cache errors
 
             return errorResponse;
+        }
+    }
+
+    private async Task SavePastAnalysis(string userId, SeoRequest request, SeoResponse response, RecommendationResponseDTO? recommendationResponse)
+    {
+        try
+        {
+            List<PastAnalysisResponse> list = await _dynamoDbService.GetPastResponsesForUser(userId);
+            if(response == null || string.IsNullOrWhiteSpace(response.RequestId))
+            {
+                _llmLogger.LogWarning($"Cannot save past analysis - response or RequestId is null | UserId: {userId}");
+                return;
+            }
+            var res = new PastAnalysisResponse()
+            {
+                Article = request.Article,
+                Context = request.Context,
+                FinalScores = response.FinalScores,
+                InputIntegrity = response.InputIntegrity,
+                IsCompleted = response.IsCompleted,
+                Level2InputResponse = response.Level2InputResponse,
+                Level2Scores = response.Level2Scores,
+                Level3Scores = response.Level3Scores,
+                Level4Scores = response.Level4Scores,
+                PrimaryKeyword = request.PrimaryKeyword,
+                Recommendations = new List<RecommendationsResponse>()
+                {
+                    recommendationResponse.Recommendations
+                },
+                RequestId = response.RequestId,
+                SecondaryKeywords = request.SecondaryKeywords,
+                SeoScore = response.SeoScore,
+                Status = response.Status,
+                MetaDescription = request.MetaDescription,
+                MetaTitle = request.MetaTitle,
+                Url = request.Url
+            };
+            await _dynamoDbService.SavePastResponseForUser(userId,response.RequestId, JsonSerializer.Serialize(res));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error saving past analysis for user : {userId}");
         }
     }
 

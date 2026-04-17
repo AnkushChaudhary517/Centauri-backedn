@@ -32,6 +32,8 @@ using static CentauriSeo.Core.Models.Utilities.SentenceTaggingPrompts;
 using GenerateContentRequest = Google.Cloud.AIPlatform.V1.GenerateContentRequest;
 using GoogleSearchRetrieval = Google.Cloud.AIPlatform.V1.GoogleSearchRetrieval;
 using Tool = Mscc.GenerativeAI.Types.Tool;
+using Grpc.Core;
+using System.Net;
 
 namespace CentauriSeo.Infrastructure.LlmClients;
 
@@ -522,169 +524,192 @@ JSON Schema:
     }
     public async Task<string> GetGeminiApiResponseAsync2(object requestBody)
     {
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000;
+
         try
         {
-            var client = new HttpClient();
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
-            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken.DecodeBase64());
-            httpRequest.Content = JsonContent.Create(requestBody);
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                using var client = new HttpClient();
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken.DecodeBase64());
+                httpRequest.Content = JsonContent.Create(requestBody);
 
-            var response = await client.SendAsync(httpRequest);
+                HttpResponseMessage response = null;
+                try
+                {
+                    response = await client.SendAsync(httpRequest);
+                }
+                catch (Exception sendEx)
+                {
+                    await _logger.LogErrorAsync($"Error occured in gemini api call (network): {sendEx.Message}:{sendEx.StackTrace}");
+                    if (attempt == maxRetries) return null;
+                    var wait = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                    await Task.Delay(wait + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                    continue;
+                }
 
-            var result = await response.Content.ReadAsStringAsync();
-            return result;
+                var content = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return content;
+                }
+
+                // Handle 429 - Too Many Requests
+                if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    await _logger.LogErrorAsync($"Gemini API returned 429 Too Many Requests. Attempt {attempt}/{maxRetries}.");
+
+                    if (attempt == maxRetries)
+                    {
+                        await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (HTTP). Returning null.");
+                        return null;
+                    }
+
+                    // Honor Retry-After header if present, otherwise exponential backoff
+                    TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                    await Task.Delay(retryAfter + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                    continue;
+                }
+
+                // Non-retryable error - log and return body
+                await _logger.LogErrorAsync($"Error occured in gemini api call : {content}");
+                return content;
+            }
+
+            return null;
         }
         catch (Exception ex)
         {
             await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
             return null;
-            //throw new Exception($"Gemini API Call Failed: {ex.Message}");
         }
     }
 
     public async Task<Google.Cloud.AIPlatform.V1.GenerateContentResponse> GetGeminiApiResponseAsync(GenerateContentRequest requestBody)
     {
-        try
-        {
-            var exist = File.Exists("/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json");
-            if(!exist)
-            {
-                //System.Environment.SetEnvironmentVariable(
-                //    "GOOGLE_APPLICATION_CREDENTIALS",
-                //"/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json"
-                //);
-                await _logger.LogErrorAsync($"File does not exist");
-            }
-            // 1. Initialize the client using the Builder for specific regions
-            var client = await new PredictionServiceClientBuilder
-            {
-                Endpoint = "us-central1-aiplatform.googleapis.com"
-            }.BuildAsync();
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000;
 
-            // 2. Make the call
-            // Note: Ensure requestBody.Model is set to: 
-            // "projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/{MODEL_ID}"
-            var response = await client.GenerateContentAsync(requestBody);
-            return response;
-            // 3. Extract the text safely
-            //if (response.Candidates.Count > 0 && response.Candidates[0].Content.Parts.Count > 0)
-            //{
-            //    return CleanGeminiJson(response.Candidates[0].Content.Parts[0].Text);
-            //}
-        }
-        catch (Exception ex)
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            await _logger.LogErrorAsync($"Error occurred in Gemini API call: {ex.Message}");
-            // In a production environment, consider if returning null or rethrowing is better for your flow
-            return null;
+            try
+            {
+                var exist = File.Exists("/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json");
+                if(!exist)
+                {
+                    await _logger.LogErrorAsync($"File does not exist");
+                }
+                // 1. Initialize the client using the Builder for specific regions
+                var client = await new PredictionServiceClientBuilder
+                {
+                    Endpoint = "us-central1-aiplatform.googleapis.com"
+                }.BuildAsync();
+
+                // 2. Make the call
+                var response = await client.GenerateContentAsync(requestBody);
+                return response;
+            }
+            catch (RpcException rpcEx) when (rpcEx.StatusCode == StatusCode.ResourceExhausted || rpcEx.StatusCode == StatusCode.Unavailable || rpcEx.StatusCode == StatusCode.DeadlineExceeded)
+            {
+                await _logger.LogErrorAsync($"Gemini API rate limited (RPC). Attempt {attempt}/{maxRetries}. Error: {rpcEx.Status.Detail}");
+                if (attempt == maxRetries)
+                {
+                    await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (RPC). Returning null.");
+                    return null;
+                }
+
+                var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                continue;
+            }
+            catch (Exception ex)
+            {
+                // Some exceptions may include HTTP 429 info in the message
+                var msg = ex.Message ?? string.Empty;
+                if (msg.Contains("429") || msg.Contains("Too Many Requests") || msg.Contains("ResourceExhausted"))
+                {
+                    await _logger.LogErrorAsync($"Gemini API rate limited (message). Attempt {attempt}/{maxRetries}. Error: {msg}");
+                    if (attempt == maxRetries)
+                    {
+                        await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (message). Returning null.");
+                        return null;
+                    }
+                    var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                    await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                    continue;
+                }
+
+                await _logger.LogErrorAsync($"Error occurred in Gemini API call: {ex.Message}");
+                return null;
+            }
         }
+
+        return null;
     }
+
     public async Task<string> GetGeminiApiResponseAsync3(object requestBody)
     {
-        try
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            System.Environment.SetEnvironmentVariable("AWS_REGION", "ap-south-1");
-            System.Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", "ap-south-1");
-            var credential = await GoogleCredential.GetApplicationDefaultAsync();
-
-            var token = await credential
-                .UnderlyingCredential
-                .GetAccessTokenForRequestAsync();
-
-            using var client = new HttpClient();
-
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
-            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            httpRequest.Content = JsonContent.Create(requestBody);
-
-            var response = await client.SendAsync(httpRequest);
-
-            var content = await response.Content.ReadAsStringAsync();
-            return content;
-        }
-        catch (Exception ex)
-        {
-            await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
-            return null;
-            //throw new Exception($"Gemini API Call Failed: {ex.Message}");
-        }
-    }
-    private static string ParseCacheNameFromJson(string jsonResponse)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(jsonResponse);
-            // The API returns the ID in the "name" property
-            if (doc.RootElement.TryGetProperty("name", out var nameElement))
+            try
             {
-                return nameElement.GetString();
-            }
+                System.Environment.SetEnvironmentVariable("AWS_REGION", "ap-south-1");
+                System.Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", "ap-south-1");
+                var credential = await GoogleCredential.GetApplicationDefaultAsync();
 
-            throw new Exception("The response did not contain a 'name' property. Response: " + jsonResponse);
-        }
-        catch (JsonException ex)
-        {
-            throw new Exception("Failed to parse Cache Response JSON: " + ex.Message);
-        }
-    }
+                var token = await credential
+                    .UnderlyingCredential
+                    .GetAccessTokenForRequestAsync();
 
-    //public async Task<string> GetAnalysisFromCache(string apiKey, string cacheName, string userContent)
-    //{
-    //    var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
+                using var client = new HttpClient();
 
-    //    var generateRequest = new
-    //    {
-    //        cached_content = cacheName,
-    //        contents = new[]
-    //        {
-    //        new {
-    //            role = "user",
-    //            parts = new[] { new { text = userContent } }
-    //        }
-    //    },
-    //        // YEH SECTION ADD KIYA HAI: Markdown hatane ke liye
-    //        generation_config = new
-    //        {
-    //            response_mime_type = "application/json"
-    //        }
-    //    };
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                httpRequest.Content = JsonContent.Create(requestBody);
 
-    //    var jsonResponse = await GetGeminiApiResponseAsync(generateRequest);
-    //    using var doc = JsonDocument.Parse(jsonResponse);
-    //    return doc.RootElement
-    //        .GetProperty("candidates")[0]
-    //        .GetProperty("content")
-    //        .GetProperty("parts")[0]
-    //        .GetProperty("text")
-    //        .GetString().Replace("```json", "")
-    //            .Replace("```", "")
-    //            .Trim();
-    //}
+                var response = await client.SendAsync(httpRequest);
 
-    public static async Task<bool> IsCacheValid(string cacheName, string apiKey)
-    {
-        using (var client = new HttpClient())
-        {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/{cacheName}?key={apiKey}";
-
-            var response = await client.GetAsync(url);
-
-            if (response.IsSuccessStatusCode)
-            {
-                // Cache zinda hai!
                 var content = await response.Content.ReadAsStringAsync();
-                // Yahan tu expireTime bhi check kar sakta hai response body se
-                return true;
-            }
-            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                // Cache expire ho kar delete ho gaya hai
-                return false;
-            }
 
-            return false;
+                if (response.IsSuccessStatusCode)
+                {
+                    return content;
+                }
+
+                if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    await _logger.LogErrorAsync($"Gemini API returned 429 Too Many Requests. Attempt {attempt}/{maxRetries}.");
+                    if (attempt == maxRetries)
+                    {
+                        await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (HTTP with token). Returning null.");
+                        return null;
+                    }
+
+                    TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                    await Task.Delay(retryAfter + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                    continue;
+                }
+
+                await _logger.LogErrorAsync($"Error occured in gemini api call : {content}");
+                return content;
+            }
+            catch (Exception ex)
+            {
+                await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
+                if (attempt == maxRetries) return null;
+                await Task.Delay(TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1)));
+            }
         }
+
+        return null;
     }
+
     public static Google.Cloud.AIPlatform.V1.GenerateContentRequest ConvertToGenerateContentRequest(
     string prompt,
     string xmlContent,
@@ -730,82 +755,6 @@ JSON Schema:
 
         return request;
     }
-    //public static async Task<string> CreateHugeContentCache(string systemInstruction, string apiKey)
-    //{
-
-
-    //    var cacheKey = File.ReadAllText("CacheData.txt");
-    //    var isCacheValid = await IsCacheValid(cacheKey, apiKey);
-    //    if(!isCacheValid)
-    //    {
-    //        var client = new HttpClient();
-
-    //        var cacheRequest = new
-    //        {
-    //            model = $"models/{ModelId}",
-    //            // Instructions are part of the cache
-    //            //system_instruction = new
-    //            //{
-    //            //    parts = new[] { new { text = systemInstruction } }
-    //            //},
-    //            // Put your HUGE XML here to cross the 2,048 token limit
-    //            contents = new[]
-    //            {
-    //        new {
-    //            role = "user",
-    //            parts = new[] { new { text = systemInstruction } }
-    //        }
-    //    },
-    //            ttl = "3600s" // Cache for 1 hour
-    //        };
-
-    //        var response = await client.PostAsJsonAsync(
-    //            $"https://generativelanguage.googleapis.com/v1beta/cachedContents?key={apiKey}",
-    //            cacheRequest
-    //        );
-
-    //        var result = await response.Content.ReadAsStringAsync();
-    //        var cacheName = ParseCacheNameFromJson(result);
-    //        File.WriteAllText("CacheData.txt", cacheName);
-    //        return cacheName;
-    //    }
-    //    return cacheKey;
-    //    // This returns a JSON containing the "name" (e.g., "cachedContents/abcdef123")
-    //}
-
-    //public static async Task<int> GetTokenCount(string apiKey, string prompt, string xmlContent)
-    //{
-    //    using var client = new HttpClient();
-
-    //    var countRequest = new
-    //    {
-    //        model = $"models/{ModelId}",
-    //        contents = new[]
-    //        {
-    //        new {
-    //            role = "user",
-    //            parts = new[] { new { text = prompt + "\n" + xmlContent } }
-    //        }
-    //    }
-    //    };
-
-    //    var response = await client.PostAsJsonAsync(
-    //        $"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:countTokens?key={apiKey}",
-    //        countRequest
-    //    );
-    //    var options = new JsonSerializerOptions
-    //    {
-    //        PropertyNameCaseInsensitive = true,
-    //        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    //    };
-    //    if (response.IsSuccessStatusCode)
-    //    {
-    //        var json = await response.Content.ReadAsStringAsync();
-    //        return (JsonSerializer.Deserialize<TokenCount>(json,options)).totalTokens;
-    //    }
-
-    //    return 0;
-    //}
 }
 
 public class TokenDetail

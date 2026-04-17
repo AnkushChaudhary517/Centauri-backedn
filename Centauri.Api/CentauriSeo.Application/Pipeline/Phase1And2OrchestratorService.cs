@@ -867,6 +867,7 @@ public class Phase1And2OrchestratorService
                 PrimaryKeyword = seoRequest.PrimaryKeyword,
                 Sections = sections?.Select(x => new
                 {
+                    SectionId = x.Id,
                     SectionText = x.SectionText,
                     Sentences = x.Sentences
                 }).ToList(),
@@ -874,6 +875,7 @@ public class Phase1And2OrchestratorService
                 SearchIntent = orchestratorResponse?.SectionScoreResponse != null ? Enum.GetName(orchestratorResponse.SectionScoreResponse.Intent) : null,
                 Sentences = level1.Select(x => new
                 {
+                    SentenceId = x.SentenceId,
                     Text = x.Sentence,
                     HtmlTag = x.HtmlTag,
                 }).ToList(),

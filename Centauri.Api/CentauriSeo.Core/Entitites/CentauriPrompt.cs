@@ -9,4 +9,14 @@ namespace CentauriSeo.Core.Entitites
         public string PromptName { get; set; }
         public string Value { get; set; }
     }
+
+    [DynamoDBTable("CentauriPastAnalysis")]
+    public class CentauriPastAnalysis
+    {
+        [DynamoDBHashKey]
+        public string UserId { get; set; }
+        [DynamoDBRangeKey]
+        public string RequestId { get; set; }
+        public string Responses { get; set; }
+    }
 }

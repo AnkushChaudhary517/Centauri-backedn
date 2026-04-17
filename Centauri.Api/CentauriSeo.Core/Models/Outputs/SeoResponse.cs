@@ -13,6 +13,28 @@ namespace CentauriSeo.Core.Models.Output;
 // Full response model aligned to the document's mandatory JSON schema.
 // Kept minimal implementation but includes all required top-level sections.
 // Consumers can still read Level2Scores/Level3Scores/Level4Scores for backwards compatibility.
+public class PastAnalysisResponse
+{
+    public bool IsCompleted { get; set; } = false;
+    public string RequestId { get; set; } = Guid.NewGuid().ToString();
+    public string Status { get; set; } = "partial";
+    public ArticleInput? Article { get; set; }
+    public string? PrimaryKeyword { get; set; }
+    public List<string>? SecondaryKeywords { get; set; }
+    public string? MetaTitle { get; set; }
+    public string? MetaDescription { get; set; }
+    public string? Url { get; set; }
+    public ContextInput? Context { get; set; }
+    public List<RecommendationsResponse> Recommendations { get; set; } = new();
+    public double SeoScore { get; set; }
+    public FinalScores FinalScores { get; set; } = new();
+    public Level2Scores Level2Scores { get; set; } = new();
+    public Level3Scores Level3Scores { get; set; } = new();
+    public Level4Scores Level4Scores { get; set; } = new();
+    public List<string> RecommendationsLegacy { get; set; } = new();
+    public OrchestratorResponse? Level2InputResponse { get; set; }
+    public InputIntegrity InputIntegrity { get; set; } = new();
+}
 public class SeoResponse
 {
     public bool IsCompleted { get; set; } = false;  
@@ -184,8 +206,8 @@ public class TopIssue
 public class RecommendationsResponse
 {
     public List<Recommendation> Overall { get; set; } = new();
-    public List<Recommendation> SectionLevel { get; set; } = new();
-    public List<Recommendation> SentenceLevel { get; set; } = new();
+    public List<SectionLevelRecommendation> SectionLevel { get; set; } = new();
+    public List<SentenceLevelRecommendation> SentenceLevel { get; set; } = new();
 }
 public class Recommendation
 {
@@ -197,6 +219,14 @@ public class Recommendation
     public string WhatToChange { get; set; } = "";
     public ExamplePair Examples { get; set; } = new();
     public List<string> Improves { get; set; } = new();
+}
+public class SectionLevelRecommendation : Recommendation
+{
+    public string SectionId { get; set; } = "";
+}
+public class SentenceLevelRecommendation : Recommendation
+{
+    public string SentenceId { get; set; } = "";
 }
 
 public class ExamplePair

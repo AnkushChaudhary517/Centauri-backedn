@@ -19,4 +19,14 @@ namespace CentauriSeo.Core.Entitites
         public string RequestId { get; set; }
         public string Responses { get; set; }
     }
+    
+
+    [DynamoDBTable("CentauriCachedContent")]
+    public class CentauriCachedContent
+    {
+        [DynamoDBHashKey]
+        public string Name { get; set; }
+        public string Value { get; set; }
+        public DateTime Expiry { get; set; }
+    }
 }

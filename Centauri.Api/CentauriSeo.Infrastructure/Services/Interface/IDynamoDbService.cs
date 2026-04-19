@@ -10,6 +10,8 @@ namespace CentauriSeo.Infrastructure.Services
         Task<CentauriUser?> GetUserAsync(string userId);
 
         Task SavePastResponseForUser(string userId,string requestId, string response);
+        Task SaveRecommendationCachedContentName(string name);
+        Task<string> GetRecommendationCachedContentName();
         Task<List<PastAnalysisResponse>> GetPastResponsesForUser(string userId);    
         Task<List<CentauriUser>> GetAllUsersAsync();
         Task UpdateUserAsync(CentauriUser user);

@@ -26,7 +26,8 @@ namespace CentauriSeo.Core.Models.Outputs
     {
         public string Url { get; set; } = "";
         public List<string> Headings { get; set; } = new List<string>();
-        public Intent Intent { get; set; }        
+        public Intent Intent { get; set; }     
+        public int ContentLength { get; set; }
     }
 
     public enum Intent

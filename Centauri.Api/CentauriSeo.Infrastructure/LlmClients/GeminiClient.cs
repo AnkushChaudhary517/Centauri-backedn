@@ -55,8 +55,13 @@ public class GeminiClient
     private const string ModelId = "gemini-2.5-flash";
     //private const string ModelId = "gemini-2.5-pro";
     private readonly string _accessToken;
-    private const string Endpoint = $"projects/gen-lang-client-0445687823/locations/us-central1/publishers/google/models/{ModelId}";
-    private const string _apiURL =$"https://us-central1-aiplatform.googleapis.com/v1/{Endpoint}:generateContent";
+    private readonly string _modelDefault;
+    private readonly string _modelTagging;
+
+    // GCP project & location - used to build resource names for cached content and models
+    private readonly string _gcpProject;
+    private readonly string _gcpLocation;
+
     public GeminiClient(HttpClient http, ILlmCacheService cache, IConfiguration config, AiCallTracker aiCallTracker,
         IHttpContextAccessor httpContextAccessor, ILlmCacheManager cacheManager, ILogger<LlmLogger> logger, IDynamoDbService dynamoDbService)
     {
@@ -70,6 +75,20 @@ public class GeminiClient
         _llmLogger = new LlmLogger(logger);
         _aiCallTracker = aiCallTracker;
         _httpContextAccessor = httpContextAccessor;
+
+        // GCP project & location
+        _gcpProject = _config["Gemini:ProjectId"]
+            ?? System.Environment.GetEnvironmentVariable("GOOGLE_CLOUD_PROJECT")
+            ?? System.Environment.GetEnvironmentVariable("GCLOUD_PROJECT")
+            ?? "gen-lang-client-0445687823";
+        _gcpLocation = _config["Gemini:Location"] ?? "us-central1";
+        // Models can be configured in appsettings (fallbacks used if not provided)
+        _modelDefault = _config["Gemini:Model:Default"] ?? "gemini-2.5-flash";
+        _modelTagging = _config["Gemini:Model:Tagging"] ?? "gemini-2.5-flash";
+        if (_gcpProject == "gen-lang-client-0445687823")
+        {
+            _llmLogger.LogWarning("No Google project configured for Gemini; using fallback project which may not be accessible.");
+        }
 
         _llmLogger.LogInfo("GeminiClient initialized successfully");
         _dynamoDbService = dynamoDbService;
@@ -147,11 +166,12 @@ Constraints:
 - No preamble, no explanation, no markdown backticks.
 - If a URL cannot be accessed, skip it and move to the next organic result.
 
+contentLength is the number of word count used by competitors for that primaery keyword
 JSON Schema:
 {
   ""keyword"": ""string"",
   ""competitors"": [
-    { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""Informational|Navigational|Transactional|Commercial"" }
+    { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""Informational|Navigational|Transactional|Commercial"", ""contentLength"": ""int"" }
   ],
   ""intent"": ""Informational|Navigational|Transactional|Commercial"",
   ""variants"": [{""text"":""variant text value"", ""variantType"":""Exact|Lexical|Semantic|Morphological|SearchDerived""}]
@@ -382,40 +402,201 @@ JSON Schema:
     }
     public async Task<string> GenerateRecommendationsAsync(string article)
     {
+        var prompt = await GetCachedRecommendationsPromptAsync();
+
+        // Try to create or get a server-side cached-content reference for the large system instruction
+        string cachedContentName = null;
+        try
+        {
+            cachedContentName = await CreateOrGetCachedContentAsync(prompt, _modelDefault);
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogWarningAsync($"Failed to create/get server-side cached content: {ex.Message}");
+        }
+
+        // Build request using default model and reference cached content if present
+        var toolsList = new List<object>();
+        var reqBody = ConvertToGenerateContentRequest(prompt, article ?? string.Empty, toolsList, _modelDefault, cachedContentName);
+
+        var result = await _aiCallTracker.TrackAsync(
+            reqBody,
+            async () =>
+            {
+                var res = await GetGeminiApiResponseAsync(reqBody);
+                return (res, res?.UsageMetadata);
+            },
+            $"gemini-{_modelDefault}"
+        );
+
+        return CleanGeminiJson(result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
+    }
+
+    /// <summary>
+    /// Return the recommendations prompt from local cache if present; otherwise fetch from Dynamo and cache it.
+    /// </summary>
+    private async Task<string> GetCachedRecommendationsPromptAsync()
+    {
+        var provider = "Gemini:RecommendationsPrompt";
+        var cacheKey = _cache.ComputeRequestKey("RecommendationsPrompt", provider);
+
+        try
+        {
+            var cached = await _cache.GetAsync(cacheKey);
+            if (!string.IsNullOrWhiteSpace(cached))
+            {
+                _llmLogger.LogDebug("Using cached RecommendationsPrompt");
+                return cached;
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogWarningAsync($"Failed to read cached recommendations prompt: {ex.Message}");
+        }
+
         var prompt = await _dynamoDbService.GetPrompt("RecommendationsPrompt") ?? CentauriSystemPrompts.RecommendationsPrompt;
-        return await ProcessContent(prompt, article, false);
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(prompt))
+            {
+                await _cache.SaveAsync(cacheKey, prompt);
+                _llmLogger.LogDebug("Cached RecommendationsPrompt");
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogWarningAsync($"Failed to cache recommendations prompt: {ex.Message}");
+        }
+
+        return prompt;
+    }
+
+    /// <summary>
+    /// Create or retrieve a server-side cached content resource in Vertex AI for the given system instruction.
+    /// Stores the returned cached content resource name in local cache for reuse.
+    /// </summary>
+    private async Task<string> CreateOrGetCachedContentAsync(string systemInstruction, string modelId = null)
+    {
+        if (string.IsNullOrWhiteSpace(systemInstruction)) return null;
+
+        var provider = "Gemini:Recommendations:CachedContent";
+        var cacheKey = _cache.ComputeRequestKey(systemInstruction, provider);
+
+        try
+        {
+            var existing = await _dynamoDbService.GetRecommendationCachedContentName();
+            if (!string.IsNullOrWhiteSpace(existing))
+                return existing;
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogWarningAsync($"Error reading cached-content id from cache: {ex.Message}");
+        }
+
+        try
+        {
+            // TTL for the cached content (hours) - configurable, default to 24
+            var ttlHours = _config.GetValue<int?>("Gemini:Recommendations:CachedContentTtlHours") ?? _config.GetValue<int>("LlmCache:DurationHours", 24);
+            var ttl = TimeSpan.FromHours(ttlHours);
+
+            // Build endpoint URL for creating cached contents
+            var url = $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/projects/{_gcpProject}/locations/{_gcpLocation}/cachedContents";
+
+            // Determine model reference
+            var modelRef = (modelId ?? _modelDefault);
+            if (!modelRef.StartsWith("projects/", StringComparison.OrdinalIgnoreCase) && !modelRef.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
+            {
+                modelRef = BuildModelEndpoint(modelRef);
+            }
+
+            // Obtain an access token using ADC
+            string token = null;
+            try
+            {
+                var credential = await GoogleCredential.GetApplicationDefaultAsync();
+                if (credential.IsCreateScopedRequired)
+                {
+                    credential = credential.CreateScoped("https://www.googleapis.com/auth/cloud-platform");
+                }
+                token = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
+            }
+            catch (Exception ex)
+            {
+                await _logger.LogErrorAsync($"Failed to obtain application default credentials: {ex.Message}");
+                token = null;
+            }
+
+            using var client = new HttpClient() { Timeout = TimeSpan.FromSeconds(120) };
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+            else if (!string.IsNullOrWhiteSpace(_apiKey))
+            {
+                // Will use API key in query if no token
+                url = url + $"?key={_apiKey}";
+            }
+            else
+            {
+                // No credentials available
+                await _logger.LogWarningAsync("No credentials available to create cached content (no ADC token and no API key). Skipping server-side cache creation.");
+                return null;
+            }
+
+            var payload = new
+            {
+                model = modelRef,
+                displayName = "Centauri_RecommendationsPrompt",
+                systemInstruction = new
+                {
+                    parts = new[] { new { text = systemInstruction } }
+                },
+                ttl = $"{(int)ttl.TotalSeconds}s"
+            };
+
+            var res = await client.PostAsJsonAsync(url, payload);
+            var content = await res.Content.ReadAsStringAsync();
+            if (!res.IsSuccessStatusCode)
+            {
+                await _logger.LogErrorAsync($"Failed to create cached content. Status: {res.StatusCode}. Body: {content}");
+                return null;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+                string name = null;
+                if (root.TryGetProperty("name", out var nameProp)) name = nameProp.GetString();
+                if (string.IsNullOrWhiteSpace(name) && root.TryGetProperty("resourceName", out var rn)) name = rn.GetString();
+
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+
+                    try {
+                        await _dynamoDbService.SaveRecommendationCachedContentName(name);                    
+                    } catch { }
+                    return name;
+                }
+            }
+            catch (Exception ex)
+            {
+                await _logger.LogErrorAsync($"Failed to parse cached content creation response: {ex.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogWarningAsync($"Failed to create/get cached content: {ex.Message}");
+        }
+
+        return null;
     }
 
     public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)
     {
-        //if(cachePrompt)
-        //{
-
-            //var cacheKey = _cache.ComputeRequestKey(prompt, "prompt:caching");
-            //var cacheName = await _cache.GetAsync(cacheKey);
-            //if (string.IsNullOrEmpty(cacheName))
-            //{
-            //    // STEP A: Create Cache
-            //    cacheName = await CreateHugeContentCache(prompt, _apiKey);
-            //    if (!string.IsNullOrEmpty(cacheName))
-            //    {
-            //        await _cache.SaveAsync(cacheKey, cacheName);
-            //    }
-            //}
-
-            //return await GetAnalysisFromCache(_apiKey, cacheName, xmlData);
-        //}
-        //else
-        //{
-            //if (!string.IsNullOrEmpty(cachedArticleKey))
-            //{
-            //    var r = await GetAnalysisFromCache(_apiKey, cachedArticleKey, prompt);
-            //    return r;
-            //}
-            var res = await GenerateSentenceTagsDirect(prompt, xmlData,enableGoogleSearch);
-            return res;
-
-        //}
+        var res = await GenerateSentenceTagsDirect(prompt, xmlData,enableGoogleSearch);
+        return res;
     }
 
     private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent, bool enableSearch=false)
@@ -429,76 +610,37 @@ JSON Schema:
 
         int estimatedSentenceCount = (xmlContent.Length / 90) + 1;
         int calculatedMaxTokens = estimatedSentenceCount * 220; // 220 for safety margin
+        // Clamp to sensible bounds for tagging requests
+        calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 512, 4096);
+
         var toolsList = new List<object>();
-        object generationConfig = new();
-        // Limit check: Gemini models ki apni limits hoti hain (e.g. 8k for Flash output)
-        // calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 1000, 8192);
         if (enableSearch)
         {
             toolsList.Add(new { google_search = new { } });
-            generationConfig = new
-            {
-                //response_mime_type = "application/json", // Forces Gemini to return valid JSON
-                //maxOutputTokens = calculatedMaxTokens,
-                temperature = 0.1
-            };
         }
-        else
-        {
-            generationConfig = new
-            {
-                response_mime_type = "application/json", // Forces Gemini to return valid JSON
-                //maxOutputTokens = calculatedMaxTokens,
-                temperature = 0.1
-            };
-        }
-        var reqBody = ConvertToGenerateContentRequest(prompt,xmlContent,toolsList);
-        //    // Standard GenerateContent request body
-        //    var requestBody = new 
-        //    {
-        //        system_instruction = new
-        //        {
-        //            parts = new[] { new { text = prompt } }
-        //        },
-        //        contents = new[]
-        //        {
-        //    new {
-        //        role = "user",
-        //        parts = new[] { new { text = xmlContent } }
-        //        }
-        //    },
-        //        tools = toolsList.Any() ? toolsList.ToArray() : null,
-                
-        //    };
+
+        // Add explicit concise output constraints to the system prompt to limit verbosity
+        var constraints = $"\n\n---OUTPUT_CONSTRAINTS---\nReturn ONLY valid JSON.\nResponseMimeType: application/json.\nCandidateCount: 1.\nMaxOutputTokens: {calculatedMaxTokens}.\nBe concise: do not add explanations or examples.\n---END_CONSTRAINTS---";
+        var effectivePrompt = prompt + constraints;
+
+        var reqBody = ConvertToGenerateContentRequest(effectivePrompt, xmlContent, toolsList, _modelTagging);
 
         var result = await _aiCallTracker.TrackAsync(
             reqBody,
                 async () =>
                 {
-                    //var response = await client.PostAsJsonAsync(
-                    //$"https://generativelanguage.googleapis.com/v1beta/models/{ModelId}:generateContent?key={_apiKey}",
-                    //requestBody
-                    //);
-
-                    //if (!response.IsSuccessStatusCode)
-                    //{
-                    //    var error = await response.Content.ReadAsStringAsync();
-                    //    await _logger.LogErrorAsync($"Error occured in gemini api call : {error}");
-                    //    throw new Exception($"Gemini API Error: {error}");
-                    //}
-                    //generationConfig = generationConfig;
-                    //var res = await response.Content.ReadAsStringAsync();
                     var res = await GetGeminiApiResponseAsync(reqBody);
                    return (res, res?.UsageMetadata);
 
                 },
-                $"gemini-{ModelId}"
+                $"gemini-{_modelTagging}"
         );
         // Extract only the text content from the Gemini response wrapper
         return CleanGeminiJson(result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
 
 
     }
+
     public string CleanGeminiJson(string rawResponse)
     {
         if (string.IsNullOrWhiteSpace(rawResponse)) return rawResponse;
@@ -522,9 +664,10 @@ JSON Schema:
 
         return rawResponse.Trim();
     }
+
     public async Task<string> GetGeminiApiResponseAsync2(object requestBody)
     {
-        const int maxRetries = 3;
+        const int maxRetries = 1;
         const int baseDelayMs = 1000;
 
         try
@@ -532,7 +675,7 @@ JSON Schema:
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 using var client = new HttpClient();
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildApiUrl(_modelDefault));
                 httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken.DecodeBase64());
                 httpRequest.Content = JsonContent.Create(requestBody);
 
@@ -590,7 +733,7 @@ JSON Schema:
 
     public async Task<Google.Cloud.AIPlatform.V1.GenerateContentResponse> GetGeminiApiResponseAsync(GenerateContentRequest requestBody)
     {
-        const int maxRetries = 3;
+        const int maxRetries = 1;
         const int baseDelayMs = 1000;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
@@ -652,7 +795,7 @@ JSON Schema:
 
     public async Task<string> GetGeminiApiResponseAsync3(object requestBody)
     {
-        const int maxRetries = 3;
+        const int maxRetries = 1;
         const int baseDelayMs = 1000;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
@@ -669,7 +812,7 @@ JSON Schema:
 
                 using var client = new HttpClient();
 
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, _apiURL);
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildApiUrl(_modelDefault));
                 httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 httpRequest.Content = JsonContent.Create(requestBody);
 
@@ -710,42 +853,47 @@ JSON Schema:
         return null;
     }
 
-    public static Google.Cloud.AIPlatform.V1.GenerateContentRequest ConvertToGenerateContentRequest(
-    string prompt,
-    string xmlContent,
-    System.Collections.Generic.IEnumerable<dynamic> toolsList)
+    private string BuildModelEndpoint(string modelId) => $"projects/{_gcpProject}/locations/{_gcpLocation}/publishers/google/models/{modelId}";
+    private string BuildApiUrl(string modelId) => $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/{BuildModelEndpoint(modelId)}:generateContent";
+
+    public Google.Cloud.AIPlatform.V1.GenerateContentRequest ConvertToGenerateContentRequest(
+        string prompt,
+        string xmlContent,
+        System.Collections.Generic.IEnumerable<dynamic> toolsList,
+        string modelId = "gemini-2.5-flash",
+        string cachedContentName = null)
     {
-        // Create request
         var request = new Google.Cloud.AIPlatform.V1.GenerateContentRequest
         {
-            Model = Endpoint,
-            SystemInstruction = new Google.Cloud.AIPlatform.V1.Content
-            {
-                Parts =
-            {
-                new Google.Cloud.AIPlatform.V1.Part
-                {
-                    Text = prompt
-                }
-            }
-            }
+            Model = BuildModelEndpoint(modelId)
         };
 
-        // Add user content
+        if (string.IsNullOrWhiteSpace(cachedContentName))
+        {
+            request.SystemInstruction = new Google.Cloud.AIPlatform.V1.Content
+            {
+                Parts =
+                {
+                    new Google.Cloud.AIPlatform.V1.Part { Text = prompt }
+                }
+            };
+        }
+
         request.Contents.Add(new Google.Cloud.AIPlatform.V1.Content
         {
             Role = "user",
             Parts =
-        {
-            new Google.Cloud.AIPlatform.V1.Part
             {
-                Text = xmlContent
+                new Google.Cloud.AIPlatform.V1.Part { Text = xmlContent }
             }
-        }
         });
 
-        // Add tools if available
-        if (toolsList != null && toolsList.Count()>0)
+        if (!string.IsNullOrWhiteSpace(cachedContentName))
+        {
+            try { request.CachedContent = cachedContentName; } catch { }
+        }
+
+        if (toolsList != null && toolsList.Count() > 0)
         {
             request.Tools.Add(new Google.Cloud.AIPlatform.V1.Tool
             {

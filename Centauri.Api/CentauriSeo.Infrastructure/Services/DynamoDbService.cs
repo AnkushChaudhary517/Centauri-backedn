@@ -161,5 +161,42 @@ namespace CentauriSeo.Infrastructure.Services
                 return null;
             }
         }
+
+        public async Task SaveRecommendationCachedContentName(string name)
+        {
+            try
+            {
+                await _context.SaveAsync(new CentauriCachedContent()
+                {
+                    Name = "cachedContentName",
+                    Value = name,
+                    Expiry = DateTime.UtcNow.AddHours(24) // Set expiry time for 24 hours
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error saving recommendation cached content name");
+                return;
+            }
+        }
+
+        public async Task<string> GetRecommendationCachedContentName()
+        {
+            try
+            {
+                var result = await _context.LoadAsync<CentauriCachedContent>("cachedContentName");
+                if (result != null && DateTime.UtcNow >= result.Expiry)
+                {
+                    await _context.DeleteAsync<CentauriCachedContent>("cachedContentName");
+                    return null;
+                }
+                return result?.Value;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error retrieving recommendation cached content name");
+                return null;
+            }
+        }
     }
 }

@@ -82,15 +82,36 @@ public class Phase1And2OrchestratorService
                 .Select(s => new Sentence(s.SentenceId, s.Sentence, s.ParagraphId))
                 .ToList();
 
-            // Get Gemini tags
+            // Get Gemini tags (skip when local tags are confident)
             var geminiTagStopwatch = Stopwatch.StartNew();
-            var geminiTags = await _gemini.TagArticleAsync(
-                SentenceTaggingPrompts.GeminiSentenceTagPrompt,
-                JsonSerializer.Serialize(sentences),
-                "gemini:tagging"
-            );
-            geminiTagStopwatch.Stop();
-            _llmLogger.LogDebug($"Gemini tagging completed | DurationMs: {geminiTagStopwatch.ElapsedMilliseconds}");
+            IReadOnlyList<GeminiSentenceTag> geminiTags;
+            try
+            {
+                // Heuristic: if > 90% of local tags are not 'Uncertain', skip calling Gemini
+                var total = fullLocalLlmTags.Sentences.Count;
+                var nonUncertain = fullLocalLlmTags.Sentences.Count(s => s.InformativeType != CentauriSeo.Core.Models.Enums.InformativeType.Uncertain);
+                double confidentRatio = total == 0 ? 0 : (double)nonUncertain / total;
+                const double CONFIDENCE_THRESHOLD = 0.90;
+
+                if (confidentRatio >= CONFIDENCE_THRESHOLD)
+                {
+                    _llmLogger.LogDebug($"Skipping Gemini tagging - local tags confident | ConfidentRatio: {confidentRatio:F2}");
+                    geminiTags = fullLocalLlmTags.Sentences;
+                }
+                else
+                {
+                    geminiTags = await _gemini.TagArticleAsync(
+                        SentenceTaggingPrompts.GeminiSentenceTagPrompt,
+                        JsonSerializer.Serialize(sentences),
+                        "gemini:tagging"
+                    );
+                }
+            }
+            finally
+            {
+                geminiTagStopwatch.Stop();
+                _llmLogger.LogDebug($"Gemini tagging completed | DurationMs: {geminiTagStopwatch.ElapsedMilliseconds}");
+            }
 
             if (geminiTags == null || geminiTags.Count == 0)
             {
@@ -708,7 +729,7 @@ public class Phase1And2OrchestratorService
 
             // Call API with retry
             var retryCount = 0;
-            const int maxRetries = 2;
+            const int maxRetries = 1;
             Exception lastException = null;
 
             while (retryCount < maxRetries)

@@ -89,9 +89,9 @@ public class GeminiClient
         {
             _llmLogger.LogWarning("No Google project configured for Gemini; using fallback project which may not be accessible.");
         }
-
-        _llmLogger.LogInfo("GeminiClient initialized successfully");
-        _dynamoDbService = dynamoDbService;
+ 
+         // Intentionally do not emit informational startup logs here to reduce noise. Errors/warnings are logged above.
+         _dynamoDbService = dynamoDbService;
     }
 
     //    public async Task<List<string>> GetCompetitorUrls(string keyword)
@@ -137,7 +137,7 @@ public class GeminiClient
     public async Task<string> GetSectionScore(string keyword)
     {
         const string provider = "Gemini:SectionScore";
-        _llmLogger.LogInfo($"GetSectionScore started | Keyword: {keyword}");
+        // Removed informational startup log for this operation to reduce log noise
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -339,7 +339,7 @@ JSON Schema:
     public async Task<IReadOnlyList<GeminiSentenceTag>> TagArticleAsync(string prompt, string xmlContent, string cacheKeySuffix)
     {
         const string provider = "Gemini:TagArticle";
-        _llmLogger.LogDebug($"TagArticleAsync started | CacheSuffix: {cacheKeySuffix}");
+        // Debug log removed to reduce informational noise
         var stopwatch = Stopwatch.StartNew();
 
         var options = new JsonSerializerOptions
@@ -429,6 +429,19 @@ JSON Schema:
             $"gemini-{_modelDefault}"
         );
 
+        if (result == null)
+        {
+            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateRecommendations -> null response | Model={_modelDefault} | CachedContent={cachedContentName}");
+            return string.Empty;
+        }
+
+        var textCandidate = result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+        if (string.IsNullOrWhiteSpace(textCandidate))
+        {
+            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateRecommendations -> empty response text | Model={_modelDefault} | CachedContent={cachedContentName}");
+            return string.Empty;
+        }
+ 
         return CleanGeminiJson(result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
     }
 
@@ -445,7 +458,6 @@ JSON Schema:
             var cached = await _cache.GetAsync(cacheKey);
             if (!string.IsNullOrWhiteSpace(cached))
             {
-                _llmLogger.LogDebug("Using cached RecommendationsPrompt");
                 return cached;
             }
         }
@@ -461,7 +473,6 @@ JSON Schema:
             if (!string.IsNullOrWhiteSpace(prompt))
             {
                 await _cache.SaveAsync(cacheKey, prompt);
-                _llmLogger.LogDebug("Cached RecommendationsPrompt");
             }
         }
         catch (Exception ex)
@@ -523,7 +534,7 @@ JSON Schema:
             }
             catch (Exception ex)
             {
-                await _logger.LogErrorAsync($"Failed to obtain application default credentials: {ex.Message}");
+                await _logger.LogErrorAsync($"GEMINI_CACHED_CONTENT_FAILURE: Failed to obtain ADC token: {ex.Message}\n{ex.StackTrace}");
                 token = null;
             }
 
@@ -559,7 +570,7 @@ JSON Schema:
             var content = await res.Content.ReadAsStringAsync();
             if (!res.IsSuccessStatusCode)
             {
-                await _logger.LogErrorAsync($"Failed to create cached content. Status: {res.StatusCode}. Body: {content}");
+                await _logger.LogErrorAsync($"GEMINI_CACHED_CONTENT_FAILURE: Failed to create cached content. Status: {res.StatusCode}. Body: {content}");
                 return null;
             }
 
@@ -582,87 +593,77 @@ JSON Schema:
             }
             catch (Exception ex)
             {
-                await _logger.LogErrorAsync($"Failed to parse cached content creation response: {ex.Message}");
+                await _logger.LogErrorAsync($"GEMINI_CACHED_CONTENT_FAILURE: Failed to parse cached content creation response: {ex.Message}\n{ex.StackTrace}");
             }
         }
         catch (Exception ex)
         {
-            await _logger.LogWarningAsync($"Failed to create/get cached content: {ex.Message}");
+            await _logger.LogWarningAsync($"GEMINI_CACHED_CONTENT_FAILURE: Failed to create/get cached content: {ex.Message}");
         }
 
         return null;
     }
 
-    public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)
+    public async Task<Google.Cloud.AIPlatform.V1.GenerateContentResponse> GetGeminiApiResponseAsync(GenerateContentRequest requestBody)
     {
-        var res = await GenerateSentenceTagsDirect(prompt, xmlData,enableGoogleSearch);
-        return res;
-    }
+        const int maxRetries = 1;
+        const int baseDelayMs = 1000;
 
-    private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent, bool enableSearch=false)
-    {
-        var options = new JsonSerializerOptions
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-        };
-        using var client = new HttpClient() { Timeout = TimeSpan.FromMinutes(10)};
-
-        int estimatedSentenceCount = (xmlContent.Length / 90) + 1;
-        int calculatedMaxTokens = estimatedSentenceCount * 220; // 220 for safety margin
-        // Clamp to sensible bounds for tagging requests
-        calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 512, 4096);
-
-        var toolsList = new List<object>();
-        if (enableSearch)
-        {
-            toolsList.Add(new { google_search = new { } });
-        }
-
-        // Add explicit concise output constraints to the system prompt to limit verbosity
-        var constraints = $"\n\n---OUTPUT_CONSTRAINTS---\nReturn ONLY valid JSON.\nResponseMimeType: application/json.\nCandidateCount: 1.\nMaxOutputTokens: {calculatedMaxTokens}.\nBe concise: do not add explanations or examples.\n---END_CONSTRAINTS---";
-        var effectivePrompt = prompt + constraints;
-
-        var reqBody = ConvertToGenerateContentRequest(effectivePrompt, xmlContent, toolsList, _modelTagging);
-
-        var result = await _aiCallTracker.TrackAsync(
-            reqBody,
-                async () =>
-                {
-                    var res = await GetGeminiApiResponseAsync(reqBody);
-                   return (res, res?.UsageMetadata);
-
-                },
-                $"gemini-{_modelTagging}"
-        );
-        // Extract only the text content from the Gemini response wrapper
-        return CleanGeminiJson(result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
-
-
-    }
-
-    public string CleanGeminiJson(string rawResponse)
-    {
-        if (string.IsNullOrWhiteSpace(rawResponse)) return rawResponse;
-
-        // Remove opening ```json or ```
-        if (rawResponse.StartsWith("```"))
-        {
-            // Find the end of the first line (the identifier like ```json)
-            int firstNewLine = rawResponse.IndexOf('\n');
-            if (firstNewLine != -1)
+            try
             {
-                rawResponse = rawResponse.Substring(firstNewLine).Trim();
+                //var exist = File.Exists("/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json");
+                //if(!exist)
+                //{
+                //    await _logger.LogErrorAsync($"File does not exist");
+                //}
+                // 1. Initialize the client using the Builder for specific regions
+                var client = await new PredictionServiceClientBuilder
+                {
+                    Endpoint = "us-central1-aiplatform.googleapis.com"
+                }.BuildAsync();
+
+                // 2. Make the call
+                var response = await client.GenerateContentAsync(requestBody);
+                return response;
+            }
+            catch (RpcException rpcEx) when (rpcEx.StatusCode == StatusCode.ResourceExhausted || rpcEx.StatusCode == StatusCode.Unavailable || rpcEx.StatusCode == StatusCode.DeadlineExceeded)
+            {
+                await _logger.LogErrorAsync($"GEMINI_API_FAILURE: RPC rate limited. Model={requestBody?.Model} Attempt {attempt}/{maxRetries}. Error: {rpcEx.Status.Detail}\n{rpcEx.StackTrace}");
+                if (attempt == maxRetries)
+                {
+                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE: Max retry attempts reached for model={requestBody?.Model} (RPC). Returning null.");
+                    return null;
+                }
+
+                var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                continue;
+            }
+            catch (Exception ex)
+            {
+                // Some exceptions may include HTTP 429 info in the message
+                var msg = ex.Message ?? string.Empty;
+                if (msg.Contains("429") || msg.Contains("Too Many Requests") || msg.Contains("ResourceExhausted"))
+                {
+                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE: Rate limited (message). Model={requestBody?.Model} Attempt {attempt}/{maxRetries}. Error: {msg}\n{ex.StackTrace}");
+                    if (attempt == maxRetries)
+                    {
+                        await _logger.LogErrorAsync($"GEMINI_API_FAILURE: Max retry attempts reached for model={requestBody?.Model} (message). Returning null.");
+                        return null;
+                    }
+                    var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                    await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                    continue;
+                }
+
+                await _logger.LogErrorAsync($"GEMINI_API_FAILURE: Error occurred in Gemini API call. Model={requestBody?.Model} Error={ex.Message}\n{ex.StackTrace}");
+                return null;
             }
         }
 
-        // Remove closing ```
-        if (rawResponse.EndsWith("```"))
-        {
-            rawResponse = rawResponse.Substring(0, rawResponse.Length - 3).Trim();
-        }
-
-        return rawResponse.Trim();
+        return null;
     }
 
     public async Task<string> GetGeminiApiResponseAsync2(object requestBody)
@@ -675,7 +676,8 @@ JSON Schema:
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 using var client = new HttpClient();
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildApiUrl(_modelDefault));
+                var apiUrl = BuildApiUrl(_modelDefault);
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiUrl);
                 httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken.DecodeBase64());
                 httpRequest.Content = JsonContent.Create(requestBody);
 
@@ -686,7 +688,7 @@ JSON Schema:
                 }
                 catch (Exception sendEx)
                 {
-                    await _logger.LogErrorAsync($"Error occured in gemini api call (network): {sendEx.Message}:{sendEx.StackTrace}");
+                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Network error calling {apiUrl}. Error: {sendEx.Message}\n{sendEx.StackTrace}");
                     if (attempt == maxRetries) return null;
                     var wait = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
                     await Task.Delay(wait + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
@@ -703,11 +705,11 @@ JSON Schema:
                 // Handle 429 - Too Many Requests
                 if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
                 {
-                    await _logger.LogErrorAsync($"Gemini API returned 429 Too Many Requests. Attempt {attempt}/{maxRetries}.");
+                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: 429 Too Many Requests from {apiUrl}. Attempt {attempt}/{maxRetries}.");
 
                     if (attempt == maxRetries)
                     {
-                        await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (HTTP). Returning null.");
+                        await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Max retry attempts reached for {apiUrl}. Returning null.");
                         return null;
                     }
 
@@ -718,7 +720,7 @@ JSON Schema:
                 }
 
                 // Non-retryable error - log and return body
-                await _logger.LogErrorAsync($"Error occured in gemini api call : {content}");
+                await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Non-retryable error from {apiUrl}. Body: {content}");
                 return content;
             }
 
@@ -726,71 +728,9 @@ JSON Schema:
         }
         catch (Exception ex)
         {
-            await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
+            await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Exception in HTTP call. Error: {ex.Message}\n{ex.StackTrace}");
             return null;
         }
-    }
-
-    public async Task<Google.Cloud.AIPlatform.V1.GenerateContentResponse> GetGeminiApiResponseAsync(GenerateContentRequest requestBody)
-    {
-        const int maxRetries = 1;
-        const int baseDelayMs = 1000;
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            try
-            {
-                var exist = File.Exists("/home/ec2-user/gen-lang-client-0445687823-e31287759ab4.json");
-                if(!exist)
-                {
-                    await _logger.LogErrorAsync($"File does not exist");
-                }
-                // 1. Initialize the client using the Builder for specific regions
-                var client = await new PredictionServiceClientBuilder
-                {
-                    Endpoint = "us-central1-aiplatform.googleapis.com"
-                }.BuildAsync();
-
-                // 2. Make the call
-                var response = await client.GenerateContentAsync(requestBody);
-                return response;
-            }
-            catch (RpcException rpcEx) when (rpcEx.StatusCode == StatusCode.ResourceExhausted || rpcEx.StatusCode == StatusCode.Unavailable || rpcEx.StatusCode == StatusCode.DeadlineExceeded)
-            {
-                await _logger.LogErrorAsync($"Gemini API rate limited (RPC). Attempt {attempt}/{maxRetries}. Error: {rpcEx.Status.Detail}");
-                if (attempt == maxRetries)
-                {
-                    await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (RPC). Returning null.");
-                    return null;
-                }
-
-                var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
-                await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
-                continue;
-            }
-            catch (Exception ex)
-            {
-                // Some exceptions may include HTTP 429 info in the message
-                var msg = ex.Message ?? string.Empty;
-                if (msg.Contains("429") || msg.Contains("Too Many Requests") || msg.Contains("ResourceExhausted"))
-                {
-                    await _logger.LogErrorAsync($"Gemini API rate limited (message). Attempt {attempt}/{maxRetries}. Error: {msg}");
-                    if (attempt == maxRetries)
-                    {
-                        await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (message). Returning null.");
-                        return null;
-                    }
-                    var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
-                    await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
-                    continue;
-                }
-
-                await _logger.LogErrorAsync($"Error occurred in Gemini API call: {ex.Message}");
-                return null;
-            }
-        }
-
-        return null;
     }
 
     public async Task<string> GetGeminiApiResponseAsync3(object requestBody)
@@ -802,51 +742,65 @@ JSON Schema:
         {
             try
             {
-                System.Environment.SetEnvironmentVariable("AWS_REGION", "ap-south-1");
-                System.Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", "ap-south-1");
-                var credential = await GoogleCredential.GetApplicationDefaultAsync();
-
-                var token = await credential
-                    .UnderlyingCredential
-                    .GetAccessTokenForRequestAsync();
-
-                using var client = new HttpClient();
-
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildApiUrl(_modelDefault));
-                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                httpRequest.Content = JsonContent.Create(requestBody);
-
-                var response = await client.SendAsync(httpRequest);
-
-                var content = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
+                string apiUrl = BuildApiUrl(_modelDefault);
+                string token = null;
+                try
                 {
-                    return content;
-                }
+                    System.Environment.SetEnvironmentVariable("AWS_REGION", "ap-south-1");
+                    System.Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", "ap-south-1");
 
-                if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
-                {
-                    await _logger.LogErrorAsync($"Gemini API returned 429 Too Many Requests. Attempt {attempt}/{maxRetries}.");
-                    if (attempt == maxRetries)
+                    var credential = await GoogleCredential.GetApplicationDefaultAsync();
+                    try
                     {
-                        await _logger.LogErrorAsync("Max retry attempts reached for Gemini API (HTTP with token). Returning null.");
-                        return null;
+                        token = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
+                    }
+                    catch
+                    {
+                        token = null; // continue to attempt with API key if available
                     }
 
-                    TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
-                    await Task.Delay(retryAfter + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
-                    continue;
-                }
+                    using var client = new HttpClient();
 
-                await _logger.LogErrorAsync($"Error occured in gemini api call : {content}");
-                return content;
+                    var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiUrl);
+                    if (!string.IsNullOrWhiteSpace(token))
+                        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    httpRequest.Content = JsonContent.Create(requestBody);
+
+                    var response = await client.SendAsync(httpRequest);
+                    var content = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return content;
+                    }
+
+                    if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: 429 Too Many Requests from {apiUrl}. Attempt {attempt}/{maxRetries}.");
+                        if (attempt == maxRetries)
+                        {
+                            await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Max retry attempts reached for {apiUrl} (with token). Returning null.");
+                            return null;
+                        }
+                        var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
+                        await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
+                        continue;
+                    }
+
+                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Error response from {apiUrl}. Body: {content}");
+                    return content;
+                }
+                catch (Exception ex)
+                {
+                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Exception during HTTP call to {apiUrl}. Error: {ex.Message}\n{ex.StackTrace}");
+                    if (attempt == maxRetries) return null;
+                    await Task.Delay(TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1)));
+                }
             }
             catch (Exception ex)
             {
-                await _logger.LogErrorAsync($"Error occured in gemini api call : {ex.Message}:{ex.StackTrace}");
-                if (attempt == maxRetries) return null;
-                await Task.Delay(TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1)));
+                await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Exception in HTTP call. Error: {ex.Message}\n{ex.StackTrace}");
+                return null;
             }
         }
 
@@ -902,6 +856,84 @@ JSON Schema:
         }
 
         return request;
+    }
+
+    public async Task<string> ProcessContent(string prompt, string xmlData, bool cachePrompt = false, string cachedArticleKey = null, bool enableGoogleSearch=false)
+    {
+        // Simple wrapper - generate using tagging flow for now
+        var res = await GenerateSentenceTagsDirect(prompt, xmlData, enableGoogleSearch);
+        return res;
+    }
+
+    private async Task<string> GenerateSentenceTagsDirect(string prompt, string xmlContent, bool enableSearch = false)
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        };
+
+        int estimatedSentenceCount = (string.IsNullOrEmpty(xmlContent) ? 1 : (xmlContent.Length / 90) + 1);
+        int calculatedMaxTokens = estimatedSentenceCount * 220; // safety margin
+        calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 512, 4096);
+
+        var toolsList = new List<object>();
+        if (enableSearch)
+            toolsList.Add(new { google_search = new { } });
+
+        // Add explicit concise output constraints to the system prompt to limit verbosity
+        var constraints = $"\n\n---OUTPUT_CONSTRAINTS---\nReturn ONLY valid JSON.\nResponseMimeType: application/json.\nCandidateCount: 1.\nMaxOutputTokens: {calculatedMaxTokens}.\nBe concise: do not add explanations or examples.\n---END_CONSTRAINTS---";
+        var effectivePrompt = prompt + constraints;
+
+        var reqBody = ConvertToGenerateContentRequest(effectivePrompt, xmlContent, toolsList, _modelTagging);
+
+        var result = await _aiCallTracker.TrackAsync(
+            reqBody,
+            async () =>
+            {
+                var res = await GetGeminiApiResponseAsync(reqBody);
+                return (res, res?.UsageMetadata);
+            },
+            $"gemini-{_modelTagging}"
+        );
+
+        if (result == null)
+        {
+            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateSentenceTagsDirect -> null response | Model={_modelTagging}");
+            return string.Empty;
+        }
+
+        var tagText = result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+        if (string.IsNullOrWhiteSpace(tagText))
+        {
+            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateSentenceTagsDirect -> empty response text | Model={_modelTagging}");
+            return string.Empty;
+        }
+
+        return CleanGeminiJson(tagText);
+    }
+
+    public string CleanGeminiJson(string rawResponse)
+    {
+        if (string.IsNullOrWhiteSpace(rawResponse)) return rawResponse;
+
+        // Remove opening ```json or ```
+        if (rawResponse.StartsWith("```"))
+        {
+            int firstNewLine = rawResponse.IndexOf('\n');
+            if (firstNewLine != -1)
+            {
+                rawResponse = rawResponse.Substring(firstNewLine).Trim();
+            }
+        }
+
+        // Remove closing ```
+        if (rawResponse.EndsWith("```"))
+        {
+            rawResponse = rawResponse.Substring(0, rawResponse.Length - 3).Trim();
+        }
+
+        return rawResponse.Trim();
     }
 }
 

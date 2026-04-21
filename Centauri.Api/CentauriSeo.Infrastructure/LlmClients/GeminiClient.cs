@@ -148,12 +148,14 @@ public class GeminiClient
             }
 
             var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
-            string userContent = @"
+
+            string userContent = @$"
 Role: SEO Expert & Content Strategist
 Task: Analyze SERP for the target keyword and generate semantic variants.
 
 Steps:
-1. Use the Google Search tool to find the top 5 organic results for the keyword.
+1. Use the Google Search tool to find the top 5 organic results for the keyword. 
+   - [Strict Filtering]: Ignore all ""Sponsored"" or ""Ad"" results. Only process organic rankings.
 2. Extract exact H2 headings from these pages. Do NOT summarize or rewrite them.
 3. Identify the Primary Search Intent (Informational, Commercial, Transactional, Navigational).
 4. Generate a PK Variant Pool:
@@ -164,21 +166,37 @@ Steps:
 Constraints:
 - Output MUST be valid JSON. 
 - No preamble, no explanation, no markdown backticks.
-- If a URL cannot be accessed, skip it and move to the next organic result.
+- If a URL cannot be accessed, skip it and move to the next organic result
+- Do not repeat the competitors. Currently all competitor urls are the same.
+- Never return any competitor which has contentLength = 0.
+- url is actual competitor url where article is present with the primary keyword or its variants.
 
-contentLength is the number of word count used by competitors for that primaery keyword
+Field Definitions:
+- contentLength: This must be the total word count of the main body article/content for that specific organic result. 
+- [Critical]: Exclude Ad content entirely. Including word counts from ads will break downstream calculations. If a result is identified as an advertisement, skip it.
+
 JSON Schema:
-{
+{{
   ""keyword"": ""string"",
   ""competitors"": [
-    { ""url"": ""string"", ""headings"": [""string""], ""intent"": ""Informational|Navigational|Transactional|Commercial"", ""contentLength"": ""int"" }
+    {{ 
+      ""url"": ""string"", 
+      ""headings"": [""string""], 
+      ""intent"": ""Informational|Navigational|Transactional|Commercial"", 
+      ""contentLength"": ""int"" 
+    }}
   ],
   ""intent"": ""Informational|Navigational|Transactional|Commercial"",
-  ""variants"": [{""text"":""variant text value"", ""variantType"":""Exact|Lexical|Semantic|Morphological|SearchDerived""}]
-}
+  ""variants"": [
+    {{
+      ""text"":""string"", 
+      ""variantType"":""Exact|Lexical|Semantic|Morphological|SearchDerived""
+    }}
+  ]
+}}
 
-[Strict Rule] : VariantType is an enum with these values (Exact|Lexical|Semantic|Morphological|SearchDerived).
-";
+[Strict Rule]: VariantType is an enum with these values (Exact|Lexical|Semantic|Morphological|SearchDerived).";
+            
 
             userContent = @$"Target keyword: ""{ keyword}""." + userContent;
 

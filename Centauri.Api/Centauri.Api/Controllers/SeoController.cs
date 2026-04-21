@@ -161,6 +161,7 @@ public class SeoController : ControllerBase
 
         try
         {
+            return await Analyze(request);
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
@@ -242,12 +243,24 @@ public class SeoController : ControllerBase
             stopwatch.Stop();
             _llmLogger.LogApiCall(provider, "Analyze (Initiated)", stopwatch.ElapsedMilliseconds, true);
 
-            // Retrieve any previous recommendations so Gemini can avoid duplicates during reanalysis
-            var prevRecKey = $"recommendations__{request.RequestId}";
-            var previousRecommendations = _cache.Get<RecommendationResponseDTO>(prevRecKey);
+            // Ensure RequestId is populated and available on HttpContext so downstream AI calls use it as correlation id
+            try
+            {
+                var ctxForReq = _httpContextAccessor?.HttpContext;
+                var correlationId = ctxForReq?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
+                if (string.IsNullOrWhiteSpace(request.RequestId)) request.RequestId = correlationId;
+                if (ctxForReq != null)
+                {
+                    ctxForReq.Items["RequestId"] = request.RequestId;
+                    ctxForReq.Items["CorrelationId"] = request.RequestId;
+                    ctxForReq.Request.Headers["RequestId"] = request.RequestId;
+                    ctxForReq.Request.Headers["CorrelationId"] = request.RequestId;
+                }
+            }
+            catch { /* swallow any header update errors */ }
 
-            // Start background analysis (pass previous recommendations if available)
-            _ = GetAnalysisResult(request, userId, previousRecommendations);
+            // Start background analysis
+            _ = GetAnalysisResult(request, userId);
             return Ok(analyzeResponse);
         }
         catch (LlmValidationException valEx)
@@ -361,6 +374,27 @@ public class SeoController : ControllerBase
             stopwatch.Stop();
             _llmLogger.LogApiCall(provider, "Analyze (Initiated)", stopwatch.ElapsedMilliseconds, true);
 
+            // Ensure RequestId is set and available on HttpContext
+            var ctx = _httpContextAccessor.HttpContext;
+            var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
+
+            // Ensure RequestId is set on the request so it can be referenced by ReAnalyze
+            if (string.IsNullOrWhiteSpace(request.RequestId))
+                request.RequestId = correlationId;
+
+            // Also ensure the HttpContext items/headers reflect the RequestId so AiCallTracker will store consistent CorrelationId
+            try
+            {
+                if (ctx != null)
+                {
+                    ctx.Items["RequestId"] = request.RequestId;
+                    ctx.Items["CorrelationId"] = request.RequestId;
+                    ctx.Request.Headers["RequestId"] = request.RequestId;
+                    ctx.Request.Headers["CorrelationId"] = request.RequestId;
+                }
+            }
+            catch { /* ignore header write issues in background context */ }
+
             // Start background analysis
             _ = GetAnalysisResult(request, userId);
             return Ok(analyzeResponse);
@@ -453,9 +487,18 @@ public class SeoController : ControllerBase
             if (string.IsNullOrWhiteSpace(request.RequestId))
                 request.RequestId = correlationId;
 
-            var cacheRequestKey = $"analyze__request__{request.RequestId}";
-            // Cache the incoming request object for later reference (e.g., reanalyze)
-            _cache.Set(cacheRequestKey, request, TimeSpan.FromMinutes(60));
+            // Also ensure the HttpContext items/headers reflect the RequestId so AiCallTracker will store consistent CorrelationId
+            try
+            {
+                if (ctx != null)
+                {
+                    ctx.Items["RequestId"] = request.RequestId;
+                    ctx.Items["CorrelationId"] = request.RequestId;
+                    ctx.Request.Headers["RequestId"] = request.RequestId;
+                    ctx.Request.Headers["CorrelationId"] = request.RequestId;
+                }
+            }
+            catch { /* ignore header write issues in background context */ }
 
             var response = new SeoResponse { RequestId = request.RequestId };
             var topIssues = new List<TopIssue>();

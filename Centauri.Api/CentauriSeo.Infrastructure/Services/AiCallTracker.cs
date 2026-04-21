@@ -25,15 +25,42 @@ namespace CentauriSeo.Infrastructure.Services
         public async Task<T> TrackAsync<T>(
             object requestObj,
             Func<Task<(T result, object usage)>> apiCall,
-            string provider = "gemini"
+            string provider = "gemini",
+            string forcedCorrelationId = null
         )
         {
             var id = Guid.NewGuid().ToString();
             var sw = Stopwatch.StartNew();
             var ctx = _httpContextAccessor.HttpContext;
 
-            var userId = ctx?.Items["UserId"]?.ToString()??Guid.NewGuid().ToString();
-            var correlationId = ctx?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
+            var userId = ctx?.Items["UserId"]?.ToString() ?? Guid.NewGuid().ToString();
+
+            // Resolve correlation/request id precedence:
+            // 1. forcedCorrelationId argument
+            // 2. HttpContext.Items["RequestId"]
+            // 3. HttpContext.Items["CorrelationId"]
+            // 4. Request headers: RequestId / CorrelationId / X-Request-Id
+            // 5. fallback to a new GUID
+            string correlationId = forcedCorrelationId;
+            if (string.IsNullOrWhiteSpace(correlationId))
+            {
+                if (ctx != null)
+                {
+                    if (ctx.Items.ContainsKey("RequestId")) correlationId = ctx.Items["RequestId"]?.ToString();
+                    else if (ctx.Items.ContainsKey("Requestid")) correlationId = ctx.Items["Requestid"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(correlationId) && ctx.Items.ContainsKey("CorrelationId")) correlationId = ctx.Items["CorrelationId"]?.ToString();
+
+                    if (string.IsNullOrWhiteSpace(correlationId) && ctx.Request?.Headers != null)
+                    {
+                        if (ctx.Request.Headers.TryGetValue("RequestId", out var hv)) correlationId = hv.FirstOrDefault();
+                        if (string.IsNullOrWhiteSpace(correlationId) && ctx.Request.Headers.TryGetValue("CorrelationId", out var hv2)) correlationId = hv2.FirstOrDefault();
+                        if (string.IsNullOrWhiteSpace(correlationId) && ctx.Request.Headers.TryGetValue("X-Request-Id", out var hv3)) correlationId = hv3.FirstOrDefault();
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(correlationId)) correlationId = Guid.NewGuid().ToString();
+
             var endpoint = ctx?.Request?.Path.ToString() ?? "";
             try
             {

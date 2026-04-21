@@ -49,7 +49,7 @@ public class GroqClient
         _llmLogger = new LlmLogger(logger);
         _aiCallTracker = aiCallTracker;
 
-        _llmLogger.LogInfo("GroqClient initialized successfully");
+        // avoid noisy startup logs
     }
 
 
@@ -57,13 +57,11 @@ public class GroqClient
     {
         string endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
         var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
             messages = new[] {
-            new { role = "system", content = $@"
+                new { role = "system", content = $@"
         Please update the userContent where informative Type is wrong and return the data in same format just update the informative type value
 
 Classify as FACT only if the sentence contains specific data, statistics, or universally verifiable truths. Classify as CLAIM if the sentence makes a promotional statement about a product's capabilities, quality, or internal design intent.
@@ -82,38 +80,49 @@ Format(Array of objects):
     Allowed Enum Values:
     - Question, Suggestion, Definition, Fact, Statistic, Claim, Uncertain, Opinion, Filler, Prediction
 
-Default value is Uncertain only if there are geninuly no other value possible." 
-            
-     },
-            new { role = "user", content = userContent }
-        },
+Default value is Uncertain only if there are geninully no other value possible." },
+                new { role = "user", content = userContent }
+            },
             response_format = new { type = "json_object" },
             temperature = 0 // Lowest temperature for maximum logic 
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+        var result = await _aiCallTracker.TrackAsync<string>(
+            requestBody,
+            async () =>
+            {
+                using var client = new HttpClient();
+                if (!string.IsNullOrWhiteSpace(_apiKey)) client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+                var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(endpoint, content);
+                var jsonResponse = await response.Content.ReadAsStringAsync();
 
-        try
-        {
-            var response = await client.PostAsync(endpoint, content);
-            var jsonResponse = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(jsonResponse);
-            var data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-            return data;
-        }
-        catch (Exception ex)
-        {
-            return null;
-        }
+                string data = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(jsonResponse);
+                    data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+                }
+                catch { data = jsonResponse; }
 
+                var usage = ExtractGroqUsage(jsonResponse);
+                return (data, usage);
+            },
+            "groq:update-informative"
+        );
+
+        return result;
     } 
     public async Task<List<string>> GetGroqCategorization(List<string> h2Tags)
     {
         string endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-        var prompt = $@"
+        var requestBody = new
+        {
+            model = "llama-3.3-70b-versatile",
+            messages = new[] {
+                new { role = "system", content = "You are a JSON-only SEO classifier. No preamble. No conversational text." },
+                new { role = "user", content = string.Format(@"
     Mapping Rules:
     1. Definition (Concept Clarification)
     2. Process (How-To)
@@ -131,39 +140,44 @@ Default value is Uncertain only if there are geninuly no other value possible."
     Return ONLY a simple JSON array of strings containing the Category Names in the same order as the input.
 
     H2 TAGS:
-    {string.Join("\n", h2Tags)}
+    {0}
 
     STRICT OUTPUT FORMAT:
     [""""Category1"""", """"Category2"""", """"Category3""""]
     Allowed values: (Definition|Process|Problem|Solution|Analytical|Data|Comparison|FAQ|Cost|Implementation)
-    ";
-
-        var requestBody = new
-        {
-            model = "llama-3.3-70b-versatile",
-            messages = new[] {
-            new { role = "system", content = "You are a JSON-only SEO classifier. No preamble. No conversational text." },
-            new { role = "user", content = prompt }
-        },
+    ", string.Join("\n", h2Tags)) }
+            },
             response_format = new { type = "json_object" },
             temperature = 0 // Lowest temperature for maximum logic 
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-
-        try
+        var result = await _aiCallTracker.TrackAsync<List<string>>(requestBody, async () =>
         {
+            using var client = new HttpClient();
+            if (!string.IsNullOrWhiteSpace(_apiKey)) client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
             var response = await client.PostAsync(endpoint, content);
             var jsonResponse = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(jsonResponse);
-            var data =  doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-            var res =  JsonSerializer.Deserialize<GroqHeadingsResponse>(data);
-            return res.categories;
-        }
-        catch (Exception ex)
-        {
-            return null;
-        }
+
+            string data = null;
+            try { using var doc = JsonDocument.Parse(jsonResponse); data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(); } catch { data = jsonResponse; }
+
+            List<string> categories = null;
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<GroqHeadingsResponse>(data);
+                categories = parsed?.categories;
+            }
+            catch
+            {
+                try { categories = JsonSerializer.Deserialize<List<string>>(data); } catch { categories = new List<string>(); }
+            }
+
+            var usage = ExtractGroqUsage(jsonResponse);
+            return (categories, usage);
+        }, "groq:categorization");
+
+        return result;
     }
 
 
@@ -219,75 +233,62 @@ Apply this logic to ANY document or niche. The examples provided are for illustr
             model = "llama-3.3-70b-versatile",
             messages = new[]
             {
-            new { role = "system", content = prompt },
-            new { role = "user", content = payload }
-        },
+                new { role = "system", content = prompt },
+                new { role = "user", content = payload }
+            },
             response_format = new { type = "json_object" },
             temperature = 0
         };
 
-        var content = new StringContent(
-            JsonSerializer.Serialize(requestBody),
-            Encoding.UTF8,
-            "application/json"
-        );
-
-        try
+        var result = await _aiCallTracker.TrackAsync<List<SentenceStrengthResponse>>(requestBody, async () =>
         {
-            var response = await client.PostAsync(endpoint, content);
+            using var client2 = new HttpClient();
+            if (!string.IsNullOrWhiteSpace(_apiKey)) client2.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+            var content2 = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            var response = await client2.PostAsync(endpoint, content2);
             var jsonResponse = await response.Content.ReadAsStringAsync();
 
-            using var doc = JsonDocument.Parse(jsonResponse);
-            var data = doc.RootElement
-                          .GetProperty("choices")[0]
-                          .GetProperty("message")
-                          .GetProperty("content")
-                          .GetString();
+            string data = null;
+            try { using var doc = JsonDocument.Parse(jsonResponse); data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(); } catch { data = jsonResponse; }
 
-            var result = JsonSerializer.Deserialize<SentenceStrengthResponseWrapper>(data);
+            SentenceStrengthResponseWrapper wrapper = null;
+            try { wrapper = JsonSerializer.Deserialize<SentenceStrengthResponseWrapper>(data); } catch { wrapper = null; }
 
-            return result?.Results;
-        }
-        catch
-        {
-            return null;
-        }
+            var usage = ExtractGroqUsage(jsonResponse);
+            return (wrapper?.Results, usage);
+        }, "groq:sentence-strengths");
+
+        return result;
     }
 
     public async Task<string> GetResponse(string systemRequirement, string prompt)
     {
         string endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
-        using var client = new HttpClient();
-        var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
         var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
-            messages = new[] {
-            new { role = "system", content = systemRequirement },
-            new { role = "user", content = prompt }
-        },
+            messages = new[] { new { role = "system", content = systemRequirement }, new { role = "user", content = prompt } },
             response_format = new { type = "json_object" },
             temperature = 0 // Lowest temperature for maximum logic 
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-
-        try
+        var result = await _aiCallTracker.TrackAsync<string>(requestBody, async () =>
         {
-            var response = await client.PostAsync(endpoint, content);
+            using var client2 = new HttpClient();
+            if (!string.IsNullOrWhiteSpace(_apiKey)) client2.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+            var content2 = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            var response = await client2.PostAsync(endpoint, content2);
             var jsonResponse = await response.Content.ReadAsStringAsync();
-            (new FileLogger()).LogWarningAsync($"groq response + {jsonResponse}");
-            using var doc = JsonDocument.Parse(jsonResponse);
-            var data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-            return data;
-        }
-        catch (Exception ex)
-        {
-            (new FileLogger()).LogWarningAsync($"error in groq response + {ex.ToString()}");
-            return null;
-        }
+
+            string data = null;
+            try { using var doc = JsonDocument.Parse(jsonResponse); data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(); } catch { data = jsonResponse; }
+
+            var usage = ExtractGroqUsage(jsonResponse);
+            return (data, usage);
+        }, "groq:response");
+
+        return result;
     }
     public async Task<GroqBulkResponse> GetExpertise(string payload)
     {
@@ -370,40 +371,39 @@ You are an Advanced SEO Semantic Analyst. Your goal is to audit text for Eâ€‘Eâ€
 ";
         string endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
-        using var client = new HttpClient();
-        var groqApiKey = Environment.GetEnvironmentVariable("CentauriGroqApiKey");
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {groqApiKey}");
-
-        //(new FileLogger()).LogWarningAsync($"groq response api key+ {groqApiKey}");
-
         var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
-            messages = new[] {
-            new { role = "system", content = bulkSystemPrompt },
-            new { role = "user", content = payload }
-        },
+            messages = new[]
+            {
+                new { role = "system", content = bulkSystemPrompt },
+                new { role = "user", content = payload }
+            },
             response_format = new { type = "json_object" },
-            temperature = 0 // Lowest temperature for maximum logic 
+            temperature = 0
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-
-        try
+        var result = await _aiCallTracker.TrackAsync<GroqBulkResponse>(requestBody, async () =>
         {
-            var response = await client.PostAsync(endpoint, content);
+            using var client2 = new HttpClient();
+            if (!string.IsNullOrWhiteSpace(_apiKey)) client2.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+            var content2 = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            var response = await client2.PostAsync(endpoint, content2);
             var jsonResponse = await response.Content.ReadAsStringAsync();
-            (new FileLogger()).LogWarningAsync($"groq response + {jsonResponse}");
-            using var doc = JsonDocument.Parse(jsonResponse);
-            var data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-            var res = JsonSerializer.Deserialize<GroqBulkResponse>(data);
-            return res;
-        }
-        catch (Exception ex)
-        {
-            (new FileLogger()).LogWarningAsync($"error in groq response + {ex.ToString()}");
-            return null;
-        }
+
+            string data = null;
+            try { using var doc = JsonDocument.Parse(jsonResponse); data = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(); } catch { data = jsonResponse; }
+
+            GroqBulkResponse parsed = null;
+            try { parsed = JsonSerializer.Deserialize<GroqBulkResponse>(data); } 
+            catch { 
+                parsed = null; 
+            }
+            var usage = ExtractGroqUsage(jsonResponse);
+            return (parsed, usage);
+        }, "groq:expertise");
+
+        return result;
     }
     public async Task<GroqSectionResult> AnalyzeArticleExpertise(string fullArticle)
     {
@@ -480,9 +480,9 @@ A sentence qualifies if it clearly contains at least 3 of:
             model = "llama-3.3-70b-versatile",
             messages = new[]
             {
-            new { role = "system", content = systemPrompt },
-            new { role = "user", content = $"ARTICLE START\n{fullArticle}\nARTICLE END" }
-        },
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = $"ARTICLE START\n{fullArticle}\nARTICLE END" }
+            },
             response_format = new { type = "json_object" },
             temperature = 0
         };
@@ -514,12 +514,12 @@ A sentence qualifies if it clearly contains at least 3 of:
             return null;
         }
     }
+
     public static string RemoveHtmlTags(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return string.Empty;
 
-        // 1. Remove script and style blocks completely
         string noScript = Regex.Replace(input,
             @"<script[^>]*>.*?</script>",
             "",
@@ -530,23 +530,23 @@ A sentence qualifies if it clearly contains at least 3 of:
             "",
             RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
-        // 2. Remove all remaining HTML tags
         string noHtml = Regex.Replace(noStyle,
             @"<[^>]+>",
             " ");
 
-        // 3. Decode HTML entities (&nbsp;, &amp;, etc.)
         string decoded = WebUtility.HtmlDecode(noHtml);
 
-        // 4. Normalize whitespace
         string normalized = Regex.Replace(decoded,
             @"\s+",
             " ").Trim();
 
         return normalized;
     }
+
     public double CalculateArticleExpertiseScore(GroqSectionResult res, List<GeminiSentenceTag> sentences)
     {
+        if (res == null)
+            return 0.0;
         int wordCount = 0;
         double lengthFactor = wordCount > 2500 ? 0.9 : 1.0;
         sentences.ForEach(s =>
@@ -554,25 +554,24 @@ A sentence qualifies if it clearly contains at least 3 of:
            wordCount += s.Sentence.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         });
 
-        int sentenceCount = sentences
-            .Count;
+        int sentenceCount = sentences.Count;
 
         if (wordCount == 0 || sentenceCount == 0)
             return 0;
 
-        double P1 = wordCount == 0? 0 : Math.Min((res.TuCount / (double)wordCount) / 0.02, 1.0);  // 2%
-        double P2 = sentenceCount == 0? 0:Math.Min((res.LcCount / (double)sentenceCount) / 0.15, 1.0); // 15%
-        double P3 = sentenceCount == 0 ? 0 : Math.Min((res.MgCount / (double)sentenceCount) / 0.15, 1.0); // 15%
-        double P4 = sentenceCount == 0 ? 0 : Math.Min((res.SeCount / (double)sentenceCount) / 0.10, 1.0); // 10%
-        double P5 = sentenceCount == 0 ? 0 : Math.Min((res.OsCount / (double)sentenceCount) / 0.12, 1.0); // 12%
+        double P1 = wordCount == 0? 0 : Math.Min((res.TuCount / (double)wordCount) / 0.02, 1.0);
+        double P2 = sentenceCount == 0? 0:Math.Min((res.LcCount / (double)sentenceCount) / 0.15, 1.0);
+        double P3 = sentenceCount == 0 ? 0 : Math.Min((res.MgCount / (double)sentenceCount) / 0.15, 1.0);
+        double P4 = sentenceCount == 0 ? 0 : Math.Min((res.SeCount / (double)sentenceCount) / 0.10, 1.0);
+        double P5 = sentenceCount == 0 ? 0 : Math.Min((res.OsCount / (double)sentenceCount) / 0.12, 1.0);
 
         double Es = 10 * (0.15 * P1 + 0.15 * P2 + 0.20 * P3 + 0.20 * P4 + 0.30 * P5);
         Es *= lengthFactor;
         return Math.Round(Es, 2);
     }
+
     public async Task<ExpertiseFinalResult> AnalyzeExpertise(List<Section> mySections)
     {
-        // A. Groq API Call (Using your 5-marker Prompt)
         var groqInput = mySections.Select(s => new {
             sectionId = s.Id,
             content = string.Join(" ", s.Sentences)
@@ -591,43 +590,26 @@ A sentence qualifies if it clearly contains at least 3 of:
             var res = groqData.Results[i];
             var original = mySections.First(x => x.Id == res.SectionId);
 
-            // Word count aur Sentence count calculation
             int wordCount = string.Join(" ", original.Sentences).Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
             int sentenceCount = original.Sentences.Count;
             if (wordCount == 0 || sentenceCount == 0) continue;
 
-            // --- CORE ANALYTICS: DENSITY NORMALIZATION ---
-            // P1: Technical Density (Goal: 1 technical term every 10 words)
             double P1 = Math.Min((res.TuCount / (double)wordCount) / 0.10, 1.0);
-
-            // P2: Causal Density (Goal: 1 logic bridge every 3 sentences)
             double P2 = Math.Min((res.LcCount / (double)sentenceCount) / 0.33, 1.0);
-
-            // P3: Grounding Density (Goal: 1 data point every 4 sentences)
             double P3 = Math.Min((res.MgCount / (double)sentenceCount) / 0.25, 1.0);
-
-            // P4: Experience Density (Goal: 1 practitioner signal every 5 sentences)
             double P4 = Math.Min((res.SeCount / (double)sentenceCount) / 0.20, 1.0);
-
-            // P5: Operational Specificity (Goal: 1 strict O_s every 5 sentences)
-            // Note: O_s is high value, so we benchmark it at 20% of content.
             double P5 = Math.Min((res.OsCount / (double)sentenceCount) / 0.20, 1.0);
 
-            // --- EXPERTISE SCORE (Es) WEIGHTED SUM ---
-            // O_s (P5) ko 30% weight diya hai kyunki ye sabse bada Expertise indicator hai.
             double Es = 10 * (0.15 * P1 + 0.15 * P2 + 0.20 * P3 + 0.20 * P4 + 0.30 * P5);
 
-            // --- SIGNIFICANCE FACTOR (Sf) LOGIC ---
             double Sf = 1.0;
             if (i == 0 || i == totalSections - 1)
             {
-                Sf = 0.5; // Intro/Outro are less significant for deep expertise
+                Sf = 0.5;
             }
             else
             {
-                // Technical deep-dive sections get higher weight
                 Sf = 1.3;
-                // Bonus: Agar section mein Table hai toh aur significance badhao
                 if (original.SectionText.Contains("<table>")) Sf = 1.5;
             }
 
@@ -641,7 +623,6 @@ A sentence qualifies if it clearly contains at least 3 of:
                 Header = original.SectionText,
                 SectionScore = Math.Round(Es, 2),
                 Weight = W,
-                // Debugging ke liye individual P-scores bhi save kar sakte ho
             });
         }
 
@@ -653,8 +634,7 @@ A sentence qualifies if it clearly contains at least 3 of:
             SectionDetails = analysisList
         };
     }
-    // Low-level analyze (kept for compatibility)
-    // Sends an OpenAI-compatible chat/completions payload and returns assistant content (machine-parsable JSON expected).
+
     public async Task<List<PerplexitySentenceTag>> AnalyzeAsync(string payload, string systemRequirement)
     {
         var options = new JsonSerializerOptions
@@ -664,10 +644,9 @@ A sentence qualifies if it clearly contains at least 3 of:
         };
         var provider = "groq:analyze";
 
-        // Use a short-lived HttpClient with DNS re-resolve as you had before, but reuse request format below.
         var handler = new SocketsHttpHandler
         {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(2) // Re-resolve DNS periodically
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
         };
         using var client = new HttpClient(handler) { BaseAddress = _baseUri };
 
@@ -690,11 +669,10 @@ A sentence qualifies if it clearly contains at least 3 of:
                 {
                     model = "llama-3.1-8b-instant",
                     messages = new[]
-        {
-                new { role = "system", content = SentenceTaggingPrompts.GroqRevisedPrompt},
-                new { role = "user", content = payload + (!string.IsNullOrEmpty(exceptionPlaceholder)?exceptionPlaceholder:"")
-    }
-            },
+                {
+                    new { role = "system", content = SentenceTaggingPrompts.GroqRevisedPrompt },
+                    new { role = "user", content = payload + (!string.IsNullOrEmpty(exceptionPlaceholder) ? exceptionPlaceholder : "") }
+                },
                     temperature = 0.0,
                     max_tokens = 32000
                 };
@@ -747,7 +725,7 @@ A sentence qualifies if it clearly contains at least 3 of:
             }
             catch (Exception ex)
             {
-                exceptionPlaceholder+= ex.Message + " ";
+                exceptionPlaceholder += ex.Message + " ";
                 retryCount++;
                 await _logger.LogErrorAsync($"Error occured in AnalyzeAsync : GroqClient : {ex.Message}{ex.StackTrace}");
             }
@@ -812,9 +790,6 @@ A sentence qualifies if it clearly contains at least 3 of:
 
     }
 
-    // Tag sentences for Level-1 (returns PerplexitySentenceTag dto for compatibility)
-    // Added batching: process sentences in batches and then combine results into a single list.
-
     public async Task<IReadOnlyList<PerplexitySentenceTag>> TagSentencesAsync(string userContent, string systemRequirement)
     {
         return await TagArticleAsync(userContent);
@@ -824,106 +799,21 @@ A sentence qualifies if it clearly contains at least 3 of:
         var sentenceList = sentences.ToList();
         var payload = JsonSerializer.Serialize(new { sentences = sentenceList.Select(s => new { id = s.Id, text = s.Text }) });
         return await TagArticleAsync(payload);
-        //    var provider = "groq:tagging";
-        //    var key = _cache.ComputeRequestKey(payload, provider);
-
-        //    var cached = await _cache.GetAsync(key);
-        //    if (cached != null)
-        //    {
-        //        try
-        //        {
-        //            var parsed = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(cached, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        //            if (parsed != null && parsed.Count == sentenceList.Count) return parsed;
-        //        }
-        //        catch { /* ignore parse errors and continue */ }
-        //    }
-
-        //    var results = new List<PerplexitySentenceTag>();
-
-        //    // Batch size - tune as needed
-        //    const int batchSize = 20;
-
-        //    for (int offset = 0; offset < sentenceList.Count; offset += batchSize)
-        //    {
-        //        var chunk = sentenceList.Skip(offset).Take(batchSize).ToList();
-        //        string apiResponse;
-
-        //        try
-        //        {
-        //            apiResponse = await AnalyzeAsync(payload, systemRequirement);
-        //        }
-        //        catch
-        //        {
-        //            apiResponse = null!;
-        //        }
-
-        //        bool parsedChunk = false;
-
-        //        if (!string.IsNullOrWhiteSpace(apiResponse))
-        //        {
-        //            try
-        //            {
-        //                var options = new JsonSerializerOptions
-        //                {
-        //                    PropertyNameCaseInsensitive = true,
-        //                    Converters =
-        //{
-        //    new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
-        //    // or omit JsonNamingPolicy if enum names match exactly
-        //}
-        //                };
-        //                var parsed = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(apiResponse,options);
-        //                if (parsed != null)
-        //                {
-        //                    results.AddRange(parsed);
-        //                    // Map parsed entries to the original sentence IDs by position
-        //                    //for (int i = 0; i < parsed.Count; i++)
-        //                    //{
-        //                    //    var p = parsed[i];
-        //                    //    results.Add(new PerplexitySentenceTag
-        //                    //    {
-        //                    //        SentenceId = chunk[i].Id,
-        //                    //        InformativeType = p.InformativeType,
-        //                    //        ClaimsCitation = p.ClaimsCitation
-        //                    //    });
-        //                    //}
-
-        //                    parsedChunk = true;
-        //                }
-        //            }
-        //            catch
-        //            {
-        //                parsedChunk = false;
-        //            }
-        //        }
-
-        //        if (!parsedChunk)
-        //        {
-        //            // Deterministic fallback for this chunk
-        //            foreach (var s in chunk)
-        //            {
-        //                results.Add(new PerplexitySentenceTag
-        //                {
-        //                    SentenceId = s.Id,
-        //                    InformativeType = InformativeTypeDetector.Detect(s.Text),
-        //                    ClaimsCitation = CitationDetector.HasCitation(s.Text)
-        //                });
-        //            }
-        //        }
-        //    }
-
-        //    // Cache the aggregated result for the full payload
-        //    try
-        //    {
-        //        var finalJson = JsonSerializer.Serialize(results);
-        //        await _cache.SaveAsync(key, payload, finalJson, provider);
-        //    }
-        //    catch
-        //    {
-        //        // ignore cache errors
-        //    }
-
-        //    return results;
+    }
+    private object ExtractGroqUsage(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new { RawLength = 0 };
+        try
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var usageResp = JsonSerializer.Deserialize<GroqUsageResponse>(json, options);
+            if (usageResp != null)
+            {
+                return usageResp.Usage ?? (object)usageResp;
+            }
+        }
+        catch { }
+        return new { RawLength = json.Length };
     }
 }
 

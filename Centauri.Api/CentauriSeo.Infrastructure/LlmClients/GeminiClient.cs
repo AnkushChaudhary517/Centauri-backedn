@@ -581,12 +581,12 @@ JSON Schema:
 
         var request = new Google.Cloud.AIPlatform.V1.GenerateContentRequest
         {
-            Model = BuildModelEndpoint(modelId),
-            GenerationConfig = new Google.Cloud.AIPlatform.V1.GenerationConfig
-            {
-                Temperature = 0.3f,              // more deterministic (0.2–0.5 good for structured/XML tasks)
-                MaxOutputTokens = maxOutput
-            }
+            Model = BuildModelEndpoint(modelId)
+            //GenerationConfig = new Google.Cloud.AIPlatform.V1.GenerationConfig
+            //{
+            //    Temperature = 0.3f,              // more deterministic (0.2–0.5 good for structured/XML tasks)
+            //    MaxOutputTokens = maxOutput
+            //}
         };
 
     

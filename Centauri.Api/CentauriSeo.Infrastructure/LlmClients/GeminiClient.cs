@@ -651,7 +651,7 @@ JSON Schema:
             toolsList.Add(new { google_search = new { } });
 
         // Add explicit concise output constraints to the system prompt to limit verbosity
-        var constraints = $"\n\n---OUTPUT_CONSTRAINTS---\nReturn ONLY valid JSON.\nResponseMimeType: application/json.\nCandidateCount: 1.\nMaxOutputTokens: {calculatedMaxTokens}.\nBe concise: do not add explanations or examples.\n---END_CONSTRAINTS---";
+        var constraints = "";//$"\n\n---OUTPUT_CONSTRAINTS---\nReturn ONLY valid JSON.\nResponseMimeType: application/json.\nCandidateCount: 1.\nMaxOutputTokens: {calculatedMaxTokens}.\nBe concise: do not add explanations or examples.\n---END_CONSTRAINTS---";
         var effectivePrompt = prompt + constraints;
 
         var reqBody = ConvertToGenerateContentRequest(effectivePrompt, xmlContent, toolsList, _modelTagging);

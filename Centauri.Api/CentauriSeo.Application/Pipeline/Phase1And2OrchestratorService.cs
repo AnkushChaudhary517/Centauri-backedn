@@ -729,7 +729,7 @@ public class Phase1And2OrchestratorService
 
             // Call API with retry
             var retryCount = 0;
-            const int maxRetries = 1;
+            const int maxRetries = 2;
             Exception lastException = null;
 
             while (retryCount < maxRetries)

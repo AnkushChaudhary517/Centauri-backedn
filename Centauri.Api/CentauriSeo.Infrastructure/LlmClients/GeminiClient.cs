@@ -93,47 +93,6 @@ public class GeminiClient
          // Intentionally do not emit informational startup logs here to reduce noise. Errors/warnings are logged above.
          _dynamoDbService = dynamoDbService;
     }
-
-    //    public async Task<List<string>> GetCompetitorUrls(string keyword)
-    //    {
-    //        var systemPrompt = @"You are an SEO research analyst.Use Google Search grounding.Extract only factual competitor data.Output JSON only.";
-    //        string userContent = @"
-    //Role: SEO Expert & Content Strategist
-    //Task: Use the Google Search tool to find the top 5 organic results for the keyword.
-
-    //Constraints:
-    //- Output MUST be valid JSON. 
-    //- No preamble, no explanation, no markdown backticks.
-    //- If a URL cannot be accessed, skip it and move to the next organic result.
-
-    //Output will be list of string.
-    //";
-    //        var options = new JsonSerializerOptions
-    //        {
-    //            PropertyNameCaseInsensitive = true,
-    //            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    //        };
-    //        var cacheKey = _cache.ComputeRequestKey(userContent, "Gemini:CompetitorUrls");
-    //        var cachedResponse = await _cache.GetAsync(cacheKey);
-    //        if (cachedResponse != null)
-    //        {
-    //            return JsonSerializer.Deserialize<List<string>>(cachedResponse,options);
-    //        }
-    //        try
-    //        {
-    //            var responseContent = await ProcessContent(systemPrompt, userContent, false, null, true);
-    //            if (!string.IsNullOrEmpty(responseContent))
-    //            {
-    //                await _cache.SaveAsync(cacheKey, responseContent);
-    //                return JsonSerializer.Deserialize<List<string>>(cachedResponse, options);
-    //            }
-    //        }
-    //        catch (Exception ex)
-    //        {
-    //            await _logger.LogErrorAsync($"Error occured in get getting competitor urls :  {ex.Message}:{ex.StackTrace}");
-    //        }
-    //        return null;
-    //    }
     public async Task<string> GetSectionScore(string keyword)
     {
         const string provider = "Gemini:SectionScore";
@@ -227,14 +186,6 @@ JSON Schema:
             throw new LlmApiException("Failed to get section score from Gemini", provider, null, ex.Message, ex);
         }
     }
-    //public async Task<string> GetLevel1InforForAIIndexing(string primaryKeyword, List<Level1Sentence> sentences)
-    //{
-    //    var req = new {PrimaryKeyword = primaryKeyword, ContentToAnalyze = sentences?.Select(x => new { Text = x.Text, Id = x.Id, InformativeType = x.InformativeType.ToString() }) };
-    //    var start = DateTime.Now;
-    //    var responseContent = await ProcessContent(SentenceTaggingPrompts.CentauriLevel1PromptConcise, JsonSerializer.Serialize(req));
-    //    var end = DateTime.Now;
-    //    return responseContent;
-    //}
 
     public async Task<List<string>> GetLevel1InforForAIIndexing(
     string primaryKeyword,
@@ -276,83 +227,6 @@ JSON Schema:
         var end = DateTime.Now;
         return results;
     }
-
-    public async Task<double> GetPlagiarismScore(List<Sentence> sentences)
-    {
-        try
-        {
-            var prompt = @"List of string sentences is provided in the user content.Check properly. Do a deep and thourough search over internet to check for plagiarism and give Unique number of sentences. list of sentences provided in user content . Response should be json with proper unique_sentence_count (int). No other things must be there.if you cant find correct answer then also response format should be same with unique_sentence_count=0";
-            var random = new Random();
-            var r = Math.Round(sentences.Count * .1);
-            List<string> random10 = sentences
-                .OrderBy(_ => random.Next())
-                .Take((int)r)
-                .Select(x => x.Text)
-                .ToList();
-            var responseContent = await ProcessContent(prompt,JsonSerializer.Serialize(random10),false,null,true);
-
-            if(!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
-            {
-                using var doc = JsonDocument.Parse(responseContent);
-                var uniqueCount =  doc.RootElement
-                    .GetProperty("unique_sentence_count")
-                    .GetInt32();
-                var copiedCount = random10.Count - uniqueCount;
-                var p = (double)(copiedCount * 100) / (double)random10.Count;
-                if(p>20)
-                {
-                    uniqueCount = 0;
-                    var start = DateTime.Now;
-                    var responseContenListt = await ProcessContentInChunksAsync(prompt, sentences, 50);
-                    var end = DateTime.Now;
-                    responseContenListt?.ForEach(responseContent =>
-                    {
-                        if (!string.IsNullOrEmpty(responseContent) && !responseContent.Contains("error"))
-                        {
-                            using var doc2 = JsonDocument.Parse(responseContent);
-                            uniqueCount += doc2.RootElement
-                        .GetProperty("unique_sentence_count")
-                        .GetInt32();                            
-                        }
-                    });
-                    copiedCount = sentences.Count - uniqueCount;
-                    p = Math.Ceiling((copiedCount * 100.0) / (double)sentences.Count);
-
-                }
-                return p;
-            }
-        }
-        catch (Exception ex)
-        {
-            await _logger.LogErrorAsync($"Error occured in get plagiarism score :  {ex.Message}:{ex.StackTrace}");
-        }
-        return 0;
-    }
-
-    public async Task<List<string>> ProcessContentInChunksAsync(string prompt, List<Sentence> sentences, int chunkSize = 25, bool enableGoogleSearch=false)
-    {
-        if (sentences == null || !sentences.Any())
-            return new List<string>();
-
-        // Split sentences into chunks
-        List<Task<string>> tasks = new List<Task<string>>();
-        for (int i = 0; i < sentences.Count; i += chunkSize)
-        {
-            var chunk = sentences.Skip(i).Take(chunkSize).Select(x => x.Text).ToList();
-
-            // Serialize only the chunk
-            var chunkPayload = JsonSerializer.Serialize(chunk);
-
-            // Call the AI
-            tasks.Add(ProcessContent(prompt, chunkPayload,false,null,enableGoogleSearch));
-
-        }
-
-        var res = await Task.WhenAll(tasks);
-
-        return res?.ToList();
-    }
-
 
     public async Task<IReadOnlyList<GeminiSentenceTag>> TagArticleAsync(string prompt, string xmlContent, string cacheKeySuffix)
     {
@@ -463,9 +337,7 @@ JSON Schema:
         return CleanGeminiJson(result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text);
     }
 
-    /// <summary>
-    /// Return the recommendations prompt from local cache if present; otherwise fetch from Dynamo and cache it.
-    /// </summary>
+
     private async Task<string> GetCachedRecommendationsPromptAsync()
     {
         var provider = "Gemini:RecommendationsPrompt";
@@ -501,10 +373,6 @@ JSON Schema:
         return prompt;
     }
 
-    /// <summary>
-    /// Create or retrieve a server-side cached content resource in Vertex AI for the given system instruction.
-    /// Stores the returned cached content resource name in local cache for reuse.
-    /// </summary>
     private async Task<string> CreateOrGetCachedContentAsync(string systemInstruction, string modelId = null)
     {
         if (string.IsNullOrWhiteSpace(systemInstruction)) return null;
@@ -684,150 +552,7 @@ JSON Schema:
         return null;
     }
 
-    public async Task<string> GetGeminiApiResponseAsync2(object requestBody)
-    {
-        const int maxRetries = 1;
-        const int baseDelayMs = 1000;
-
-        try
-        {
-            for (int attempt = 1; attempt <= maxRetries; attempt++)
-            {
-                using var client = new HttpClient();
-                var apiUrl = BuildApiUrl(_modelDefault);
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiUrl);
-                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken.DecodeBase64());
-                httpRequest.Content = JsonContent.Create(requestBody);
-
-                HttpResponseMessage response = null;
-                try
-                {
-                    response = await client.SendAsync(httpRequest);
-                }
-                catch (Exception sendEx)
-                {
-                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Network error calling {apiUrl}. Error: {sendEx.Message}\n{sendEx.StackTrace}");
-                    if (attempt == maxRetries) return null;
-                    var wait = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
-                    await Task.Delay(wait + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
-                    continue;
-                }
-
-                var content = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    return content;
-                }
-
-                // Handle 429 - Too Many Requests
-                if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
-                {
-                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: 429 Too Many Requests from {apiUrl}. Attempt {attempt}/{maxRetries}.");
-
-                    if (attempt == maxRetries)
-                    {
-                        await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Max retry attempts reached for {apiUrl}. Returning null.");
-                        return null;
-                    }
-
-                    // Honor Retry-After header if present, otherwise exponential backoff
-                    TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
-                    await Task.Delay(retryAfter + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
-                    continue;
-                }
-
-                // Non-retryable error - log and return body
-                await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Non-retryable error from {apiUrl}. Body: {content}");
-                return content;
-            }
-
-            return null;
-        }
-        catch (Exception ex)
-        {
-            await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Exception in HTTP call. Error: {ex.Message}\n{ex.StackTrace}");
-            return null;
-        }
-    }
-
-    public async Task<string> GetGeminiApiResponseAsync3(object requestBody)
-    {
-        const int maxRetries = 1;
-        const int baseDelayMs = 1000;
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            try
-            {
-                string apiUrl = BuildApiUrl(_modelDefault);
-                string token = null;
-                try
-                {
-                    System.Environment.SetEnvironmentVariable("AWS_REGION", "ap-south-1");
-                    System.Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", "ap-south-1");
-
-                    var credential = await GoogleCredential.GetApplicationDefaultAsync();
-                    try
-                    {
-                        token = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
-                    }
-                    catch
-                    {
-                        token = null; // continue to attempt with API key if available
-                    }
-
-                    using var client = new HttpClient();
-
-                    var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiUrl);
-                    if (!string.IsNullOrWhiteSpace(token))
-                        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                    httpRequest.Content = JsonContent.Create(requestBody);
-
-                    var response = await client.SendAsync(httpRequest);
-                    var content = await response.Content.ReadAsStringAsync();
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        return content;
-                    }
-
-                    if ((int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.TooManyRequests)
-                    {
-                        await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: 429 Too Many Requests from {apiUrl}. Attempt {attempt}/{maxRetries}.");
-                        if (attempt == maxRetries)
-                        {
-                            await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Max retry attempts reached for {apiUrl} (with token). Returning null.");
-                            return null;
-                        }
-                        var backoff = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
-                        await Task.Delay(backoff + TimeSpan.FromMilliseconds(new Random().Next(0, 250)));
-                        continue;
-                    }
-
-                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Error response from {apiUrl}. Body: {content}");
-                    return content;
-                }
-                catch (Exception ex)
-                {
-                    await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Exception during HTTP call to {apiUrl}. Error: {ex.Message}\n{ex.StackTrace}");
-                    if (attempt == maxRetries) return null;
-                    await Task.Delay(TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1)));
-                }
-            }
-            catch (Exception ex)
-            {
-                await _logger.LogErrorAsync($"GEMINI_API_FAILURE_HTTP: Exception in HTTP call. Error: {ex.Message}\n{ex.StackTrace}");
-                return null;
-            }
-        }
-
-        return null;
-    }
-
     private string BuildModelEndpoint(string modelId) => $"projects/{_gcpProject}/locations/{_gcpLocation}/publishers/google/models/{modelId}";
-    private string BuildApiUrl(string modelId) => $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/{BuildModelEndpoint(modelId)}:generateContent";
-
     public Google.Cloud.AIPlatform.V1.GenerateContentRequest ConvertToGenerateContentRequest(
         string prompt,
         string xmlContent,
@@ -835,10 +560,36 @@ JSON Schema:
         string modelId = "gemini-2.5-flash",
         string cachedContentName = null)
     {
+        int approxInputTokens = prompt.Length / 4 + xmlContent.Length / 4;
+
+        // Model limit (Gemini Flash is large, but be conservative)
+        const int modelContextLimit = 1_000_000; // safe upper bound (adjust if needed)
+
+        // Keep buffer so response + tools don't overflow
+        int remaining = modelContextLimit - approxInputTokens;
+        int maxOutput = 10000;
+        if (remaining <= 0)
+            maxOutput= 1024; // fallback safe minimum
+
+        // ✅ Allocate MORE to output (not /4)
+        maxOutput = Math.Min(16384, remaining / 2);
+
+        // ✅ Hard floor for structured output
+        if (maxOutput < 2048)
+            maxOutput = 2048;
+        // Clamp output tokens
+
         var request = new Google.Cloud.AIPlatform.V1.GenerateContentRequest
         {
-            Model = BuildModelEndpoint(modelId)
+            Model = BuildModelEndpoint(modelId),
+            GenerationConfig = new Google.Cloud.AIPlatform.V1.GenerationConfig
+            {
+                Temperature = 0.3f,              // more deterministic (0.2–0.5 good for structured/XML tasks)
+                MaxOutputTokens = maxOutput
+            }
         };
+
+    
 
         if (string.IsNullOrWhiteSpace(cachedContentName))
         {
@@ -893,7 +644,7 @@ JSON Schema:
 
         int estimatedSentenceCount = (string.IsNullOrEmpty(xmlContent) ? 1 : (xmlContent.Length / 90) + 1);
         int calculatedMaxTokens = estimatedSentenceCount * 220; // safety margin
-        calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 512, 4096);
+        calculatedMaxTokens = Math.Clamp(calculatedMaxTokens, 256, 1024);
 
         var toolsList = new List<object>();
         if (enableSearch)

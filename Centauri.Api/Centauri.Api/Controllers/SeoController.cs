@@ -101,7 +101,7 @@ public class SeoController : ControllerBase
 
     private async Task<double> GetCredibilityScoreFromSentences(List<GeminiSentenceTag> sentences)
     {
-        int batchSize = 10;
+        int batchSize = 20;
         List<SentenceStrengthResponse> results = new List<SentenceStrengthResponse>();
         for (int i = 0; i < sentences.Count; i += batchSize)
         {

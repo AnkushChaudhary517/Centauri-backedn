@@ -154,7 +154,7 @@ public class LlmCacheManager : ILlmCacheManager
 
             // Try to get from cache
             var cachedResult = await GetFromCacheAsync(cacheKey, provider);
-            if (cachedResult != null)
+            if (!string.IsNullOrEmpty(cachedResult))
             {
                 stopwatch.Stop();
                 _llmLogger.LogCacheOperation("GET", cacheKey, true, stopwatch.ElapsedMilliseconds);

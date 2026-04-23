@@ -727,27 +727,30 @@ public class Phase1And2OrchestratorService
                 _llmLogger.LogDebug($"Cache miss for section scores | Keyword: {keyword}");
             }
 
-            // Call API with retry
+            // Call Gemini search-based flow and then scrape competitor pages to populate headings/contentLength
             var retryCount = 0;
-            const int maxRetries = 2;
+            const int maxRetries = 1;
             Exception lastException = null;
 
             while (retryCount < maxRetries)
             {
                 try
                 {
-                    var res = await _gemini.GetSectionScore(keyword);
-                    
-                    if (string.IsNullOrWhiteSpace(res))
-                    {
-                        throw new LlmOperationException("Gemini returned empty section score response", provider, keyword);
-                    }
+                    // Use the new Gemini method that returns structured SectionScoreResponse (SERP-grounded)
+                    var sectionScores = await _gemini.GetSectionScoreFromSearchAsync(keyword);
 
-                    var sectionScores = JsonSerializer.Deserialize<SectionScoreResponse>(res, options);
-                    
                     if (sectionScores == null)
+                        throw new LlmOperationException("Gemini returned null section score response", provider, keyword);
+
+                    // Scrape competitor URLs to populate H2/H3 headings and content lengths
+                    try
                     {
-                        throw new LlmParsingException("Failed to deserialize section scores", provider, res);
+                        sectionScores = await _gemini.ScrapeCompetitorUrlsAndPopulateAsync(sectionScores);
+                    }
+                    catch (Exception scrapeEx)
+                    {
+                        _logger.LogWarning(scrapeEx, "Scraper failed to populate competitor details; proceeding with available data");
+                        _llmLogger.LogDebug($"Scraper warning: {scrapeEx.Message}");
                     }
 
                     // Save to cache
@@ -769,7 +772,7 @@ public class Phase1And2OrchestratorService
                 {
                     lastException = ex;
                     retryCount++;
-                    
+
                     if (retryCount < maxRetries)
                     {
                         _logger.LogWarning(ex, $"Section score retrieval failed (attempt {retryCount}/{maxRetries}), retrying...");

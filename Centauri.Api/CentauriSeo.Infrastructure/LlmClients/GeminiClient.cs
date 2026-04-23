@@ -34,6 +34,9 @@ using GoogleSearchRetrieval = Google.Cloud.AIPlatform.V1.GoogleSearchRetrieval;
 using Tool = Mscc.GenerativeAI.Types.Tool;
 using Grpc.Core;
 using System.Net;
+using System.Text.RegularExpressions;
+using HtmlAgilityPack;
+using CentauriSeo.Core.Models.Outputs;
 
 namespace CentauriSeo.Infrastructure.LlmClients;
 
@@ -81,7 +84,7 @@ public class GeminiClient
             ?? System.Environment.GetEnvironmentVariable("GOOGLE_CLOUD_PROJECT")
             ?? System.Environment.GetEnvironmentVariable("GCLOUD_PROJECT")
             ?? "gen-lang-client-0445687823";
-        _gcpLocation = _config["Gemini:Location"] ?? "us-central1";
+        _gcpLocation = _config["Gemini:Location"] ?? "asia-south1";
         // Models can be configured in appsettings (fallbacks used if not provided)
         _modelDefault = _config["Gemini:Model:Default"] ?? "gemini-2.5-flash";
         _modelTagging = _config["Gemini:Model:Tagging"] ?? "gemini-2.5-flash";
@@ -507,7 +510,8 @@ JSON Schema:
                 // 1. Initialize the client using the Builder for specific regions
                 var client = await new PredictionServiceClientBuilder
                 {
-                    Endpoint = "us-central1-aiplatform.googleapis.com"
+                    Endpoint = "asia-south1-aiplatform.googleapis.com"
+                    //   Endpoint = "us-central1-aiplatform.googleapis.com"
                 }.BuildAsync();
 
                 // 2. Make the call
@@ -587,6 +591,16 @@ JSON Schema:
             //    Temperature = 0.3f,              // more deterministic (0.2–0.5 good for structured/XML tasks)
             //    MaxOutputTokens = maxOutput
             //}
+            ,
+            // Provide explicit generation config so the service knows how many tokens to produce
+            GenerationConfig = new Google.Cloud.AIPlatform.V1.GenerationConfig
+            {
+                // deterministic output for structured tagging
+                Temperature = 0.0f,
+                //MaxOutputTokens = maxOutput,
+                // Request a single candidate by default
+                CandidateCount = 1
+            }
         };
 
     
@@ -657,29 +671,30 @@ JSON Schema:
         var reqBody = ConvertToGenerateContentRequest(effectivePrompt, xmlContent, toolsList, _modelTagging);
 
         var result = await _aiCallTracker.TrackAsync(
-            reqBody,
-            async () =>
-            {
-                var res = await GetGeminiApiResponseAsync(reqBody);
-                return (res, res?.UsageMetadata);
-            },
-            $"gemini-{_modelTagging}"
-        );
+               reqBody,
+               async () =>
+               {
+                   var res = await GetGeminiApiResponseAsync(reqBody);
+                   return (res, res?.UsageMetadata);
+               },
+               $"gemini-{_modelTagging}"
+           );
 
         if (result == null)
         {
-            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateSentenceTagsDirect -> null response | Model={_modelTagging}");
-            return string.Empty;
+            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateSentenceTagsDirect -> null response | Model={_modelTagging} ");
+            return null;
         }
 
         var tagText = result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
-        if (string.IsNullOrWhiteSpace(tagText))
+        if (!string.IsNullOrWhiteSpace(tagText))
         {
-            await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateSentenceTagsDirect -> empty response text | Model={_modelTagging}");
-            return string.Empty;
+            return CleanGeminiJson(tagText);
         }
 
-        return CleanGeminiJson(tagText);
+        // All attempts exhausted
+        await _logger.LogErrorAsync($"GEMINI_API_FAILURE: GenerateSentenceTagsDirect -> empty response text  | Model={_modelTagging}");
+        return string.Empty;
     }
 
     public string CleanGeminiJson(string rawResponse)
@@ -703,6 +718,317 @@ JSON Schema:
         }
 
         return rawResponse.Trim();
+    }
+
+    /// <summary>
+    /// Perform a SERP grounded retrieval for the given keyword and return a structured SectionScoreResponse.
+    /// This uses the Google Search tool in Vertex (enabled via ProcessContent) to retrieve top competitors and intents.
+    /// </summary>
+    public async Task<SectionScoreResponse> GetSectionScoreFromSearchAsync(string keyword)
+    {
+        const string provider = "Gemini:GetSectionScoreFromSearch";
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(keyword))
+                throw new LlmValidationException("Keyword cannot be null or empty", provider, new List<string> { "Invalid keyword" });
+
+            // Build a short user instruction that instructs Gemini to use Google Search grounding and return a JSON matching SectionScoreResponse
+            var userContent = $@"Use Google Search grounding.
+
+Find up to 5 relevant organic results for the keyword.
+
+Return ONLY original source URLs (no Google redirect links).
+
+For each result:
+- url
+- intent (Informational|Navigational|Transactional|Commercial)
+- headings (only if clearly visible, else empty array)
+- contentLength = 0
+- variants various semantic/lexical/morphological variations of the keyword derived from the search results (do not return duplicates or variants that are the same as the primary keyword)
+
+
+Do NOT guess or fabricate data.
+
+Return strict JSON.
+JSON Response Schema:
+{{
+  ""competitors"": [
+    {{ 
+      ""url"": ""string"", 
+      ""headings"": [""string""], 
+      ""intent"": ""Informational|Navigational|Transactional|Commercial"", 
+      ""contentLength"": ""int"" 
+    }}
+  ],
+  ""variants"": [
+    {{
+      ""text"":""string"", 
+      ""variantType"":""Exact|Lexical|Semantic|Morphological|SearchDerived""
+    }}
+  ]
+}}
+
+Keyword: {keyword}";
+
+            // Use ProcessContent which will call Gemini with Google Search enabled
+            var raw = await ProcessContent("Use Google Search grounding.", userContent, false, null, true);
+
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                _llmLogger.LogApiCall(provider, "GetSectionScoreFromSearch", stopwatch.ElapsedMilliseconds, false, "Empty response from Gemini");
+                return null;
+            }
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
+
+            try
+            {
+                var parsed =  JsonSerializer.Deserialize<SectionScoreResponse>(raw, options);
+                if (parsed != null)
+                {
+                    // Normalize keyword
+                    parsed.KeyWord = parsed.KeyWord ?? keyword;
+
+                    // Ensure variants are present; if not, generate them via Gemini
+                    try
+                    {
+                        if (parsed.Variants == null || parsed.Variants.Count == 0)
+                        {
+                            var gen = await GeneratePrimaryKeyVariantsAsync(parsed.KeyWord, enableSearch: true);
+                            parsed.Variants = gen ?? new List<Variant2>();
+                        }
+                        else
+                        {
+                            // Ensure exact primary present and dedupe
+                            if (!parsed.Variants.Any(v => string.Equals(v.Text?.Trim(), parsed.KeyWord?.Trim(), StringComparison.OrdinalIgnoreCase)))
+                            {
+                                parsed.Variants.Insert(0, new Variant2 { Text = parsed.KeyWord, VariantType = Variant2Type.Exact });
+                            }
+                            parsed.Variants = parsed.Variants
+                                .Where(v => !string.IsNullOrWhiteSpace(v.Text))
+                                .GroupBy(v => v.Text.Trim(), StringComparer.OrdinalIgnoreCase)
+                                .Select(g => g.First())
+                                .ToList();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        await _logger.LogWarningAsync($"Failed to generate primary keyword variants: {ex.Message}");
+                    }
+
+                    stopwatch.Stop();
+                    _llmLogger.LogApiCall(provider, "GetSectionScoreFromSearch", stopwatch.ElapsedMilliseconds, true);
+                    return parsed;
+                }
+            }
+            catch (JsonException jex)
+            {
+                // Log parsing error and fallthrough to attempt a best-effort parse
+                await _logger.LogErrorAsync($"Failed to deserialize SectionScoreResponse from Gemini: {jex.Message}");
+            }
+
+            // If deserialization failed, try to extract the JSON substring heuristically
+            //try
+            //{
+            //    var start = raw.IndexOf('{');
+            //    var end = raw.LastIndexOf('}');
+            //    if (start >= 0 && end > start)
+            //    {
+            //        var json = raw.Substring(start, end - start + 1);
+            //        var parsed2 = JsonSerializer.Deserialize<SectionScoreResponse>(json, options);
+            //        if (parsed2 != null)
+            //        {
+            //            parsed2.KeyWord = parsed2.KeyWord ?? keyword;
+
+            //            try
+            //            {
+            //                if (parsed2.Variants == null || parsed2.Variants.Count == 0)
+            //                {
+            //                    parsed2.Variants = await GeneratePrimaryKeyVariantsAsync(parsed2.KeyWord, enableSearch: true);
+            //                }
+            //                else
+            //                {
+            //                    if (!parsed2.Variants.Any(v => string.Equals(v.Text?.Trim(), parsed2.KeyWord?.Trim(), StringComparison.OrdinalIgnoreCase)))
+            //                    {
+            //                        parsed2.Variants.Insert(0, new Variant2 { Text = parsed2.KeyWord, VariantType = Variant2Type.Exact });
+            //                    }
+            //                    parsed2.Variants = parsed2.Variants
+            //                        .Where(v => !string.IsNullOrWhiteSpace(v.Text))
+            //                        .GroupBy(v => v.Text.Trim(), StringComparer.OrdinalIgnoreCase)
+            //                        .Select(g => g.First())
+            //                        .ToList();
+            //                }
+            //            }
+            //            catch { }
+
+            //            stopwatch.Stop();
+            //            _llmLogger.LogApiCall(provider, "GetSectionScoreFromSearch", stopwatch.ElapsedMilliseconds, true);
+            //            return parsed2;
+            //        }
+            //    }
+            //}
+            //catch { }
+
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "GetSectionScoreFromSearch", stopwatch.ElapsedMilliseconds, false, "Unable to parse Gemini response");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "GetSectionScoreFromSearch", stopwatch.ElapsedMilliseconds, false, ex.Message);
+            throw;
+        }
+    }
+
+    // Generate primary key variants using Gemini (falls back to Exact variant only)
+    private async Task<List<Variant2>> GeneratePrimaryKeyVariantsAsync(string primaryKeyword, bool enableSearch = true)
+    {
+        if (string.IsNullOrWhiteSpace(primaryKeyword)) return new List<Variant2>();
+
+        var provider = "Gemini:GeneratePrimaryKeyVariants";
+        var systemPrompt = @"You are an SEO specialist. Generate a variant pool for the Primary Keyword.
+Return ONLY a JSON array. Each item MUST contain:
+- text: the variant string
+- variantType: one of Exact|Lexical|Semantic|Morphological|SearchDerived
+
+Do NOT include any explanatory text or markdown fences.";
+
+        var userContent = $"PrimaryKeyword: \"{primaryKeyword}\"";
+
+        try
+        {
+            var raw = await ProcessContent(systemPrompt, userContent, false, null, enableSearch);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return new List<Variant2> { new Variant2 { Text = primaryKeyword, VariantType = Variant2Type.Exact } };
+            }
+
+            var cleaned = CleanGeminiJson(raw);
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
+
+            List<Variant2> variants = null;
+            try
+            {
+                variants = JsonSerializer.Deserialize<List<Variant2>>(cleaned, options);
+            }
+            catch
+            {
+                // Try to extract JSON array substring
+                var start = cleaned.IndexOf('[');
+                var end = cleaned.LastIndexOf(']');
+                if (start >= 0 && end > start)
+                {
+                    var arr = cleaned.Substring(start, end - start + 1);
+                    try { variants = JsonSerializer.Deserialize<List<Variant2>>(arr, options); } catch { variants = null; }
+                }
+            }
+
+            variants ??= new List<Variant2>();
+
+            // Ensure exact primary present
+            if (!variants.Any(v => string.Equals(v.Text?.Trim(), primaryKeyword.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                variants.Insert(0, new Variant2 { Text = primaryKeyword, VariantType = Variant2Type.Exact });
+            }
+
+            // Deduplicate by text (case-insensitive)
+            var deduped = variants
+                .Where(v => !string.IsNullOrWhiteSpace(v.Text))
+                .GroupBy(v => v.Text.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            return deduped;
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogWarningAsync($"{provider} failed: {ex.Message}");
+            return new List<Variant2> { new Variant2 { Text = primaryKeyword, VariantType = Variant2Type.Exact } };
+        }
+    }
+
+    /// <summary>
+    /// Scrape each competitor URL in the provided SectionScoreResponse and populate Headings and ContentLength.
+    /// Uses HtmlAgilityPack to parse HTML and extract heading texts and compute word counts.
+    /// </summary>
+    public async Task<SectionScoreResponse> ScrapeCompetitorUrlsAndPopulateAsync(SectionScoreResponse input)
+    {
+        if (input == null) return null;
+
+        var client = new HttpClient() { Timeout = TimeSpan.FromSeconds(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; CentauriBot/1.0; +https://example.com)");
+
+        foreach (var comp in input.Competitors ?? new List<CentauriSeo.Core.Models.Outputs.CompetitorSectionScoreResponse>())
+        {
+            if (string.IsNullOrWhiteSpace(comp.Url))
+            {
+                comp.Headings = new List<string>();
+                comp.ContentLength = 0;
+                continue;
+            }
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, comp.Url);
+                using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseContentRead);
+
+                // If the request followed redirects, use the final Uri as canonical
+                var finalUri = resp.RequestMessage?.RequestUri?.ToString();
+                if (!string.IsNullOrWhiteSpace(finalUri) && !string.Equals(finalUri, comp.Url, StringComparison.OrdinalIgnoreCase))
+                {
+                    comp.Url = finalUri;
+                }
+
+                var html = await resp.Content.ReadAsStringAsync();
+
+                var doc = new HtmlDocument();
+                doc.LoadHtml(html);
+
+                // Remove script/style nodes
+                var nuisances = doc.DocumentNode.SelectNodes("//script|//style|//noscript");
+                if (nuisances != null)
+                {
+                    foreach (var n in nuisances) n.Remove();
+                }
+
+                // Select only H2 and H3 as requested
+                var headingNodes = doc.DocumentNode.SelectNodes("//h2|//h3");
+                var headings = new List<string>();
+                if (headingNodes != null)
+                {
+                    foreach (var hn in headingNodes)
+                    {
+                        var txt = HtmlEntity.DeEntitize(hn.InnerText ?? string.Empty).Trim();
+                        if (!string.IsNullOrWhiteSpace(txt)) headings.Add(txt);
+                    }
+                }
+
+                // Extract visible text from body
+                var bodyNode = doc.DocumentNode.SelectSingleNode("//body") ?? doc.DocumentNode;
+                var visibleText = HtmlEntity.DeEntitize(bodyNode.InnerText ?? string.Empty);
+                var cleansed = Regex.Replace(visibleText, "\\s+", " ").Trim();
+                var wordCount = 0;
+                if (!string.IsNullOrWhiteSpace(cleansed))
+                {
+                    wordCount = Regex.Matches(cleansed, "\\b\\w+\\b").Count;
+                }
+
+                comp.Headings = headings.Distinct().ToList();
+                comp.ContentLength = wordCount;
+            }
+            catch (Exception ex)
+            {
+                // On failure, set defaults and log
+                comp.Headings = comp.Headings ?? new List<string>();
+                comp.ContentLength = 0;
+                await _logger.LogWarningAsync($"Failed to scrape competitor URL: {comp.Url} | Error: {ex.Message}");
+            }
+        }
+
+        return input;
     }
 }
 

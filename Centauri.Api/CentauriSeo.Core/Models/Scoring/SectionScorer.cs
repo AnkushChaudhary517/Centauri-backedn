@@ -62,6 +62,23 @@ public static class SectionScorer
                 totalWeight += weigthDict[k];
             }
         });
+        // Extra: award 1 point per "genuine" competitor to favor SERP results that are actual article pages
+        // Definition: genuine => has at least one H2/H3 heading and a non-trivial content length (>= 150 words)
+        if (competitors != null && competitors.Count > 0)
+        {
+            int genuineCount = 0;
+            foreach (var c in competitors)
+            {
+                if (c != null && c.Headings != null && c.Headings.Count > 0 && c.ContentLength >= 150)
+                {
+                    genuineCount++;
+                }
+            }
+
+            // Add the genuine competitor bonus (1 point each)
+            totalWeight += genuineCount;
+        }
+
         return Math.Round(totalWeight, 2);
         //// --- PILLAR 1: SUB-TOPIC COVERAGE SCORE (Base 5) ---
         //double subTopicScore = 0;

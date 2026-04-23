@@ -32,7 +32,8 @@ namespace Centauri_Api.Impl
                 {
                     Email = googleLoginRequest.Email,
                     AcceptTerms = true,
-                    IsGoogleLogin = true
+                    IsGoogleLogin = true,
+                    FirstName = googleLoginRequest.Name
                 });
                 user = await _dynamoDbService.GetUserByEmail(googleLoginRequest.Email);
                 await _dynamoDbService.CreateUserSubscription(new CentauriSeo.Core.Entitites.CentauriUserSubscription()

@@ -49,7 +49,15 @@ namespace Centauri_Api.Impl
                     TrialEndsAt = DateTime.UtcNow.AddDays(14),
                     TrialStartAt = DateTime.UtcNow
                 });
-                _verificationService.SendVerificationCodeAsync(googleLoginRequest.Email, "freetrial", user.FirstName, 0, true);
+                try
+                {
+                    await _verificationService.SendVerificationCodeAsync(googleLoginRequest.Email, "freetrial", user.FirstName, 0, true);
+
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error creating user subscription: {ex.Message}");
+                }
             }
             var token = _tokenService.GenerateAccessToken(user);
             var refreshToken = _tokenService.GenerateRefreshToken();

@@ -655,83 +655,84 @@ A sentence qualifies if it clearly contains at least 3 of:
 
 
         string rawResponse = null;
-        var retryCount = 0;
-        var isSuccessful = false;
-        var exceptionPlaceholder = "";
-        string assistantContent = rawResponse;
+        string assistantContent = null;
 
-        while (retryCount < 2 && !isSuccessful)
+        try
         {
-
-            try
+            var requestBody = new
             {
-                var requestBody = new
-                {
-                    model = "llama-3.1-8b-instant",
-                    messages = new[]
+                model = "llama-3.1-8b-instant",
+                messages = new[]
                 {
                     new { role = "system", content = SentenceTaggingPrompts.GroqRevisedPrompt },
-                    new { role = "user", content = payload + (!string.IsNullOrEmpty(exceptionPlaceholder) ? exceptionPlaceholder : "") }
+                    new { role = "user", content = payload }
                 },
-                    temperature = 0.0,
-                    max_tokens = 32000
-                };
-                using var stringContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-                rawResponse = await _aiCallTracker.TrackAsync(
+                temperature = 0.0,
+                max_tokens = 32000
+            };
+
+            using var stringContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            rawResponse = await _aiCallTracker.TrackAsync(
                 requestBody,
-                    async () =>
-                    {
-                        var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
-                        var r = await res.Content.ReadAsStringAsync();
-                        return (r, (JsonSerializer.Deserialize<GroqUsageResponse>(r, options)).Usage);
-
-                    },
-                    "groq:llama-3.1-8b-instant"
-                );
-
-                using var doc = JsonDocument.Parse(rawResponse);
-
-                if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+                async () =>
                 {
-                    var first = choices[0];
-                    if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content))
-                    {
-                        assistantContent = content.GetString() ?? rawResponse;
-                    }
-                    else if (first.TryGetProperty("text", out var text))
-                    {
-                        assistantContent = text.GetString() ?? rawResponse;
-                    }
-                    else if (first.TryGetProperty("delta", out var delta) && delta.TryGetProperty("content", out var dcontent))
-                    {
-                        assistantContent = dcontent.GetString() ?? rawResponse;
-                    }
+                    var res = await client.PostAsync("/openai/v1/chat/completions", stringContent);
+                    var r = await res.Content.ReadAsStringAsync();
+                    return (r, (JsonSerializer.Deserialize<GroqUsageResponse>(r, options)).Usage);
+
+                },
+                "groq:llama-3.1-8b-instant"
+            );
+
+            using var doc = JsonDocument.Parse(rawResponse);
+
+            if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+            {
+                var first = choices[0];
+                if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content))
+                {
+                    assistantContent = content.GetString() ?? rawResponse;
                 }
-                if (!string.IsNullOrWhiteSpace(assistantContent))
+                else if (first.TryGetProperty("text", out var text))
                 {
-                    string json = assistantContent
-                        .Replace("```json", "")
-                        .Replace("```", "")
-                        .Trim();
-                    var start = json.IndexOf("[");
-                    var end = json.LastIndexOf("]");
+                    assistantContent = text.GetString() ?? rawResponse;
+                }
+                else if (first.TryGetProperty("delta", out var delta) && delta.TryGetProperty("content", out var dcontent))
+                {
+                    assistantContent = dcontent.GetString() ?? rawResponse;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(assistantContent))
+            {
+                string json = assistantContent
+                    .Replace("```json", "")
+                    .Replace("```", "")
+                    .Trim();
+                var start = json.IndexOf("[");
+                var end = json.LastIndexOf("]");
+                if (start >= 0 && end > start)
+                {
                     string inner = "[" + json.Substring(start + 1, end - start - 1) + "]";
                     json = inner;
-                    var re = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(json, options);
-                    isSuccessful = true;
-                    return re;
-
+                    try
+                    {
+                        var re = JsonSerializer.Deserialize<List<PerplexitySentenceTag>>(json, options);
+                        return re;
+                    }
+                    catch { return null; }
                 }
             }
-            catch (Exception ex)
-            {
-                exceptionPlaceholder += ex.Message + " ";
-                retryCount++;
-                await _logger.LogErrorAsync($"Error occured in AnalyzeAsync : GroqClient : {ex.Message}{ex.StackTrace}");
-            }
+
+            // No useful content returned
+            await _logger.LogErrorAsync("GROQ_API_FAILURE: AnalyzeAsync -> empty assistant content");
+            return null;
         }
-    
-    return null;
+        catch (Exception ex)
+        {
+            await _logger.LogErrorAsync($"Error occured in AnalyzeAsync : GroqClient : {ex.Message}{ex.StackTrace}");
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<PerplexitySentenceTag>> TagArticleAsync(string article)
@@ -761,8 +762,8 @@ A sentence qualifies if it clearly contains at least 3 of:
             {
                 _llmLogger.LogWarning("TagArticleAsync returned empty response");
                 stopwatch.Stop();
-                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, true);
-                return new List<PerplexitySentenceTag>();
+                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, false, "Empty response from Groq");
+                return null;
             }
 
             stopwatch.Stop();
@@ -800,9 +801,9 @@ A sentence qualifies if it clearly contains at least 3 of:
         var payload = JsonSerializer.Serialize(new { sentences = sentenceList.Select(s => new { id = s.Id, text = s.Text }) });
         return await TagArticleAsync(payload);
     }
-    private object ExtractGroqUsage(string json)
+    private object ExtractGroqUsage(String json)
     {
-        if (string.IsNullOrWhiteSpace(json)) return new { RawLength = 0 };
+        if (String.IsNullOrWhiteSpace(json)) return new { RawLength = 0 };
         try
         {
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };

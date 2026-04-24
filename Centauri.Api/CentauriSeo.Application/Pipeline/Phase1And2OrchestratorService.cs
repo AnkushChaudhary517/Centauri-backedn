@@ -537,108 +537,94 @@ public class Phase1And2OrchestratorService
 
             var cacheKey = _cache.ComputeRequestKey(prompt, "Chatgpt:Arbitration");
             var cached = await _cache.GetAsync(cacheKey);
-            var done = false;
-            var exception = string.Empty;
-            var retryCount = 0;
 
-            while (!done && retryCount < 1)
+            try
             {
-                try
+                string aiRaw;
+                if (cached != null)
                 {
-                    string aiRaw;
-                    if (cached != null)
+                    _llmLogger.LogDebug("Using cached arbitration response");
+                    aiRaw = cached;
+                }
+                else
+                {
+                    var arbitrationStopwatch = Stopwatch.StartNew();
+                    aiRaw = await _openAi.CompleteAsync(prompt);
+                    arbitrationStopwatch.Stop();
+                    _llmLogger.LogDebug($"OpenAI arbitration completed | DurationMs: {arbitrationStopwatch.ElapsedMilliseconds}");
+                }
+
+                if (string.IsNullOrWhiteSpace(aiRaw))
+                    throw new LlmOperationException("OpenAI returned empty arbitration response", provider, $"MismatchCount: {mismatchedSentences.Count}");
+
+                var options = new JsonSerializerOptions
+                {
+                    Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+                    PropertyNameCaseInsensitive = true
+                };
+
+                if (chatGptDecisions != null && chatGptDecisions.Any())
+                {
+                    var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
+                    if (res != null && res.Choices != null)
                     {
-                        _llmLogger.LogDebug("Using cached arbitration response");
-                        aiRaw = cached;
-                    }
-                    else
-                    {
-                        if (!string.IsNullOrEmpty(exception))
+                        var content = res.Choices.FirstOrDefault()?.Message?.Content;
+                        if (!string.IsNullOrWhiteSpace(content))
                         {
-                            prompt += $"Exception : this error occured in previous call. Do not repeat the error again and fix the response. : {exception}.";
-                        }
-                        
-                        var arbitrationStopwatch = Stopwatch.StartNew();
-                        aiRaw = await _openAi.CompleteAsync(prompt);
-                        arbitrationStopwatch.Stop();
-                        _llmLogger.LogDebug($"OpenAI arbitration completed | DurationMs: {arbitrationStopwatch.ElapsedMilliseconds}");
-                    }
-
-                    if (string.IsNullOrWhiteSpace(aiRaw))
-                    {
-                        throw new LlmOperationException("OpenAI returned empty arbitration response", provider, $"MismatchCount: {mismatchedSentences.Count}");
-                    }
-
-                    var options = new JsonSerializerOptions
-                    {
-                        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-                        PropertyNameCaseInsensitive = true
-                    };
-
-                    if (chatGptDecisions != null && chatGptDecisions.Any())
-                    {
-                        var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
-                        if (res != null && res.Choices != null)
-                        {
-                            var content = res.Choices.FirstOrDefault()?.Message?.Content;
-                            if (!string.IsNullOrWhiteSpace(content))
+                            var decisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
+                            if (decisions != null && decisions.Count > 0)
                             {
-                                var decisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
-                                if (decisions != null && decisions.Count > 0)
+                                chatGptDecisions.AddRange(decisions);
+
+                                try
                                 {
-                                    chatGptDecisions.AddRange(decisions);
-                                    
-                                    try
-                                    {
-                                        await _cache.SaveAsync(cacheKey, aiRaw);
-                                        _llmLogger.LogDebug("Arbitration result cached");
-                                    }
-                                    catch (Exception cacheEx)
-                                    {
-                                        _logger.LogWarning(cacheEx, "Failed to cache arbitration result");
-                                    }
+                                    await _cache.SaveAsync(cacheKey, aiRaw);
+                                    _llmLogger.LogDebug("Arbitration result cached");
+                                }
+                                catch (Exception cacheEx)
+                                {
+                                    _logger.LogWarning(cacheEx, "Failed to cache arbitration result");
                                 }
                             }
                         }
                     }
-                    else
+                }
+                else
+                {
+                    var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
+                    var content = res?.Choices?.FirstOrDefault()?.Message?.Content;
+                    chatGptDecisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
+
+                    if (chatGptDecisions != null)
                     {
-                        var res = JsonSerializer.Deserialize<ChatGptResponse>(aiRaw, options);
-                        var content = res?.Choices?.FirstOrDefault()?.Message?.Content;
-                        chatGptDecisions = JsonSerializer.Deserialize<List<ChatgptGeminiSentenceTag>>(content, options);
-                        
-                        if (chatGptDecisions != null)
+                        try
                         {
-                            try
-                            {
-                                await _cache.SaveAsync(cacheKey, aiRaw);
-                                _llmLogger.LogDebug("Arbitration result cached");
-                            }
-                            catch (Exception cacheEx)
-                            {
-                                _logger.LogWarning(cacheEx, "Failed to cache arbitration result");
-                            }
+                            await _cache.SaveAsync(cacheKey, aiRaw);
+                            _llmLogger.LogDebug("Arbitration result cached");
+                        }
+                        catch (Exception cacheEx)
+                        {
+                            _logger.LogWarning(cacheEx, "Failed to cache arbitration result");
                         }
                     }
+                }
 
-                    done = true;
-                    stopwatch.Stop();
-                    _llmLogger.LogApiCall(provider, "HandleMismatchSentences", stopwatch.ElapsedMilliseconds, true);
-                }
-                catch (JsonException jsonEx)
-                {
-                    exception = jsonEx.Message;
-                    retryCount++;
-                    _logger.LogWarning(jsonEx, $"JSON parsing error in arbitration (attempt {retryCount})");
-                    _llmLogger.LogDebug($"JSON parsing error in arbitration");
-                }
-                catch (Exception ex)
-                {
-                    exception = ex.Message;
-                    retryCount++;
-                    _logger.LogWarning(ex, $"Error in arbitration (attempt {retryCount})");
-                    _llmLogger.LogDebug($"Error in arbitration | {ex.Message}");
-                }
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "HandleMismatchSentences", stopwatch.ElapsedMilliseconds, true);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogWarning(jsonEx, "JSON parsing error in arbitration");
+                _llmLogger.LogDebug("JSON parsing error in arbitration");
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "HandleMismatchSentences", stopwatch.ElapsedMilliseconds, false, jsonEx.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error in arbitration");
+                _llmLogger.LogDebug($"Error in arbitration | {ex.Message}");
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "HandleMismatchSentences", stopwatch.ElapsedMilliseconds, false, ex.Message);
             }
 
             return chatGptDecisions;
@@ -728,65 +714,47 @@ public class Phase1And2OrchestratorService
             }
 
             // Call Gemini search-based flow and then scrape competitor pages to populate headings/contentLength
-            var retryCount = 0;
-            const int maxRetries = 1;
-            Exception lastException = null;
-
-            while (retryCount < maxRetries)
+            try
             {
+                // Use the new Gemini method that returns structured SectionScoreResponse (SERP-grounded)
+                var sectionScores = await _gemini.GetSectionScoreFromSearchAsync(keyword);
+
+                if (sectionScores == null)
+                    throw new LlmOperationException("Gemini returned null section score response", provider, keyword);
+
+                // Scrape competitor URLs to populate H2/H3 headings and content lengths (best-effort)
                 try
                 {
-                    // Use the new Gemini method that returns structured SectionScoreResponse (SERP-grounded)
-                    var sectionScores = await _gemini.GetSectionScoreFromSearchAsync(keyword);
-
-                    if (sectionScores == null)
-                        throw new LlmOperationException("Gemini returned null section score response", provider, keyword);
-
-                    // Scrape competitor URLs to populate H2/H3 headings and content lengths
-                    try
-                    {
-                        sectionScores = await _gemini.ScrapeCompetitorUrlsAndPopulateAsync(sectionScores);
-                    }
-                    catch (Exception scrapeEx)
-                    {
-                        _logger.LogWarning(scrapeEx, "Scraper failed to populate competitor details; proceeding with available data");
-                        _llmLogger.LogDebug($"Scraper warning: {scrapeEx.Message}");
-                    }
-
-                    // Save to cache
-                    try
-                    {
-                        await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(sectionScores));
-                        _llmLogger.LogDebug("Section scores cached");
-                    }
-                    catch (Exception cacheEx)
-                    {
-                        _logger.LogWarning(cacheEx, "Failed to cache section scores");
-                    }
-
-                    stopwatch.Stop();
-                    _llmLogger.LogApiCall(provider, "GetSectionScore", stopwatch.ElapsedMilliseconds, true);
-                    return sectionScores;
+                    sectionScores = await _gemini.ScrapeCompetitorUrlsAndPopulateAsync(sectionScores);
                 }
-                catch (Exception ex)
+                catch (Exception scrapeEx)
                 {
-                    lastException = ex;
-                    retryCount++;
-
-                    if (retryCount < maxRetries)
-                    {
-                        _logger.LogWarning(ex, $"Section score retrieval failed (attempt {retryCount}/{maxRetries}), retrying...");
-                        _llmLogger.LogDebug($"Retrying GetSectionScore | Attempt: {retryCount}/{maxRetries}");
-                        await Task.Delay(1000 * retryCount); // Exponential backoff
-                    }
+                    _logger.LogWarning(scrapeEx, "Scraper failed to populate competitor details; proceeding with available data");
+                    _llmLogger.LogDebug($"Scraper warning: {scrapeEx.Message}");
                 }
-            }
 
-            stopwatch.Stop();
-            _logger.LogError(lastException, $"Failed to get section scores after {maxRetries} attempts for keyword: {keyword}");
-            _llmLogger.LogApiCall(provider, "GetSectionScore", stopwatch.ElapsedMilliseconds, false, lastException?.Message);
-            
-            throw new LlmApiException("Failed to retrieve section scores", provider, null, lastException?.Message, lastException);
+                // Save to cache
+                try
+                {
+                    await _cache.SaveAsync(cacheKey, JsonSerializer.Serialize(sectionScores));
+                    _llmLogger.LogDebug("Section scores cached");
+                }
+                catch (Exception cacheEx)
+                {
+                    _logger.LogWarning(cacheEx, "Failed to cache section scores");
+                }
+
+                stopwatch.Stop();
+                _llmLogger.LogApiCall(provider, "GetSectionScore", stopwatch.ElapsedMilliseconds, true);
+                return sectionScores;
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, $"Failed to get section scores for keyword: {keyword}");
+                _llmLogger.LogApiCall(provider, "GetSectionScore", stopwatch.ElapsedMilliseconds, false, ex.Message);
+                throw;
+            }
         }
         catch (LlmValidationException)
         {

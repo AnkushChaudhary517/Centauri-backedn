@@ -58,6 +58,9 @@ namespace CentauriSeo.Core.Modules.Notification
             else if(type.ToLower() == "freetrial" && (!string.IsNullOrEmpty(firstName)|| fromGoogleAuth))
             {
                 (subject, body) = GetFreeTrialSubjectAndBody(firstName);
+                var path = "Resources\\Centauri Ideal Upload File Sample.docx";
+                await _emailSender.SendEmailAsync(email, subject, body,path);
+                return;
             } 
             else if(type.ToLower() == "midtrial" && !string.IsNullOrEmpty(firstName))
             {
@@ -301,121 +304,109 @@ namespace CentauriSeo.Core.Modules.Notification
         private (string subject, string body) GetFreeTrialSubjectAndBody(string firstName)
         {
             var fileName = "Centauri Ideal Upload File Sample.docx";
-            var request = new GetPreSignedUrlRequest
-            {
-                BucketName = "centauri-data",
-                Key = fileName,
-                Expires = DateTime.UtcNow.AddHours(24),
-                ResponseHeaderOverrides = new ResponseHeaderOverrides
-                {
-                    ContentDisposition = $"attachment; filename={fileName}",
-                    ContentType = "application/octet-stream"
-                }
-            };
-            var s3Client = new AmazonS3Client();
-            string fileUrl = s3Client.GetPreSignedURL(request);
+            // Use a local file shipped with the application (e.g. in a Resources or Assets folder).
+            // Do NOT attempt to fetch from S3 here.
+            var localRelativePath = System.IO.Path.Combine("Resources", fileName);
+
             string subject = "You're in. Here’s what you can do with Centauri";
 
-            string body = @$"
+            string body = $@"
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset='UTF-8'>
-    <title>Welcome to Centauri</title>
+ <meta charset='UTF-8'>
+ <title>Welcome to Centauri</title>
 </head>
 <body style='margin:0; padding:0; font-family: Arial, sans-serif; background-color:#f4f4f4;'>
-    <table width='100%' cellpadding='0' cellspacing='0' style='background-color:#f4f4f4; padding:20px;'>
-        <tr>
-            <td align='center'>
-                <table width='600' cellpadding='0' cellspacing='0' style='background:#ffffff; padding:30px; border-radius:8px;'>
+ <table width='100%' cellpadding='0' cellspacing='0' style='background-color:#f4f4f4; padding:20px;'>
+ <tr>
+ <td align='center'>
+ <table width='600' cellpadding='0' cellspacing='0' style='background:#ffffff; padding:30px; border-radius:8px;'>
 
-                    <tr>
-                        <td style='font-size:18px; color:#333333;'>
-                            Hi {firstName},
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:18px; color:#333333;'>
+ Hi {firstName},
+ </td>
+ </tr>
 
-                    <tr><td height='15'></td></tr>
+ <tr><td height='15'></td></tr>
 
-                    <tr>
-                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
-                            Your email has been verified, and your <strong>Centauri 14-day free trial</strong> is now active.
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:14px; color:#555555; line-height:1.6;'>
+ Your email has been verified, and your <strong>Centauri14-day free trial</strong> is now active.
+ </td>
+ </tr>
 
-                    <tr><td height='20'></td></tr>
+ <tr><td height='20'></td></tr>
 
-                    <tr>
-                        <td style='font-size:15px; color:#333333; font-weight:bold;'>
-                            Here’s what you get in your free trial:
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:15px; color:#333333; font-weight:bold;'>
+ Here’s what you get in your free trial:
+ </td>
+ </tr>
 
-                    <tr><td height='10'></td></tr>
+ <tr><td height='10'></td></tr>
 
-                    <tr>
-                        <td style='font-size:14px; color:#555555; line-height:1.8;'>
-                            • Analyze up to 5 articles<br/>
-                            • Access all scoring and recommendations<br/>
-                            • Valid for 14 days
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:14px; color:#555555; line-height:1.8;'>
+ • Analyze up to 5 articles<br/>
+ • Access all scoring and recommendations<br/>
+ • Valid for14 days
+ </td>
+ </tr>
 
-                    <tr><td height='20'></td></tr>
+ <tr><td height='20'></td></tr>
 
-                    <tr>
-                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
-                            Centauri helps you go beyond surface-level SEO and GEO. You’ll see exactly where your article stands across structure, authority, and readability, along with clear suggestions on what to fix.
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:14px; color:#555555; line-height:1.6;'>
+ Centauri helps you go beyond surface-level SEO and GEO. You’ll see exactly where your article stands across structure, authority, and readability, along with clear suggestions on what to fix.
+ </td>
+ </tr>
 
 
-                    <tr>
-                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
-                            Centauri works best when your content is clearly structured. That’s how it identifies gaps across structure, authority, and readability.
-                        </td>
-                    </tr>
-                    <tr><td height='20'></td></tr>
+ <tr>
+ <td style='font-size:14px; color:#555555; line-height:1.6;'>
+ Centauri works best when your content is clearly structured. That’s how it identifies gaps across structure, authority, and readability.
+ </td>
+ </tr>
+ <tr><td height='20'></td></tr>
 
-                    <tr>
-                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
-                            To help you get accurate results, we’ve created a <strong>sample file showing exactly how your content should be formatted before uploading.</strong> 
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:14px; color:#555555; line-height:1.6;'>
+ To help you get accurate results, we’ve created a <strong>sample file showing exactly how your content should be formatted before uploading.</strong>
+ </td>
+ </tr>
 
-                    <tr><td height='20'></td></tr>
-                        <tr>
-                        <td style='font-size:14px; color:#555555; line-height:1.6;'>
-                            You can access it here:
-<a href=""{fileUrl}"" target=""_blank"">
-{fileName}
-</a>
-                        </td>
-                    </tr>
+ <tr><td height='20'></td></tr>
+ <tr>
+ <td style='font-size:14px; color:#555555; line-height:1.6;'>
+ The sample file is included with this email as an attachment: <strong>{fileName}</strong>
+ </td>
+ </tr>
 <tr><td height='30'></td></tr>
 <tr>
-    <td style='font-size:14px; color:#555555; line-height:1.8;'>
-        This sample shows:
-        <ul style='margin:10px 0 0 20px; padding:0;'>
-            <li>How to mark Title, H2, H3, and paragraphs</li>
-            <li>How to structure lists and tables</li>
-            <li>How to clearly define metadata like Meta Title and Description</li>
-        </ul>
-    </td>
+ <td style='font-size:14px; color:#555555; line-height:1.8;'>
+ This sample shows:
+ <ul style='margin:10px0020px; padding:0;'>
+ <li>How to mark Title, H2, H3, and paragraphs</li>
+ <li>How to structure lists and tables</li>
+ <li>How to clearly define metadata like Meta Title and Description</li>
+ </ul>
+ </td>
 </tr>
 <tr><td height='30'></td></tr>
 
-                    <tr>
-                        <td style='font-size:14px; color:#333333;'>
-                            Cheers,<br/>
-                            <strong>Team Centauri</strong>
-                        </td>
-                    </tr>
+ <tr>
+ <td style='font-size:14px; color:#333333;'>
+ Cheers,<br/>
+ <strong>Team Centauri</strong>
+ </td>
+ </tr>
 
-                </table>
-            </td>
-        </tr>
-    </table>
+ </table>
+ </td>
+ </tr>
+ </table>
 </body>
 </html>";
             return (subject, body);
@@ -619,6 +610,12 @@ namespace CentauriSeo.Core.Modules.Notification
         {
             var random = new Random();
             return random.Next(100000, 999999).ToString();
+        }
+
+        public async Task SendEmailWithAttachmentAsync(string toEmail, string subject, string body, string attachmentFilePath)
+        {
+            if (string.IsNullOrWhiteSpace(toEmail)) throw new ArgumentException("toEmail is required", nameof(toEmail));
+            await _emailSender.SendEmailAsync(toEmail, subject, body, attachmentFilePath);
         }
     }
 }

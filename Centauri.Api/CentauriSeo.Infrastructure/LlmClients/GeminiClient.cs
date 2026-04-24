@@ -261,8 +261,8 @@ JSON Schema:
             {
                 _llmLogger.LogWarning("TagArticleAsync returned empty response", new Dictionary<string, object> { { "CacheSuffix", cacheKeySuffix } });
                 stopwatch.Stop();
-                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, true);
-                return new List<GeminiSentenceTag>();
+                _llmLogger.LogApiCall(provider, "Tag Article", stopwatch.ElapsedMilliseconds, false, "Empty response from Gemini");
+                return null;
             }
 
             try

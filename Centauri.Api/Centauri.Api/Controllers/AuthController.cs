@@ -168,7 +168,15 @@ public class AuthController : ControllerBase
             TrialEndsAt = DateTime.UtcNow.AddDays(14),
             TrialStartAt = DateTime.UtcNow
         });
-        _verificationService.SendVerificationCodeAsync(request.Email, "freetrial",request.FirstName);
+        try
+        {
+            await _verificationService.SendVerificationCodeAsync(request.Email, "freetrial", request.FirstName);
+
+        }
+        catch
+        {
+
+        }
 
         return CreatedAtAction(nameof(Register), ApiResponseHelper.Success("Account created successfully. Please verify your email."));
     }
@@ -394,7 +402,7 @@ public class AuthController : ControllerBase
                 { "code", code },
                 { "client_id", _config["GoogleAuth:ClientId"] },
                 { "client_secret", _config["GoogleAuth:ClientSecret"] },
-                { "redirect_uri", $"https://api.getcentauri.com/api/v1/auth/callback" },
+                { "redirect_uri", $"https://localhost:7206/api/v1/auth/callback" },
                 { "grant_type", "authorization_code" }
             })
         );

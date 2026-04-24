@@ -58,9 +58,6 @@ namespace CentauriSeo.Core.Modules.Notification
             else if(type.ToLower() == "freetrial" && (!string.IsNullOrEmpty(firstName)|| fromGoogleAuth))
             {
                 (subject, body) = GetFreeTrialSubjectAndBody(firstName);
-                var path = "Resources\\Centauri Ideal Upload File Sample.docx";
-                await _emailSender.SendEmailAsync(email, subject, body,path);
-                return;
             } 
             else if(type.ToLower() == "midtrial" && !string.IsNullOrEmpty(firstName))
             {
@@ -380,7 +377,7 @@ namespace CentauriSeo.Core.Modules.Notification
  <tr><td height='20'></td></tr>
  <tr>
  <td style='font-size:14px; color:#555555; line-height:1.6;'>
- The sample file is included with this email as an attachment: <strong>{fileName}</strong>
+ You can access it here: <a href=""https://docs.google.com/document/d/1vjn7_ZrDfpix4A0iKBS-W3Y4LYiaw94WS1oqw0gejAM/edit?usp=drivesdk"" target=""_blank"">Centauri Ideal Upload File Sample.docx</a>
  </td>
  </tr>
 <tr><td height='30'></td></tr>

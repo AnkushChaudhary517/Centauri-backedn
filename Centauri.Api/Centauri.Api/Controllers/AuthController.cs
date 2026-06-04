@@ -369,6 +369,7 @@ public class AuthController : ControllerBase
         var scopes = "openid email profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents";
         var scopeEncoded = Uri.EscapeDataString(scopes);
 
+
         var googleAuthUrl =
             "https://accounts.google.com/o/oauth2/v2/auth" +
             "?response_type=code" +

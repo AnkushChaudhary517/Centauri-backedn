@@ -366,7 +366,7 @@ public class AuthController : ControllerBase
     public IActionResult GoogleLogin([FromQuery] string redirect_uri)
     {
         // Build the scope string including Drive and Docs scopes
-        var scopes = "openid email profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents";
+        var scopes = "openid email profile";
         var scopeEncoded = Uri.EscapeDataString(scopes);
 
 

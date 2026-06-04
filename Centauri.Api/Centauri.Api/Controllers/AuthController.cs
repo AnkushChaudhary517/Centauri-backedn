@@ -1,5 +1,4 @@
-﻿
-using Centauri_Api.Interface;
+﻿using Centauri_Api.Interface;
 using Centauri_Api.Model;
 using CentauriSeo.Core.Modules.Notification;
 using CentauriSeo.Infrastructure.Logging;
@@ -15,6 +14,7 @@ using ForgotPasswordRequest = Centauri_Api.Model.ForgotPasswordRequest;
 using LoginRequest = Centauri_Api.Model.LoginRequest;
 using RegisterRequest = Centauri_Api.Model.RegisterRequest;
 using ResetPasswordRequest = Centauri_Api.Model.ResetPasswordRequest;
+using System.Web;
 
 namespace Centauri_Api.Controllers;
 
@@ -365,12 +365,16 @@ public class AuthController : ControllerBase
     [HttpGet("google")]
     public IActionResult GoogleLogin([FromQuery] string redirect_uri)
     {
+        // Build the scope string including Drive and Docs scopes
+        var scopes = "openid email profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents";
+        var scopeEncoded = Uri.EscapeDataString(scopes);
+
         var googleAuthUrl =
             "https://accounts.google.com/o/oauth2/v2/auth" +
             "?response_type=code" +
             $"&client_id={_config["GoogleAuth:ClientId"]}" +
             $"&redirect_uri={redirect_uri}" +
-            "&scope=openid%20email%20profile" +
+            $"&scope={scopeEncoded}" +
             "&access_type=offline" +
             "&prompt=consent" +
             $"&state={Uri.EscapeDataString(redirect_uri)}";

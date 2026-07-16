@@ -40,6 +40,7 @@ public class SeoResponse
     public bool IsCompleted { get; set; } = false;  
     public string RequestId { get; set; } = Guid.NewGuid().ToString();
     public string Status { get; set; } = "partial";
+    public AnalysisProgressDto Progress { get; set; }
 
     public InputIntegrity InputIntegrity { get; set; } = new();
 
@@ -66,6 +67,18 @@ public class SeoResponse
     public OrchestratorResponse? Level2InputResponse { get; set; }
     public SeoRequest Request { get; set; }
     public string Error { get; set; }
+}
+
+public class AnalysisProgressDto
+{
+    public string RequestId { get; set; }
+    public int Percentage { get; set; }
+    public string Stage { get; set; }
+    public string Message { get; set; }
+    public bool IsCompleted { get; set; }
+    public bool IsError { get; set; }
+    public string ErrorDetail { get; set; }
+    public DateTime TimestampUtc { get; set; }
 }
 
 public class InputIntegrity

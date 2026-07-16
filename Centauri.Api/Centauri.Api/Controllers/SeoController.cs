@@ -51,9 +51,10 @@ public class SeoController : ControllerBase
     private readonly ILlmLogger _llmLogger;
     private readonly IMockDataService _mockDataService;
     private readonly IRecommendationFeedbackService _feedbackService;
+    private readonly IAnalysisProgressReporter _progressReporter;
 
     public SeoController(Phase1And2OrchestratorService orchestrator, IHttpContextAccessor httpContextAccessor, GroqClient groqClient,
-        IMemoryCache cache, IDynamoDbService dynamoDbService, ILogger<SeoController> logger, ILlmLogger llmLogger, IMockDataService mockDataService, IRecommendationFeedbackService feedbackService)
+        IMemoryCache cache, IDynamoDbService dynamoDbService, ILogger<SeoController> logger, ILlmLogger llmLogger, IMockDataService mockDataService, IRecommendationFeedbackService feedbackService, IAnalysisProgressReporter progressReporter)
     {
         _orchestrator = orchestrator;
         _httpContextAccessor = httpContextAccessor;
@@ -64,6 +65,7 @@ public class SeoController : ControllerBase
         _llmLogger = llmLogger ?? throw new ArgumentNullException(nameof(llmLogger));
         _mockDataService = mockDataService ?? throw new ArgumentNullException(nameof(mockDataService));
         _feedbackService = feedbackService ?? throw new ArgumentNullException(nameof(feedbackService));
+        _progressReporter = progressReporter ?? throw new ArgumentNullException(nameof(progressReporter));
     }
 
     [HttpPost("categories-test")]
@@ -99,10 +101,11 @@ public class SeoController : ControllerBase
         return await GetCredibilityScoreFromSentences(fullLocalLlmTags.Sentences);
     }
 
-    private async Task<double> GetCredibilityScoreFromSentences(List<GeminiSentenceTag> sentences)
+    private async Task<double> GetCredibilityScoreFromSentences(List<GeminiSentenceTag> sentences, string requestId = null)
     {
         int batchSize = 20;
         List<SentenceStrengthResponse> results = new List<SentenceStrengthResponse>();
+        _progressReporter.Report(requestId, 68, "credibility_score", "Checking credibility signals across the article.");
         for (int i = 0; i < sentences.Count; i += batchSize)
         {
             var batchSentences = sentences.Skip(i).Take(batchSize).ToList();
@@ -111,6 +114,10 @@ public class SeoController : ControllerBase
             {
                 results.AddRange(res);
             }
+
+            var completed = Math.Min(i + batchSize, sentences.Count);
+            var percentage = 68 + (int)Math.Round((completed / (double)Math.Max(sentences.Count, 1)) * 6);
+            _progressReporter.Report(requestId, percentage, "credibility_score", "Checking credibility signals across the article.");
         }
 
         IEnumerable<ValidatedSentence> validatedSentences = new List<ValidatedSentence>();
@@ -134,13 +141,16 @@ public class SeoController : ControllerBase
                 });
             }
         });
+        _progressReporter.Report(requestId, 75, "credibility_score", "Credibility signals are ready.");
         return CredibilityScorer.Score(validatedSentences);
     }
-    private  async Task<double> GetExpertiseScore(string articleText, List<GeminiSentenceTag> sentences)
+    private  async Task<double> GetExpertiseScore(string articleText, List<GeminiSentenceTag> sentences, string requestId = null)
     {
+        _progressReporter.Report(requestId, 62, "expertise_score", "Reviewing expertise and depth signals.");
         var res = await _groqClient.AnalyzeArticleExpertise(articleText);
-
-        return _groqClient.CalculateArticleExpertiseScore(res, sentences);
+        var score = _groqClient.CalculateArticleExpertiseScore(res, sentences);
+        _progressReporter.Report(requestId, 67, "expertise_score", "Expertise signals are ready.");
+        return score;
     }
 
     [HttpPost("authority")]
@@ -201,6 +211,15 @@ public class SeoController : ControllerBase
                 if (mockResponse != null)
                 {
                     mockResponse.RequestId = Guid.NewGuid().ToString();
+                    mockResponse.Progress = new AnalysisProgressDto
+                    {
+                        RequestId = mockResponse.RequestId,
+                        Percentage = 100,
+                        Stage = "completed",
+                        Message = "Analysis complete. Your SEO report is ready.",
+                        IsCompleted = true,
+                        TimestampUtc = DateTime.UtcNow
+                    };
                     stopwatch.Stop();
                     _llmLogger.LogApiCall(provider, "Analyze (Mock)", stopwatch.ElapsedMilliseconds, true);
                     return Ok(mockResponse);
@@ -320,6 +339,15 @@ public class SeoController : ControllerBase
                 if (mockResponse != null)
                 {
                     mockResponse.RequestId = Guid.NewGuid().ToString();
+                    mockResponse.Progress = new AnalysisProgressDto
+                    {
+                        RequestId = mockResponse.RequestId,
+                        Percentage = 100,
+                        Stage = "completed",
+                        Message = "Analysis complete. Your SEO report is ready.",
+                        IsCompleted = true,
+                        TimestampUtc = DateTime.UtcNow
+                    };
                     stopwatch.Stop();
                     _llmLogger.LogApiCall(provider, "Analyze (Mock)", stopwatch.ElapsedMilliseconds, true);
                     return Ok(mockResponse);
@@ -353,26 +381,28 @@ public class SeoController : ControllerBase
             var analyzeResponse = new SeoResponse();
             var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
             var cacheKey2 = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}_isAnalysisStarted";
+            var requestIdCacheKey = $"{cacheKey}__requestId";
 
             var cachedData = _cache.Get(cacheKey);
             var isAnalysisStarted = _cache.Get(cacheKey2);
 
             if (isAnalysisStarted != null)
             {
+                var progressRequestId = GetProgressRequestId(request, requestIdCacheKey);
+                analyzeResponse.RequestId = progressRequestId;
+                AttachCachedProgress(analyzeResponse, progressRequestId);
                 _llmLogger.LogDebug($"Analysis already in progress | CacheKey: {cacheKey}");
                 if (cachedData != null)
                 {
                     stopwatch.Stop();
                     _llmLogger.LogApiCall(provider, "Analyze (Cached)", stopwatch.ElapsedMilliseconds, true);
                     var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
-                    return Ok(JsonSerializer.Deserialize<SeoResponse>(cachedData?.ToString(), options));
+                    var cachedResponse = JsonSerializer.Deserialize<SeoResponse>(cachedData?.ToString(), options);
+                    AttachCachedProgress(cachedResponse, progressRequestId);
+                    return Ok(cachedResponse);
                 }
                 return Ok(analyzeResponse);
             }
-
-            _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
-            stopwatch.Stop();
-            _llmLogger.LogApiCall(provider, "Analyze (Initiated)", stopwatch.ElapsedMilliseconds, true);
 
             // Ensure RequestId is set and available on HttpContext
             var ctx = _httpContextAccessor.HttpContext;
@@ -381,6 +411,14 @@ public class SeoController : ControllerBase
             // Ensure RequestId is set on the request so it can be referenced by ReAnalyze
             if (string.IsNullOrWhiteSpace(request.RequestId))
                 request.RequestId = correlationId;
+
+            analyzeResponse.RequestId = request.RequestId;
+            _cache.Set(cacheKey2, true, TimeSpan.FromMinutes(15));
+            _cache.Set(requestIdCacheKey, request.RequestId, TimeSpan.FromMinutes(25));
+            _progressReporter.Report(request.RequestId, 5, "queued", "Analysis has started. Preparing your article for review.");
+            AttachCachedProgress(analyzeResponse, request.RequestId);
+            stopwatch.Stop();
+            _llmLogger.LogApiCall(provider, "Analyze (Initiated)", stopwatch.ElapsedMilliseconds, true);
 
             // Also ensure the HttpContext items/headers reflect the RequestId so AiCallTracker will store consistent CorrelationId
             try
@@ -462,6 +500,40 @@ public class SeoController : ControllerBase
         return trialEnded;
     }
 
+    private string GetProgressRequestId(SeoRequest request, string requestIdCacheKey)
+    {
+        if (!string.IsNullOrWhiteSpace(request?.RequestId))
+            return request.RequestId;
+
+        var cachedRequestId = _cache.Get<string>(requestIdCacheKey);
+        if (!string.IsNullOrWhiteSpace(cachedRequestId))
+            return cachedRequestId;
+
+        return Guid.NewGuid().ToString();
+    }
+
+    private void AttachCachedProgress(SeoResponse response, string requestId)
+    {
+        if (response == null || string.IsNullOrWhiteSpace(requestId))
+            return;
+
+        var cachedProgress = _progressReporter.Get(requestId);
+        if (cachedProgress == null)
+            return;
+
+        response.Progress = new AnalysisProgressDto
+        {
+            RequestId = cachedProgress.RequestId,
+            Percentage = cachedProgress.Percentage,
+            Stage = cachedProgress.Stage,
+            Message = cachedProgress.Message,
+            IsCompleted = cachedProgress.IsCompleted,
+            IsError = cachedProgress.IsError,
+            ErrorDetail = cachedProgress.ErrorDetail,
+            TimestampUtc = cachedProgress.TimestampUtc
+        };
+    }
+
     private async Task<SeoResponse> GetAnalysisResult(SeoRequest request, string userId, RecommendationResponseDTO previousRecommendations = null)
     {
         const string provider = "SeoController:GetAnalysisResult";
@@ -504,12 +576,15 @@ public class SeoController : ControllerBase
             var topIssues = new List<TopIssue>();
 
             // Validate input integrity
+            _progressReporter.Report(request.RequestId, 8, "input_review", "Checking the article details and available SEO inputs.");
             response.InputIntegrity = EnsureInputIntegrity(request);
 
             // Get sentence tagging from local LLM
+            _progressReporter.Report(request.RequestId, 12, "article_mapping", "Breaking the article into sentences and sections.");
             var localTagStopwatch = Stopwatch.StartNew();
             var fullLocalLlmTags = await GetFullSentenceTaggingFromLocalLLP(request.PrimaryKeyword, request.Article.Raw);
             localTagStopwatch.Stop();
+            _progressReporter.Report(request.RequestId, 28, "article_mapping", "Article structure is ready. Reviewing sentence signals now.");
             _llmLogger.LogDebug($"Local LLM tagging completed | DurationMs: {localTagStopwatch.ElapsedMilliseconds}");
 
             if (fullLocalLlmTags?.Sentences == null || fullLocalLlmTags.Sentences.Count == 0)
@@ -528,12 +603,14 @@ public class SeoController : ControllerBase
                 .ToList();
 
             // Update informative types from Groq
-            await UpdateInformativeTypeFromGroq(options, fullLocalLlmTags);
+            await UpdateInformativeTypeFromGroq(options, fullLocalLlmTags, request.RequestId);
 
             // Run orchestrator
+            _progressReporter.Report(request.RequestId, 42, "content_review", "Checking content relevance, keyword coverage, and intent alignment.");
             var orchestratorStopwatch = Stopwatch.StartNew();
             OrchestratorResponse orchestratorResponse = await _orchestrator.RunAsync(request, fullLocalLlmTags);
             orchestratorStopwatch.Stop();
+            _progressReporter.Report(request.RequestId, 55, "content_review", "Core content review is complete. Calculating score details.");
             _llmLogger.LogDebug($"Orchestrator completed | DurationMs: {orchestratorStopwatch.ElapsedMilliseconds}");
 
             if (orchestratorResponse?.ValidatedSentences == null || orchestratorResponse.ValidatedSentences.Count == 0)
@@ -591,12 +668,14 @@ public class SeoController : ControllerBase
             }).ToList();
 
             // Compute scores
+            _progressReporter.Report(request.RequestId, 58, "score_calculation", "Calculating SEO, readability, and relevance scores.");
             response.Level2InputResponse = orchestratorResponse;
             response.Request = request;
             var l2 = Level2Engine.Compute(request, orchestratorResponse);
-            l2.ExpertiseScore = await GetExpertiseScore(request.Article.Raw, fullLocalLlmTags.Sentences);
-            l2.CredibilityScore = await GetCredibilityScoreFromSentences(fullLocalLlmTags.Sentences);
+            l2.ExpertiseScore = await GetExpertiseScore(request.Article.Raw, fullLocalLlmTags.Sentences, request.RequestId);
+            l2.CredibilityScore = await GetCredibilityScoreFromSentences(fullLocalLlmTags.Sentences, request.RequestId);
 
+            _progressReporter.Report(request.RequestId, 78, "score_calculation", "Combining the score signals into the final SEO view.");
             var l3 = Level3Engine.Compute(l2);
             var l4 = Level4Engine.Compute(l2, l3);
 
@@ -620,11 +699,13 @@ public class SeoController : ControllerBase
 
             // Get recommendations
             //var recommendationStopwatch = Stopwatch.StartNew();
+            _progressReporter.Report(request.RequestId, 86, "recommendations", "Preparing clear improvement suggestions for the article.");
             var sectionResponse = await _orchestrator.GetSectionScoreResAsync(request.PrimaryKeyword);
             RecommendationResponseDTO recommendationResponse = null;
             try
             {
                 recommendationResponse = await _orchestrator.GetFullRecommendationsAsync(request, fullLocalLlmTags.Sentences, sections, l2, orchestratorResponse, previousRecommendations);
+                _progressReporter.Report(request.RequestId, 94, "recommendations", "Recommendations are ready. Finalizing the report.");
                 
                 // Cache recommendations by RequestId so they can be reused during reanalyze
                 if (recommendationResponse != null)
@@ -660,6 +741,8 @@ public class SeoController : ControllerBase
             response.InputIntegrity.Status = allPresent ? "success" : "partial";
             response.Status = allPresent ? "success" : "partial";
             response.IsCompleted = true;
+            _progressReporter.Report(request.RequestId, 100, "completed", "Analysis complete. Your SEO report is ready.", true);
+            AttachCachedProgress(response, request.RequestId);
 
             // Cache result
             var cacheStopwatch = Stopwatch.StartNew();
@@ -697,10 +780,13 @@ public class SeoController : ControllerBase
 
             var errorResponse = new SeoResponse()
             {
+                RequestId = request?.RequestId,
                 IsCompleted = true,
                 Error = opEx.Message,
                 Status = "error"
             };
+            _progressReporter.Report(request?.RequestId, 100, "error", "Analysis could not be completed.", true, true, opEx.Message);
+            AttachCachedProgress(errorResponse, request?.RequestId);
             
             var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.Article.Raw}";
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
@@ -716,10 +802,13 @@ public class SeoController : ControllerBase
 
             var errorResponse = new SeoResponse()
             {
+                RequestId = request?.RequestId,
                 IsCompleted = true,
                 Error = "An unexpected error occurred during analysis",
                 Status = "error"
             };
+            _progressReporter.Report(request?.RequestId, 100, "error", "Analysis could not be completed.", true, true, ex.Message);
+            AttachCachedProgress(errorResponse, request?.RequestId);
 
             try
             {
@@ -775,7 +864,7 @@ public class SeoController : ControllerBase
         }
     }
 
-    private async Task UpdateInformativeTypeFromGroq(JsonSerializerOptions options, AiIndexinglevelLocalLlmResponse fullLocalLlmTags)
+    private async Task UpdateInformativeTypeFromGroq(JsonSerializerOptions options, AiIndexinglevelLocalLlmResponse fullLocalLlmTags, string requestId = null)
     {
         const string provider = "SeoController:UpdateInformativeTypeFromGroq";
         var stopwatch = Stopwatch.StartNew();
@@ -788,6 +877,7 @@ public class SeoController : ControllerBase
                 return;
             }
 
+            _progressReporter.Report(requestId, 32, "sentence_review", "Reviewing how each sentence contributes to the article.");
             _llmLogger.LogDebug($"Updating informative types | SentenceCount: {fullLocalLlmTags.Sentences.Count}");
 
             var requestData = fullLocalLlmTags.Sentences
@@ -796,6 +886,7 @@ public class SeoController : ControllerBase
                 .ToList();
 
             var res = await _groqClient.UpdateInformativeType(JsonSerializer.Serialize(requestData));
+            _progressReporter.Report(requestId, 38, "sentence_review", "Sentence-level review is complete.");
             
             if (string.IsNullOrWhiteSpace(res))
             {

@@ -115,6 +115,7 @@ builder.Services.AddHttpClient<GroqClient>(c =>
 });
 
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IAnalysisProgressReporter, MemoryAnalysisProgressReporter>();
 var openAiKey = builder.Configuration["OpenAiKey"]?.DecodeBase64();
 
 // register LLM clients (HttpClient already configured earlier)

@@ -1,6 +1,12 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
 using Amazon.S3;
+using Centauri.ContentArchitect.Backend.Configuration;
+using Centauri.ContentArchitect.Backend.Controllers;
+using Centauri.ContentArchitect.Backend.Services;
+using Centauri.ContentArchitect.Backend.Services.Calculators;
+using Centauri.ContentArchitect.Backend.Services.Clients;
+using Centauri.ContentArchitect.Backend.Services.Parsers;
 using Centauri_Api.Impl;
 using Centauri_Api.Interface;
 using Centauri_Api.Middleware;
@@ -21,17 +27,28 @@ using Microsoft.IdentityModel.Tokens;
 using Stripe;
 using System.Text;
 using IDynamoDbService = CentauriSeo.Infrastructure.Services.IDynamoDbService;
+using CAIGeminiClient = Centauri.ContentArchitect.Backend.Services.IGeminiClient;
+using CAGeminiClient = Centauri.ContentArchitect.Backend.Services.Clients.GeminiClient;
+using CAISitemapService = Centauri.ContentArchitect.Backend.Services.ISitemapService;
+using CASitemapService = Centauri.ContentArchitect.Backend.Services.Parsers.SitemapService;
 
 var builder = WebApplication.CreateBuilder(args);
 var awsOptions = builder.Configuration.GetAWSOptions();
 builder.Services.AddDefaultAWSOptions(awsOptions);
+
+// Content Architect configuration
+builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("ExternalApis:DataForSeo"));
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("ExternalApis:Gemini"));
+builder.Services.Configure<SearchConsoleOptions>(builder.Configuration.GetSection("ExternalApis:SearchConsole"));
+builder.Services.Configure<AnalysisOptions>(builder.Configuration.GetSection("Analysis"));
 
 // DynamoDB client
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 
 // DynamoDBContext for DI
 builder.Services.AddSingleton<IDynamoDBContext, DynamoDBContext>();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddApplicationPart(typeof(AnalysisController).Assembly);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSwaggerGen();
 builder.Services.AddAWSService<IAmazonDynamoDB>();
@@ -39,6 +56,25 @@ builder.Services.AddSingleton<AiUsageRepository>();
 builder.Services.AddSingleton<AiCallTracker>();
 builder.Services.AddSingleton<IInvoiceService,CentauriSeo.Core.Invoice.InvoiceService>();
 builder.Services.AddSingleton<IPdfService, CentauriSeo.Core.Invoice.PdfService>();
+
+// Content Architect services
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IContentArchitectService, ContentArchitectService>();
+builder.Services.AddScoped<IKeywordCalculator, KeywordCalculator>();
+builder.Services.AddScoped<KeywordDifficultyCalculator>();
+builder.Services.AddScoped<IndexabilityCalculator>();
+builder.Services.AddScoped<TrafficPotentialCalculator>();
+builder.Services.AddScoped<QuestionCoverageCalculator>();
+builder.Services.AddScoped<ContentGapCalculator>();
+builder.Services.AddScoped<EeatInformationGainCalculator>();
+builder.Services.AddScoped<IKeywordDataClient, DataForSeoClient>();
+builder.Services.AddScoped<ISerpDataClient, DataForSeoClient>();
+builder.Services.AddScoped<IBacklinkDataClient, DataForSeoClient>();
+builder.Services.AddScoped<ISearchConsoleClient, GoogleSearchConsoleClient>();
+builder.Services.AddScoped<IPublicIndexabilityClient, PublicIndexabilityClient>();
+builder.Services.AddScoped<CAIGeminiClient, CAGeminiClient>();
+builder.Services.AddScoped<IWebPageParser, HtmlWebPageParser>();
+builder.Services.AddScoped<CAISitemapService, CASitemapService>();
 
 // CORS - allow React dev origin by default, configurable via appsettings.json
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
@@ -118,17 +154,28 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IAnalysisProgressReporter, MemoryAnalysisProgressReporter>();
 var openAiKey = builder.Configuration["OpenAiKey"]?.DecodeBase64();
 
-// register LLM clients (HttpClient already configured earlier)
+builder.Services.AddHttpClient();
+
+builder.Services.AddTransient<CentauriSeo.Infrastructure.LlmClients.GeminiClient>(sp =>
+{
+    var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient();
+    return new CentauriSeo.Infrastructure.LlmClients.GeminiClient(
+        http,
+        sp.GetRequiredService<ILlmCacheService>(),
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<AiCallTracker>(),
+        sp.GetRequiredService<IHttpContextAccessor>(),
+        sp.GetRequiredService<ILlmCacheManager>(),
+        sp.GetRequiredService<ILogger<LlmLogger>>(),
+        sp.GetRequiredService<IDynamoDbService>());
+});
+
+builder.Services.AddScoped<CAIGeminiClient, CAGeminiClient>();
+
 builder.Services.AddHttpClient<OpenAiClient>(c =>
 {
     c.BaseAddress = new Uri("https://api.openai.com");
     c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiKey}");
-});
-
-builder.Services.AddHttpClient<GeminiClient>(c =>
-{
-    c.BaseAddress = new Uri("https://generativelanguage.googleapis.com");
-    c.DefaultRequestHeaders.Add("x-goog-api-key", "AIzaSyB2NNIPmTtdbZV7sjNgDeVgyVkyqOa0Rt8");
 });
 
 builder.Services.AddHttpClient<PerplexityClient>(c =>
@@ -161,8 +208,11 @@ builder.Services.AddSingleton<IRecommendationFeedbackService, RecommendationFeed
 
 builder.Services.AddSingleton<IRazorpayService, RazorpayService>();
 // Application services
-builder.Services.AddSingleton<ITokenService,Centauri_Api.Impl.TokenService>();
+builder.Services.AddSingleton<CentauriSeo.Infrastructure.Services.ISitemapService, CentauriSeo.Infrastructure.Services.SitemapService>();
+builder.Services.AddSingleton<IGeminiService, GeminiService>();
+
 builder.Services.AddSingleton<IAuthService, AuthService>();
+builder.Services.AddSingleton<Centauri_Api.Interface.ITokenService, Centauri_Api.Impl.TokenService>();
 
 // Register billing services & repositories (DynamoDB client is already registered earlier)
 //builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.StripeService>();

@@ -1,5 +1,4 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36616.10
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -10,6 +9,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CentauriSeo.Infrastructure", "CentauriSeo.Infrastructure\CentauriSeo.Infrastructure.csproj", "{95BBD184-C373-4465-9CE5-CFC8FD232062}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Centauri.Api", "Centauri.Api\Centauri.Api.csproj", "{C206AC13-DD5B-9C0A-30B6-A143561B16A6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Centauri.ContentArchitect.Backend", "..\..\Centauri.ContentArchitect.Backend\Centauri.ContentArchitect.Backend.csproj", "{3EA028D5-6E9F-4C70-A8D2-EC24AA0F0CE2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +34,10 @@ Global
 		{C206AC13-DD5B-9C0A-30B6-A143561B16A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C206AC13-DD5B-9C0A-30B6-A143561B16A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C206AC13-DD5B-9C0A-30B6-A143561B16A6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3EA028D5-6E9F-4C70-A8D2-EC24AA0F0CE2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3EA028D5-6E9F-4C70-A8D2-EC24AA0F0CE2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3EA028D5-6E9F-4C70-A8D2-EC24AA0F0CE2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3EA028D5-6E9F-4C70-A8D2-EC24AA0F0CE2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

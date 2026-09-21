@@ -1,0 +1,862 @@
+{
+  "version": "0.1.20260902",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "3.2572 sec.",
+  "cost": 0.002,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "09062055-2474-0139-0000-a5b08c8f80aa",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "3.1241 sec.",
+      "cost": 0.002,
+      "result_count": 1,
+      "path": [ "v3", "serp", "google", "organic", "live", "advanced" ],
+      "data": {
+        "api": "serp",
+        "function": "live",
+        "se": "google",
+        "se_type": "organic",
+        "keyword": "CRM tools",
+        "language_code": "en",
+        "location_code": 2840,
+        "device": "desktop",
+        "os": "windows",
+        "depth": 10
+      },
+      "result": [
+        {
+          "keyword": "CRM tools",
+          "type": "organic",
+          "se_domain": "google.com",
+          "location_code": 2840,
+          "language_code": "en",
+          "check_url": "https://www.google.com/search?q=CRM%20tools\u0026hl=en\u0026gl=US\u0026ie=UTF-8\u0026uule=w\u002BCAIQIFISCQs2MuSEtepUEUK33kOSuTsc",
+          "datetime": "2026-09-06 20:55:51 \u002B00:00",
+          "spell": null,
+          "refinement_chips": null,
+          "item_types": [ "ai_overview", "organic", "people_also_ask", "perspectives", "related_searches" ],
+          "se_results_count": 118,
+          "pages_count": 1,
+          "items_count": 12,
+          "items": [
+            {
+              "type": "ai_overview",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]",
+              "asynchronous_ai_overview": false,
+              "markdown": "![What Is CRM Tool? An introduction and Uses of CRM tools in 2025](https://api.dataforseo.com/cdn/i/09062055-2474-0139-0000-a5b08c8f80aa:4)\nCRM (Customer Relationship Management) tools are \u0060software platforms that centralize customer data, track interactions, and automate sales, marketing, and support workflows\u0060.[](https://www.salesforce.com/crm/what-is-crm/) [[1]](https://www.salesforce.com/crm/what-is-crm/)[[2]](https://www.pipedrive.com/en/crm/compare/crm-tool)[[3]](https://www.zoho.com/crm/what-is-crm.html)\n\nTop CRM Tools\n\n- **[HubSpot](https://www.hubspot.com/products/crm):** Best for marketing-led teams and beginners due to its robust free tier, clean interface, and integrated marketing hubs.\n- **[Salesforce](https://www.salesforce.com/crm/what-is-crm/):** Best for enterprise-grade scalability and complex, highly customizable setups.\n- **Pipedrive:** Best for sales-first small and medium businesses that need fast, visual deal progression.\n- **[Zoho CRM](https://www.zoho.com/crm):** Best for budget-conscious teams wanting deep customization, multi-channel communication, and advanced analytics.\n- **[Microsoft Dynamics 365 Sales](https://www.microsoft.com/en-us/dynamics-365/topics/crm/crm-tools):** Best for businesses looking to unify operations and leverage LinkedIn Sales Navigator integrations.[](https://www.pipedrive.com/en/crm/compare/crm-tool) [[1]](https://www.pipedrive.com/en/crm/compare/crm-tool)[[2]](https://www.youtube.com/watch?v=Zq1kfwRWkmk\u0026t=836)[[3]](https://www.youtube.com/watch?v=8lIyddD40as\u0026t=174)[[4]](https://www.zendesk.com/sell/crm/)\n\nCore Features\n\n- **Contact Management:** Store customer profiles, communication history, and key details in one place.\n- **Deal Pipelines:** Visualize sales opportunities across customizable stages from lead to closed deal.\n- **Activity Tracking:** Automatically log emails, calls, and meetings.\n- **Automation \u0026 AI:** Automate repetitive emails, task assignments, and predictive lead scoring.[](https://www.uschamber.com/co/start/strategy/low-cost-crm-tools) [[1]](https://www.uschamber.com/co/start/strategy/low-cost-crm-tools)[[2]](https://www.hubspot.com/products/crm/what-is)[[3]](https://www.salesforce.com/crm/video/)\n\nIf you\u0027d like, tell me:\n\n- What is your **business size** and **budget**?\n- Which **primary team** (sales, marketing, or support) will use it most?\n\nI can recommend the ideal CRM for your specific workflow.",
+              "items": [
+                {
+                  "type": "ai_overview_element",
+                  "position": "left",
+                  "title": null,
+                  "text": "CRM (Customer Relationship Management) tools are software platforms that centralize customer data, track interactions, and automate sales, marketing, and support workflows.",
+                  "markdown": "![What Is CRM Tool? An introduction and Uses of CRM tools in 2025](https://api.dataforseo.com/cdn/i/09062055-2474-0139-0000-a5b08c8f80aa:2)\nCRM (Customer Relationship Management) tools are \u0060software platforms that centralize customer data, track interactions, and automate sales, marketing, and support workflows\u0060.[](https://www.salesforce.com/crm/what-is-crm/) [[1]](https://www.salesforce.com/crm/what-is-crm/)[[2]](https://www.pipedrive.com/en/crm/compare/crm-tool)[[3]](https://www.zoho.com/crm/what-is-crm.html)",
+                  "links": null,
+                  "images": [
+                    {
+                      "type": "images_element",
+                      "alt": "What Is CRM Tool? An introduction and Uses of CRM tools in 2025",
+                      "url": null,
+                      "image_url": "https://api.dataforseo.com/cdn/i/09062055-2474-0139-0000-a5b08c8f80aa:3"
+                    }
+                  ],
+                  "references": [
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "Salesforce",
+                      "domain": "www.salesforce.com",
+                      "url": "https://www.salesforce.com/crm/what-is-crm/",
+                      "title": "What Is CRM (Customer Relationship Management)? - Salesforce",
+                      "text": "The goal is simple: improve relationships to grow your business. CRM technology helps companies stay connected to customers, strea..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "Pipedrive",
+                      "domain": "www.pipedrive.com",
+                      "url": "https://www.pipedrive.com/en/crm/compare/crm-tool",
+                      "title": "Best CRM Tools for 2026: top 15 compared - Pipedrive",
+                      "text": "What are the best CRM tools in 2026? The best CRM tools in 2026 include Pipedrive, Salesforce, SAP, Microsoft Dynamics 365 Sales, ..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "Zoho",
+                      "domain": "www.zoho.com",
+                      "url": "https://www.zoho.com/crm/what-is-crm.html",
+                      "title": "What is CRM? | CRM System - Definition - Benefits - Features - Zoho",
+                      "text": "CRM stands for Customer Relationship Management. Businesses use CRM software as a repository to unite and streamline sales, market..."
+                    }
+                  ]
+                },
+                {
+                  "type": "ai_overview_element",
+                  "position": "left",
+                  "title": "Top CRM Tools",
+                  "text": "HubSpot : Best for marketing-led teams and beginners due to its robust free tier, clean interface, and integrated marketing hubs. Salesforce : Best for enterprise-grade scalability and complex, highly customizable setups. Pipedrive : Best for sales-first small and medium businesses that need fast, visual deal progression. Zoho CRM : Best for budget-conscious teams wanting deep customization, multi-channel communication, and advanced analytics. Microsoft Dynamics 365 Sales : Best for businesses looking to unify operations and leverage LinkedIn Sales Navigator integrations.",
+                  "markdown": "- **[HubSpot](https://www.hubspot.com/products/crm):** Best for marketing-led teams and beginners due to its robust free tier, clean interface, and integrated marketing hubs.\n- **[Salesforce](https://www.salesforce.com/crm/what-is-crm/):** Best for enterprise-grade scalability and complex, highly customizable setups.\n- **Pipedrive:** Best for sales-first small and medium businesses that need fast, visual deal progression.\n- **[Zoho CRM](https://www.zoho.com/crm):** Best for budget-conscious teams wanting deep customization, multi-channel communication, and advanced analytics.\n- **[Microsoft Dynamics 365 Sales](https://www.microsoft.com/en-us/dynamics-365/topics/crm/crm-tools):** Best for businesses looking to unify operations and leverage LinkedIn Sales Navigator integrations.[](https://www.pipedrive.com/en/crm/compare/crm-tool) [[1]](https://www.pipedrive.com/en/crm/compare/crm-tool)[[2]](https://www.youtube.com/watch?v=Zq1kfwRWkmk\u0026t=836)[[3]](https://www.youtube.com/watch?v=8lIyddD40as\u0026t=174)[[4]](https://www.zendesk.com/sell/crm/)",
+                  "links": [
+                    {
+                      "type": "link_element",
+                      "title": "HubSpot",
+                      "description": null,
+                      "url": "https://www.hubspot.com/products/crm",
+                      "domain": "www.hubspot.com"
+                    },
+                    {
+                      "type": "link_element",
+                      "title": "Salesforce",
+                      "description": null,
+                      "url": "https://www.salesforce.com/crm/what-is-crm/",
+                      "domain": "www.salesforce.com"
+                    },
+                    {
+                      "type": "link_element",
+                      "title": "Zoho CRM",
+                      "description": null,
+                      "url": "https://www.zoho.com/crm",
+                      "domain": "www.zoho.com"
+                    },
+                    {
+                      "type": "link_element",
+                      "title": "Microsoft Dynamics 365 Sales",
+                      "description": null,
+                      "url": "https://www.microsoft.com/en-us/dynamics-365/topics/crm/crm-tools",
+                      "domain": "www.microsoft.com"
+                    }
+                  ],
+                  "images": null,
+                  "references": [
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "Pipedrive",
+                      "domain": "www.pipedrive.com",
+                      "url": "https://www.pipedrive.com/en/crm/compare/crm-tool",
+                      "title": "Best CRM Tools for 2026: top 15 compared - Pipedrive",
+                      "text": "What are the best CRM tools in 2026? The best CRM tools in 2026 include Pipedrive, Salesforce, SAP, Microsoft Dynamics 365 Sales, ..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "YouTube",
+                      "domain": "www.youtube.com",
+                      "url": "https://www.youtube.com/watch?v=Zq1kfwRWkmk\u0026t=836",
+                      "title": "BEST CRM Software | Tested 15 CRMs for 2026 (HONEST Opinion)",
+                      "text": "BEST CRM Software | Tested 15 CRMs for 2026 (HONEST Opinion) and don\u0027t want extra clutter Pipe Drive is your best bet tap the link..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "YouTube",
+                      "domain": "www.youtube.com",
+                      "url": "https://www.youtube.com/watch?v=8lIyddD40as\u0026t=174",
+                      "title": "3 Best Free CRM Tools (2026) I Moved My Whole Team Off Spreadsheets",
+                      "text": "3 Best Free CRM Tools (2026) I Moved My Whole Team Off Spreadsheets and collaboration in one place. but if you only need the simpl..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "Zendesk",
+                      "domain": "www.zendesk.com",
+                      "url": "https://www.zendesk.com/sell/crm/",
+                      "title": "What is CRM software? 9 best CRM tools of 2026 - Zendesk",
+                      "text": "The 9 best CRM software of 2026 * monday CRM for revenue teams needing AI-powered lead management. * HubSpot Sales Hub for marketi..."
+                    }
+                  ]
+                },
+                {
+                  "type": "ai_overview_element",
+                  "position": "left",
+                  "title": "Core Features",
+                  "text": "Contact Management: Store customer profiles, communication history, and key details in one place. Deal Pipelines: Visualize sales opportunities across customizable stages from lead to closed deal. Activity Tracking: Automatically log emails, calls, and meetings. Automation \u0026 AI: Automate repetitive emails, task assignments, and predictive lead scoring.",
+                  "markdown": "- **Contact Management:** Store customer profiles, communication history, and key details in one place.\n- **Deal Pipelines:** Visualize sales opportunities across customizable stages from lead to closed deal.\n- **Activity Tracking:** Automatically log emails, calls, and meetings.\n- **Automation \u0026 AI:** Automate repetitive emails, task assignments, and predictive lead scoring.[](https://www.uschamber.com/co/start/strategy/low-cost-crm-tools) [[1]](https://www.uschamber.com/co/start/strategy/low-cost-crm-tools)[[2]](https://www.hubspot.com/products/crm/what-is)[[3]](https://www.salesforce.com/crm/video/)",
+                  "links": null,
+                  "images": null,
+                  "references": [
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "U.S. Chamber of Commerce",
+                      "domain": "www.uschamber.com",
+                      "url": "https://www.uschamber.com/co/start/strategy/low-cost-crm-tools",
+                      "title": "10 Free or Low-Cost CRM Tools for Small Businesses",
+                      "text": "HubSpot: Best free CRM tools for startups HubSpot offers a free CRM packed with features for managing customers and sales. It supp..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "HubSpot",
+                      "domain": "www.hubspot.com",
+                      "url": "https://www.hubspot.com/products/crm/what-is",
+                      "title": "What is CRM? | Guide to Customer Relationship Management",
+                      "text": "Core Components of CRM. Every CRM system is built on four foundational components: Contact Management: Store detailed profiles of ..."
+                    },
+                    {
+                      "type": "ai_overview_reference",
+                      "position": "left",
+                      "source": "Salesforce",
+                      "domain": "www.salesforce.com",
+                      "url": "https://www.salesforce.com/crm/video/",
+                      "title": "CRM: What Is It? Video - Salesforce",
+                      "text": "CRM: What Is It? video transcript ... With that unified data, any employee can become an expert on any customer, knowing details l..."
+                    }
+                  ]
+                },
+                {
+                  "type": "ai_overview_element",
+                  "position": "left",
+                  "title": null,
+                  "text": "If you\u0027d like, tell me:What is your business size and budget ?\nWhich primary team (sales, marketing, or support) will use it most?\nI can recommend the ideal CRM for your specific workflow.",
+                  "markdown": "If you\u0027d like, tell me:\n\n- What is your **business size** and **budget**?\n- Which **primary team** (sales, marketing, or support) will use it most?\n\nI can recommend the ideal CRM for your specific workflow.",
+                  "links": null,
+                  "images": null,
+                  "references": null
+                }
+              ],
+              "references": [
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "Salesforce",
+                  "domain": "www.salesforce.com",
+                  "url": "https://www.salesforce.com/crm/what-is-crm/",
+                  "title": "What Is CRM (Customer Relationship Management)? - Salesforce",
+                  "text": "The goal is simple: improve relationships to grow your business. CRM technology helps companies stay connected to customers, strea..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "Pipedrive",
+                  "domain": "www.pipedrive.com",
+                  "url": "https://www.pipedrive.com/en/crm/compare/crm-tool",
+                  "title": "Best CRM Tools for 2026: top 15 compared - Pipedrive",
+                  "text": "What are the best CRM tools in 2026? The best CRM tools in 2026 include Pipedrive, Salesforce, SAP, Microsoft Dynamics 365 Sales, ..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "YouTube",
+                  "domain": "www.youtube.com",
+                  "url": "https://www.youtube.com/watch?v=8lIyddD40as\u0026t=174",
+                  "title": "3 Best Free CRM Tools (2026) I Moved My Whole Team Off Spreadsheets",
+                  "text": "3 Best Free CRM Tools (2026) I Moved My Whole Team Off Spreadsheets and collaboration in one place. but if you only need the simpl..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "U.S. Chamber of Commerce",
+                  "domain": "www.uschamber.com",
+                  "url": "https://www.uschamber.com/co/start/strategy/low-cost-crm-tools",
+                  "title": "10 Free or Low-Cost CRM Tools for Small Businesses",
+                  "text": "HubSpot: Best free CRM tools for startups HubSpot offers a free CRM packed with features for managing customers and sales. It supp..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "HubSpot",
+                  "domain": "www.hubspot.com",
+                  "url": "https://www.hubspot.com/products/crm/what-is",
+                  "title": "What is CRM? | Guide to Customer Relationship Management",
+                  "text": "Core Components of CRM. Every CRM system is built on four foundational components: Contact Management: Store detailed profiles of ..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "Zendesk",
+                  "domain": "www.zendesk.com",
+                  "url": "https://www.zendesk.com/sell/crm/",
+                  "title": "What is CRM software? 9 best CRM tools of 2026 - Zendesk",
+                  "text": "The 9 best CRM software of 2026 * monday CRM for revenue teams needing AI-powered lead management. * HubSpot Sales Hub for marketi..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "Zoho",
+                  "domain": "www.zoho.com",
+                  "url": "https://www.zoho.com/crm/what-is-crm.html",
+                  "title": "What is CRM? | CRM System - Definition - Benefits - Features - Zoho",
+                  "text": "CRM stands for Customer Relationship Management. Businesses use CRM software as a repository to unite and streamline sales, market..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "Salesforce",
+                  "domain": "www.salesforce.com",
+                  "url": "https://www.salesforce.com/crm/video/",
+                  "title": "CRM: What Is It? Video - Salesforce",
+                  "text": "CRM: What Is It? video transcript ... With that unified data, any employee can become an expert on any customer, knowing details l..."
+                },
+                {
+                  "type": "ai_overview_reference",
+                  "position": "right",
+                  "source": "YouTube",
+                  "domain": "www.youtube.com",
+                  "url": "https://www.youtube.com/watch?v=Zq1kfwRWkmk\u0026t=836",
+                  "title": "BEST CRM Software | Tested 15 CRMs for 2026 (HONEST Opinion)",
+                  "text": "BEST CRM Software | Tested 15 CRMs for 2026 (HONEST Opinion) and don\u0027t want extra clutter Pipe Drive is your best bet tap the link..."
+                }
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 1,
+              "rank_absolute": 2,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]",
+              "domain": "www.hubspot.com",
+              "title": "Streamline Your Entire Business With a Free CRM",
+              "url": "https://www.hubspot.com/products/crm",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.hubspot.com \u203A products \u203A crm",
+              "website_name": "HubSpot",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "HubSpot\u0027s free CRM powers your customer support, sales, and marketing with easy-to-use features like live chat, meeting scheduling, and email tracking.",
+              "pre_snippet": null,
+              "extended_snippet": "4.5(4,462)  \u00B7 Free",
+              "images": null,
+              "amp_version": false,
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.5,
+                "votes_count": 4462,
+                "rating_max": 5
+              },
+              "price": null,
+              "highlighted": [ "HubSpot\u0027s free CRM" ],
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": null,
+              "rectangle": null
+            },
+            {
+              "type": "people_also_ask",
+              "rank_group": 1,
+              "rank_absolute": 3,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[3]/div[1]/div[1]/div[1]",
+              "items": [
+                {
+                  "type": "people_also_ask_element",
+                  "title": "What are examples of CRM tools?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[3]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                },
+                {
+                  "type": "people_also_ask_element",
+                  "title": "What is a CRM tool?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[3]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                },
+                {
+                  "type": "people_also_ask_element",
+                  "title": "What are the top 10 CRM tools?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[3]/div[1]/div[1]/div[1]/div[1]/div[2]/div[3]",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                },
+                {
+                  "type": "people_also_ask_element",
+                  "title": "What are some basic CRM tools?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[3]/div[1]/div[1]/div[1]/div[1]/div[2]/div[4]",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                }
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 2,
+              "rank_absolute": 4,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[5]/div[1]/div[1]",
+              "domain": "www.salesforce.com",
+              "title": "What Is CRM (Customer Relationship Management)?",
+              "url": "https://www.salesforce.com/crm/what-is-crm/",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.salesforce.com \u203A crm \u203A what-is-crm",
+              "website_name": "Salesforce",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "CRM tools can unify customer and company data from many sources and even use artificial intelligence (AI) to better manage relationships across the entire",
+              "pre_snippet": null,
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "unify customer and company data" ],
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": null,
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 3,
+              "rank_absolute": 5,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[7]/div[1]/div[1]",
+              "domain": "www.microsoft.com",
+              "title": "An introduction to CRM tools | Microsoft Dynamics 365",
+              "url": "https://www.microsoft.com/en-us/dynamics-365/topics/crm/crm-tools",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.microsoft.com \u203A dynamics-365 \u203A topics \u203A cr...",
+              "website_name": "Microsoft",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "What are customer relationship management tools? CRM tools support marketing, sales, and customer service functions and processes for your business. Read more",
+              "pre_snippet": null,
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "CRM tools" ],
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": null,
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 4,
+              "rank_absolute": 6,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[9]/div[1]/div[1]",
+              "domain": "www.creatio.com",
+              "title": "16 Best CRM Tools for Your Business in 2026",
+              "url": "https://www.creatio.com/glossary/crm-tools",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.creatio.com \u203A glossary \u203A crm-tools",
+              "website_name": "Creatio",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "Apr 9, 2026 \u2014 The best all-in-one CRMs include Creatio, Salesforce, HubSpot, Zoho, and Microsoft Dynamics 365 due to their broad capabilities and advanced\u00A0... Read more",
+              "pre_snippet": "04/09/2026 00:00:00",
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "Creatio, Salesforce, HubSpot, Zoho, and Microsoft Dynamics 365" ],
+              "links": [
+                {
+                  "type": "link_element",
+                  "title": "Best CRM Tools",
+                  "description": null,
+                  "url": "https://www.creatio.com/glossary/crm-tools#title-2",
+                  "domain": "www.creatio.com"
+                },
+                {
+                  "type": "link_element",
+                  "title": "Best Sales CRM Tools",
+                  "description": null,
+                  "url": "https://www.creatio.com/glossary/crm-tools#title-3",
+                  "domain": "www.creatio.com"
+                },
+                {
+                  "type": "link_element",
+                  "title": "Best Customer Service CRM...",
+                  "description": null,
+                  "url": "https://www.creatio.com/glossary/crm-tools#title-5",
+                  "domain": "www.creatio.com"
+                }
+              ],
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": "2026-04-09 00:00:00 \u002B00:00",
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 5,
+              "rank_absolute": 7,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[11]/div[1]/div[1]",
+              "domain": "www.larksuite.com",
+              "title": "16 Best CRM Tools Reviewed for Every Category",
+              "url": "https://www.larksuite.com/en_us/blog/crm-tools",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.larksuite.com \u203A en_us \u203A blog \u203A crm-tools",
+              "website_name": "Lark",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "Aug 5, 2026 \u2014 1. Jobber: Best CRM for operations and client experience 2. Housecall Pro: Best CRM for mobile-first professionals",
+              "pre_snippet": "08/05/2026 00:00:00",
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "1. Jobber: Best CRM for operations and client experience" ],
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": "2026-08-05 00:00:00 \u002B00:00",
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 6,
+              "rank_absolute": 8,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[13]/div[1]/div[1]",
+              "domain": "www.kommo.com",
+              "title": "The Power list: Top 30 CRM tools for driving business growth",
+              "url": "https://www.kommo.com/blog/crm-tools/",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.kommo.com \u203A blog \u203A crm-tools",
+              "website_name": "Kommo",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "May 14, 2024 \u2014 Top 30 CRM tools for driving business growth \u00B7 1. Kommo \u00B7 2. Zoho \u00B7 3. HubSpot \u00B7 4. Pipedrive \u00B7 5. Monday sales CRM \u00B7 6. Salesforce \u00B7 7. Read more",
+              "pre_snippet": "05/14/2024 00:00:00",
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "1. Kommo" ],
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": "2024-05-14 00:00:00 \u002B00:00",
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 7,
+              "rank_absolute": 9,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[14]/div[1]/div[1]/div[1]",
+              "domain": "www.youtube.com",
+              "title": "3 Best Free CRM Tools (2026) I Moved My Whole Team Off ...",
+              "url": "https://www.youtube.com/watch?v=8lIyddD40as",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "35.2K\u002B views  \u00B7  1 month ago",
+              "website_name": "YouTube\u00A0\u00B7\u00A0Daniel | Tech \u0026 Data",
+              "is_image": false,
+              "is_video": true,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": [ "is_video" ],
+              "description": "Explore the 3 Best Free CRM Tools in 2026 with a clear comparison of Bitrix24, HubSpot CRM, and Zoho CRM. Learn how each platform handles\u00A0...",
+              "pre_snippet": null,
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "Explore the 3 Best Free CRM Tools in 2026" ],
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": "2026-08-06 20:55:51 \u002B00:00",
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 8,
+              "rank_absolute": 10,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[16]/div[1]/div[1]",
+              "domain": "www.pipedrive.com",
+              "title": "Best CRM Tools for 2026: top 15 compared",
+              "url": "https://www.pipedrive.com/en/crm/compare/crm-tool",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.pipedrive.com \u203A crm \u203A compare \u203A crm-tool",
+              "website_name": "Pipedrive",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "Jul 23, 2026 \u2014 What are the best CRM tools in 2026? The best CRM tools in 2026 include Pipedrive, Salesforce, SAP, Microsoft Dynamics 365 Sales, HubSpot, Zoho\u00A0... Read more",
+              "pre_snippet": "07/23/2026 00:00:00",
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": [ "Pipedrive" ],
+              "links": [
+                {
+                  "type": "link_element",
+                  "title": "Your Essential Crm Toolkit...",
+                  "description": null,
+                  "url": "https://www.pipedrive.com/en/crm/compare/crm-tool#:~:text=Your%20essential%20CRM%20toolkit%3A%2015%20powerful%20solutions%20for%20business%20growth",
+                  "domain": "www.pipedrive.com"
+                },
+                {
+                  "type": "link_element",
+                  "title": "Crm Programs For Marketing",
+                  "description": null,
+                  "url": "https://www.pipedrive.com/en/crm/compare/crm-tool#:~:text=CRM%20programs%20for%20marketing",
+                  "domain": "www.pipedrive.com"
+                },
+                {
+                  "type": "link_element",
+                  "title": "Free Crm Tools For Small...",
+                  "description": null,
+                  "url": "https://www.pipedrive.com/en/crm/compare/crm-tool#:~:text=Free%20CRM%20tools%20for%20small%20businesses%20and%20startups",
+                  "domain": "www.pipedrive.com"
+                }
+              ],
+              "faq": null,
+              "extended_people_also_search": null,
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": "2026-07-23 00:00:00 \u002B00:00",
+              "rectangle": null
+            },
+            {
+              "type": "perspectives",
+              "rank_group": 1,
+              "rank_absolute": 11,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[18]/div[1]",
+              "title": "What people are saying",
+              "items": [
+                {
+                  "type": "perspectives_element",
+                  "title": "Best conversational AI platform for handling customer conversations??",
+                  "description": null,
+                  "url": "https://www.reddit.com/r/CRM/comments/1w8wm2s/best_conversational_ai_platform_for_handling/",
+                  "domain": "www.reddit.com",
+                  "date": "7 hours ago",
+                  "source": "r/CRM",
+                  "timestamp": "2026-09-06 13:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "3 Best Free CRM Tools (2026) I Moved My Whole Team Off Spreadsheets",
+                  "description": null,
+                  "url": "https://www.youtube.com/watch?v=8lIyddD40as",
+                  "domain": "www.youtube.com",
+                  "date": "1 month ago",
+                  "source": "Daniel | Tech \u0026 Data",
+                  "timestamp": "2026-08-06 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Woo hoo! Thrilled to announce YouSpot, the AI-native Solo CRM from HubSpot Next. tl;dr: YouSpot is a CRM built for one-person companies like founders, consultants, authors, freelancers, angel investors, creators, etc.. It builds a \u0022second brain\u0022 from your busi",
+                  "description": null,
+                  "url": "https://www.linkedin.com/posts/dharmesh_woo-hoo-thrilled-to-announce-youspot-the-activity-7499106535822987264-0foC",
+                  "domain": "www.linkedin.com",
+                  "date": "1 week ago",
+                  "source": "Dharmesh Shah",
+                  "timestamp": "2026-08-30 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Which CRM do you use and love? Please share pricing if possible. Thanks in advance!",
+                  "description": null,
+                  "url": "https://www.facebook.com/groups/mortgageprofessionals/posts/28912070405061067/",
+                  "domain": "www.facebook.com",
+                  "date": "3 days ago",
+                  "source": "Mortgage Professionals Network",
+                  "timestamp": "2026-09-03 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Ranking The Best CRMs in 2026\n\nFollow @fitxfearless if you want daily tips on growing your business using social media",
+                  "description": null,
+                  "url": "https://www.instagram.com/reel/Dc9jxekhPwB/",
+                  "domain": "www.instagram.com",
+                  "date": "23 hours ago",
+                  "source": "fitxfearless",
+                  "timestamp": "2026-09-05 21:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Best CRM Software Solutions for Modern Teams",
+                  "description": null,
+                  "url": "https://slack.com/blog/crm/best-crm-software",
+                  "domain": "slack.com",
+                  "date": "Jun 30, 2026",
+                  "source": "Slack",
+                  "timestamp": "2026-06-30 00:00:00 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "HubSpot just moved your CRM into Slack. And most teams will treat it like a chatbot. \uD835\uDDD5\uD835\uDDFF\uD835\uDDF2\uD835\uDDF2\uD835\uDE07\uD835\uDDF2 \uD835\uDDD4\uD835\uDE00\uD835\uDE00\uD835\uDDF6\uD835\uDE00\uD835\uDE01\uD835\uDDEE\uD835\uDDFB\uD835\uDE01 now lives in the Messages tab of the HubSpot app in Slack. Suggested prompts at the top. DM it once, keep talking, no @mention every line. \u0022Summ",
+                  "description": null,
+                  "url": "https://www.linkedin.com/posts/garoaroian_hubspot-revops-salesops-activity-7501303471434989568-Xcrd",
+                  "domain": "www.linkedin.com",
+                  "date": "3 days ago",
+                  "source": "Garo Aroian",
+                  "timestamp": "2026-09-03 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Do you use a self-hosted CRM? If so, what is the BEST in your opinion?",
+                  "description": null,
+                  "url": "https://www.reddit.com/r/selfhosted/comments/1w02kcz/do_you_use_a_selfhosted_crm_if_so_what_is_the/",
+                  "domain": "www.reddit.com",
+                  "date": "1 week ago",
+                  "source": "r/selfhosted",
+                  "timestamp": "2026-08-30 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Comment JIGGLE for my free Talk-To-It CRM setup guide.\n\nYou don\u0027t need a massive CRM just to remember who to follow up with.\n\nI built this client-tracker prototype in Claude. The names are demo data; keep your actual client list in a saved spreadsheet.\n\nSend this to the solo business owner with follow-ups scattered through their notes.\n\n#Codex #claudeai #SmallBusiness",
+                  "description": null,
+                  "url": "https://www.instagram.com/reel/Dc7WuS6Armk/",
+                  "domain": "www.instagram.com",
+                  "date": "19 hours ago",
+                  "source": "wright_mode",
+                  "timestamp": "2026-09-06 01:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Simple CRM recommendations.",
+                  "description": null,
+                  "url": "https://www.reddit.com/r/smallbusiness/comments/1vjeath/simple_crm_recommendations/",
+                  "domain": "www.reddit.com",
+                  "date": "1 month ago",
+                  "source": "r/smallbusiness",
+                  "timestamp": "2026-08-06 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "Recently, I discovered our CRM provider HubSpot proposed a 2x price increase which caught my team and I by surprise In the age of AI, software vendors are struggling with old techniques. Simply increase pricing at the end of the contract no longer works \uD83D\uDE15 V",
+                  "description": null,
+                  "url": "https://www.linkedin.com/posts/dailius_recently-i-discovered-our-crm-provider-hubspot-activity-7482596907928793088-dLsB",
+                  "domain": "www.linkedin.com",
+                  "date": "1 month ago",
+                  "source": "Dailius Wilson \uD83D\uDCC8",
+                  "timestamp": "2026-08-06 20:55:51 \u002B00:00"
+                },
+                {
+                  "type": "perspectives_element",
+                  "title": "hello po! Any recommendations po for tools that we can use for CRM or lead tracking yung may reminders? (I\u0027m currently using Notion, still trying to figure out Gohighlevel. I\u0027m a newbie po kasi hehe)",
+                  "description": null,
+                  "url": "https://www.facebook.com/groups/1638444529751821/posts/4577438665852378/",
+                  "domain": "www.facebook.com",
+                  "date": "2 weeks ago",
+                  "source": "Virtual Assistant Philippines",
+                  "timestamp": "2026-08-23 20:55:51 \u002B00:00"
+                }
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "related_searches",
+              "rank_group": 1,
+              "rank_absolute": 12,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[2]/div[1]/div[3]/div[1]/div[1]/div[1]/div[1]/div[2]",
+              "items": [ "CRM tools list", "CRM tools Salesforce", "CRM tools course", "CRM tools for customer service", "CRM tools free", "CRM tools HubSpot", "CRM tools Microsoft", "Zoho CRM tools" ],
+              "rectangle": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

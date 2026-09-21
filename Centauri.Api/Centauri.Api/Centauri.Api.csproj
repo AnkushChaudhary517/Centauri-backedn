@@ -22,10 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Centauri.ContentArchitect.Backend\Centauri.ContentArchitect.Backend.csproj" />
     <ProjectReference Include="..\CentauriSeo.Application\CentauriSeo.Application.csproj" />
     <ProjectReference Include="..\CentauriSeo.Core\CentauriSeo.Core.csproj" />
     <ProjectReference Include="..\CentauriSeo.Infrastructure\CentauriSeo.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\..\Centauri.ContentArchitect.Backend\Centauri.ContentArchitect.Backend.csproj" />
   </ItemGroup>
 
   <ItemGroup>

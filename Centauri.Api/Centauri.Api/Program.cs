@@ -38,6 +38,8 @@ builder.Services.AddDefaultAWSOptions(awsOptions);
 
 // Content Architect configuration
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("ExternalApis:DataForSeo"));
+builder.Services.Configure<GoogleAdsOptions>(builder.Configuration.GetSection("ExternalApis:GoogleAds"));
+
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("ExternalApis:Gemini"));
 builder.Services.Configure<SearchConsoleOptions>(builder.Configuration.GetSection("ExternalApis:SearchConsole"));
 builder.Services.Configure<AnalysisOptions>(builder.Configuration.GetSection("Analysis"));
@@ -50,7 +52,14 @@ builder.Services.AddSingleton<IDynamoDBContext, DynamoDBContext>();
 builder.Services.AddControllers()
     .AddApplicationPart(typeof(AnalysisController).Assembly);
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.CustomSchemaIds(type =>
+    {
+        var fullName = type.FullName ?? type.Name;
+        return fullName.Replace('+', '.');
+    });
+});
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 builder.Services.AddSingleton<AiUsageRepository>();
 builder.Services.AddSingleton<AiCallTracker>();
@@ -67,9 +76,20 @@ builder.Services.AddScoped<TrafficPotentialCalculator>();
 builder.Services.AddScoped<QuestionCoverageCalculator>();
 builder.Services.AddScoped<ContentGapCalculator>();
 builder.Services.AddScoped<EeatInformationGainCalculator>();
-builder.Services.AddScoped<IKeywordDataClient, DataForSeoClient>();
-builder.Services.AddScoped<ISerpDataClient, DataForSeoClient>();
-builder.Services.AddScoped<IBacklinkDataClient, DataForSeoClient>();
+
+var useGoogleAds = builder.Configuration.GetValue<bool>("UseGoogleAdsClient", true);
+if (useGoogleAds)
+{
+    builder.Services.AddScoped<IKeywordDataClient, GoogleAdsClient>();
+    builder.Services.AddScoped<ISerpDataClient, GoogleAdsClient>();
+    builder.Services.AddScoped<IBacklinkDataClient, GoogleAdsClient>();
+}
+else
+{
+    builder.Services.AddScoped<IKeywordDataClient, DataForSeoClient>();
+    builder.Services.AddScoped<ISerpDataClient, DataForSeoClient>();
+    builder.Services.AddScoped<IBacklinkDataClient, DataForSeoClient>();
+}
 builder.Services.AddScoped<ISearchConsoleClient, GoogleSearchConsoleClient>();
 builder.Services.AddScoped<IPublicIndexabilityClient, PublicIndexabilityClient>();
 builder.Services.AddScoped<CAIGeminiClient, CAGeminiClient>();
@@ -248,4 +268,5 @@ app.UseAuthentication();              // since you configured JWT
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
+
 

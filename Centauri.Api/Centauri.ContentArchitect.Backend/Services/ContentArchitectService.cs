@@ -113,7 +113,19 @@ public sealed class ContentArchitectService : IContentArchitectService
             string.Join("\n\n", top10.Select(x => x.Title)),
             ct);
 
-        var gaps = _gaps.Calculate(qAi.Questions, qAnswered.Questions);
+        var alreadyAnswered = questionUniverse
+            .Where(x => qAnswered.Questions.Any(answered => string.Equals(answered.Question, x, StringComparison.OrdinalIgnoreCase) || SimilarEnough(answered.Question, x)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var extraQAi = await _gemini.GenerateAdditionalQuestionsAsync(
+            request.PrimaryKeyword,
+            questionUniverse,
+            alreadyAnswered,
+            string.Join("\n\n", top10.Select(x => x.Title + "\n" + x.ExtractedText)),
+            ct);
+
+        var gaps = _gaps.Calculate(extraQAi.Questions, qAnswered.Questions);
 
         var contentAggregate = await BuildEeatAggregateAsync(request, top10, qAnswered, gaps, ct);
         var eeat = _eeat.Calculate(contentAggregate);
@@ -348,6 +360,36 @@ public sealed class ContentArchitectService : IContentArchitectService
             foreach (var c in value) hash = hash * 31 + c;
             return hash & int.MaxValue;
         }
+    }
+
+    private static bool SimilarEnough(string a, string b)
+    {
+        var na = NormalizeQuestion(a);
+        var nb = NormalizeQuestion(b);
+        if (string.IsNullOrWhiteSpace(na) || string.IsNullOrWhiteSpace(nb))
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+        if (na.Contains(nb, StringComparison.OrdinalIgnoreCase) || nb.Contains(na, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var tokensA = na.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var tokensB = nb.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokensA.Length == 0 || tokensB.Length == 0) return false;
+
+        var setA = new HashSet<string>(tokensA, StringComparer.OrdinalIgnoreCase);
+        var setB = new HashSet<string>(tokensB, StringComparer.OrdinalIgnoreCase);
+        var overlap = setA.Intersect(setB, StringComparer.OrdinalIgnoreCase).Count();
+        var union = setA.Union(setB, StringComparer.OrdinalIgnoreCase).Count();
+        var jaccard = union == 0 ? 1.0 : (double)overlap / union;
+        return jaccard >= 0.55;
+    }
+
+    private static string NormalizeQuestion(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        return string.Join(' ', value.ToLowerInvariant()
+            .Split(new[] { ' ', '\t', '\r', '\n', '?', '.', ',', ':', ';', '!', '"', '\'', '(', ')', '[', ']', '{', '}' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 }
 

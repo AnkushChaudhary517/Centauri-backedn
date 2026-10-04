@@ -31,6 +31,12 @@ public interface IGeminiClient
 {
     Task<AiPageAnalysis> AnalyzePageAsync(string keyword, string pageText, string headings, CancellationToken ct);
     Task<AiQuestionAnalysis> AnalyzeQuestionsAsync(string keyword, IReadOnlyList<string> questions, string pageCorpus, CancellationToken ct);
+    Task<AiQuestionAnalysis> GenerateAdditionalQuestionsAsync(
+        string keyword,
+        IReadOnlyList<string> candidateQuestions,
+        IReadOnlyList<string> alreadyAnsweredQuestions,
+        string pageCorpus,
+        CancellationToken ct);
     Task<double> CalculateSemanticSimilarityAsync(string textA, string textB, CancellationToken ct);
     Task<AiPageAnalysis> AnalyzeSiteContentAsync(string keyword, string siteText, CancellationToken ct);
     Task<GeneratedOutline> GenerateOutlineAsync(

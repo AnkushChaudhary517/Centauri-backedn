@@ -67,6 +67,30 @@ public sealed class GeminiClient : IGeminiClient
             ct);
     }
 
+    public Task<AiQuestionAnalysis> GenerateAdditionalQuestionsAsync(
+        string keyword,
+        IReadOnlyList<string> candidateQuestions,
+        IReadOnlyList<string> alreadyAnsweredQuestions,
+        string pageCorpus,
+        CancellationToken ct)
+    {
+        var prompt =
+            "Generate a distinct list of additional SEO questions for keyword \"" + keyword + "\".\n" +
+            "The questions should be useful, non-redundant, and not already answered by the top results.\n" +
+            "Do NOT repeat or paraphrase any of the already-answered questions below.\n" +
+            "Prefer new angles, gaps, and buyer intent questions that genuinely add value beyond what is already covered.\n\n" +
+            "Already-answered questions to exclude (strictly):\n" +
+            (alreadyAnsweredQuestions.Count == 0
+                ? "<none>"
+                : string.Join("\n", alreadyAnsweredQuestions.Select((q, i) => $"{i + 1}. {q}"))) + "\n\n" +
+            "Candidate question pool (use only as context; do not repeat from it unless they are genuinely new):\n" +
+            string.Join("\n", candidateQuestions.Select((q, i) => $"{i + 1}. {q}")) + "\n\n" +
+            "Ranking-page corpus:\n" + Trim(pageCorpus, 30000) + "\n\n" +
+            "Return JSON only: {\"questions\":[{\"question\":\"...\",\"answered\":false,\"intentRelevance\":0..1,\"demandProxy\":0..1,\"uniqueness\":0..1}]}";
+
+        return GenerateJsonAsync<AiQuestionAnalysis>(prompt, _modelTagging, ct);
+    }
+
     public async Task<double> CalculateSemanticSimilarityAsync(string textA, string textB, CancellationToken ct)
     {
         var r = await GenerateJsonAsync<SimilarityResponse>(
@@ -100,14 +124,20 @@ public sealed class GeminiClient : IGeminiClient
             ? ""
             : $"\nUser's expert viewpoint to incorporate: {userInput}\n";
 
+        var paaQuestions = analysis.Foundational.PaaQuestions?
+            .Select(x => x.Question)
+            .Take(20)
+            .ToList() ?? new List<string>();
+        var relatedSearches = analysis.Foundational.RelatedSearches ?? new List<string>();
+
         return GenerateJsonAsync<GeneratedOutline>(
             "Create a complete SEO content outline. Return JSON only matching this schema: " +
-            "{title:string,metaDescription:string,sections:[{heading:string,purpose:string,questionsToAnswer:string[],keyPoints:string[]}]}.\n" +
+            "{title:string,metaDescription:string,sections:[{heading:string,purpose:string,questionsToAnswer:string[],keyPoints:string[]}]}\n" +
             $"Primary keyword: {keyword}\n" +
             $"Website: {analysis.Targeturl}\n" +
             "Secondary keywords:\n" + string.Join("\n", clusters) + "\n" +
-            "People-also-ask questions:\n" + string.Join("\n", analysis.Foundational.PaaQuestions.Select(x => x.Question).Take(20)) + "\n" +
-            "Related searches:\n" + string.Join("\n", analysis.Foundational.RelatedSearches.Take(20)) + "\n" +
+            "People-also-ask questions:\n" + string.Join("\n", paaQuestions) + "\n" +
+            "Related searches:\n" + string.Join("\n", relatedSearches.Take(20)) + "\n" +
             "Top-ranking pages:\n" + string.Join("\n", competitors) + "\n" +
             "Selected questions competitors already answer. Cover these with a clearer, more useful angle:\n" +
             string.Join("\n", selectedCompetitorQuestions) + "\n" +

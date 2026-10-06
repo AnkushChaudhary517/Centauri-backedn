@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Globalization;
 using Centauri.ContentArchitect.Backend.Configuration;
 using Centauri.ContentArchitect.Backend.Models;
 using Google.Apis.Auth.OAuth2;
@@ -174,7 +175,8 @@ Rules:
     {
         EnsureEnabled();
 
-        var cacheKey = $"googleads:serp:{Normalize(keyword)}:{Normalize(country)}:{Normalize(language, _options.LanguageCode)}:{Normalize(_options.SerpDevice)}";
+        // Version the cache contract so old sparse SERP snapshots are not reused.
+        var cacheKey = $"googleads:serp:v2:{Normalize(keyword)}:{Normalize(country)}:{Normalize(language, _options.LanguageCode)}:{Normalize(_options.SerpDevice)}";
 
         if (_options.CacheDurationMinutes > 0 && _cache.TryGetValue(cacheKey, out SerpApiResult? cachedSerp) && cachedSerp is not null)
         {
@@ -188,7 +190,8 @@ Rules:
         {
             var prompt = $@"You are a SERP analysis model for SEO audit workflows.
 
-Goal: return a realistic, structured SERP snapshot for the given keyword and locale.
+Goal: return a structured SERP snapshot with every metric required to calculate
+keyword difficulty for the given keyword and locale.
 
 Inputs:
 - keyword: '{keyword}'
@@ -207,7 +210,11 @@ Return valid JSON only and nothing else. Use this exact schema:
       ""position"": 1,
       ""title"": ""string"",
       ""url"": ""string"",
-      ""domain"": ""string""
+      ""domain"": ""example.com"",
+      ""domainStrength"": 0,
+      ""referringDomains"": 0,
+      ""contentCoverage"": 0,
+      ""intentMatch"": 0.0
     }}
   ],
   ""peopleAlsoAsk"": [
@@ -217,7 +224,14 @@ Return valid JSON only and nothing else. Use this exact schema:
 }}
 
 Rules:
-- organicResults should be an array of realistic search results.
+- Return exactly {_options.SerpDepth} organic results whenever possible, ordered by position.
+- Every organic-result object MUST contain every field in the schema. Do not use null or omit a field.
+- domainStrength is an estimated 0..100 domain-authority strength.
+- referringDomains is a non-negative integer estimate for the ranking URL/domain.
+- contentCoverage is 0..100: how comprehensively that page addresses the keyword and its core subtopics.
+- intentMatch is 0..1: how directly the page satisfies the dominant intent of the exact keyword.
+- Use numeric JSON values for all four difficulty fields, never quoted numeric strings.
+- Give best available estimates when an exact metric cannot be established; do not leave a numeric field empty.
 - peopleAlsoAsk and relatedSearches must be arrays.
 - Keep the JSON compact and valid.
 - Do not include markdown or explanations.";
@@ -308,28 +322,37 @@ Rules:
         var accessToken = await GetAccessTokenAsync();
         var url = $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/projects/{Uri.EscapeDataString(_gcpProject)}/locations/{Uri.EscapeDataString(_gcpLocation)}/publishers/google/models/{Uri.EscapeDataString(_modelDefault)}:generateContent";
 
-        var prompt = $"Generate keyword ideas for '{keyword}' for country '{country}' and language '{language}'. Return valid JSON only with fields: keyword, searchVolume, cpc, competitionLevel, monthlySearches, ideas. Keep the response compact and machine-readable.";
+        var prompt = $"Generate keyword ideas for '{keyword}' for country '{country}' and language '{language}'. " +
+            "Return exactly one complete JSON object only with fields: keyword, searchVolume, cpc, competitionLevel, monthlySearches, ideas. " +
+            "Do not return markdown, explanations, comments, or text before/after the JSON. " +
+            "Keep arrays compact and finish the JSON object before the output limit.";
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, url);
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-        req.Content = JsonContent.Create(new
+        HttpRequestMessage CreateRequest()
         {
-            contents = new[]
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            request.Content = JsonContent.Create(new
             {
-                new
+                contents = new[]
                 {
-                    role = "user",
-                    parts = new[] { new { text = prompt } }
+                    new
+                    {
+                        role = "user",
+                        parts = new[] { new { text = prompt } }
+                    }
                 }
-            },
-            generationConfig = new
-            {
-                responseMimeType = "application/json",
-                temperature = 0.1
-            }
-        });
+                ,
+                generationConfig = new
+                {
+                    responseMimeType = "application/json",
+                    temperature = 0.1,
+                    maxOutputTokens = 4096
+                }
+            });
+            return request;
+        }
 
-        using var response = await _http.SendAsync(req, ct);
+        using var response = await VertexAiRequestLimiter.SendAsync(_http, CreateRequest, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
@@ -527,12 +550,16 @@ Rules:
 
             results.Add(new SerpResult
             {
-                Position = item.TryGetProperty("position", out var position) && position.TryGetInt32(out var positionValue)
+                Position = item.TryGetProperty("position", out var position) && TryGetInt32(position, out var positionValue)
                     ? positionValue
                     : results.Count + 1,
                 Title = TryGetString(item, "title") ?? string.Empty,
                 Url = TryGetString(item, "url") ?? string.Empty,
-                Domain = TryGetString(item, "domain") ?? string.Empty
+                Domain = TryGetString(item, "domain") ?? string.Empty,
+                DomainStrength = Math.Clamp(TryGetDouble(item, "domainStrength"), 0, 100),
+                ReferringDomains = (int)Math.Clamp(Math.Round(TryGetDouble(item, "referringDomains")), 0, int.MaxValue),
+                ContentCoverage = Math.Clamp(TryGetDouble(item, "contentCoverage"), 0, 100),
+                IntentMatch = Math.Clamp(TryGetDouble(item, "intentMatch"), 0, 1)
             });
         }
 
@@ -652,10 +679,11 @@ Rules:
                 return output;
             }
 
-            var parsed = JsonSerializer.Deserialize<JsonElement>(modelText, new JsonSerializerOptions
+            if (!TryParseModelJson(modelText, out var parsed))
             {
-                PropertyNameCaseInsensitive = true
-            });
+                _logger.LogWarning("Vertex returned incomplete or non-JSON keyword data; ignoring it rather than parsing a partial payload.");
+                return output;
+            }
 
             if (parsed.ValueKind == JsonValueKind.Array)
             {
@@ -788,7 +816,7 @@ Rules:
 
     private static bool TryGetBool(JsonElement element, string propertyName)
     {
-        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty(propertyName, out var value))
+        if (element.ValueKind == JsonValueKind.Object && TryGetProperty(element, propertyName, out var value))
         {
             if (value.ValueKind == JsonValueKind.True) return true;
             if (value.ValueKind == JsonValueKind.False) return false;
@@ -800,7 +828,7 @@ Rules:
 
     private static string? TryGetString(JsonElement element, string propertyName)
     {
-        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty(propertyName, out var value))
+        if (element.ValueKind == JsonValueKind.Object && TryGetProperty(element, propertyName, out var value))
         {
             return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
         }
@@ -810,16 +838,35 @@ Rules:
 
     private static double TryGetDouble(JsonElement element, string propertyName)
     {
-        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty(propertyName, out var value))
+        if (element.ValueKind == JsonValueKind.Object && TryGetProperty(element, propertyName, out var value))
         {
             if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number))
                 return number;
 
-            if (value.ValueKind == JsonValueKind.String && double.TryParse(value.GetString(), out var parsedNumber))
+            if (value.ValueKind == JsonValueKind.String && double.TryParse(
+                    value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedNumber))
                 return parsedNumber;
         }
 
         return 0;
+    }
+
+    // JsonElement.TryGetInt32 throws for a JSON string. Gemini may return a
+    // numeric value as text (for example, "year": "2025"), so inspect the
+    // token kind before converting it.
+    private static bool TryGetInt32(JsonElement element, out int value)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+            return element.TryGetInt32(out value);
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            return int.TryParse(
+                element.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        value = default;
+        return false;
     }
 
     private static List<MonthlySearchVolume> ParseMonthlySearches(JsonElement element)
@@ -838,8 +885,8 @@ Rules:
                 monthlySearches.Add(new MonthlySearchVolume
                 {
                     SearchVolume = TryGetDouble(item, "searchVolume"),
-                    Year = item.TryGetProperty("year", out var year) && year.TryGetInt32(out var y) ? y : DateTime.UtcNow.Year,
-                    Month = item.TryGetProperty("month", out var month) && month.TryGetInt32(out var m) ? m : 1
+                    Year = item.TryGetProperty("year", out var year) && TryGetInt32(year, out var y) ? y : DateTime.UtcNow.Year,
+                    Month = item.TryGetProperty("month", out var month) && TryGetInt32(month, out var m) ? m : 1
                 });
             }
         }
@@ -922,28 +969,39 @@ Rules:
         var accessToken = await GetAccessTokenAsync();
         var url = $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/projects/{Uri.EscapeDataString(_gcpProject)}/locations/{Uri.EscapeDataString(_gcpLocation)}/publishers/google/models/{Uri.EscapeDataString(_modelDefault)}:generateContent";
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-        request.Content = JsonContent.Create(new
-        {
-            contents = new[]
-            {
-                new
-                {
-                    role = "user",
-                    parts = new[] { new { text = prompt } }
-                }
-            },
-            generationConfig = new
-            {
-                responseMimeType = "application/json",
-                temperature = 0.1,
-                topP = 0.95,
-                maxOutputTokens = 2048
-            }
-        });
+        // Apply this at the transport boundary so every Gemini call using this
+        // helper follows the same machine-readable response contract.
+        var jsonOnlyPrompt = prompt + "\n\nJSON output rules: return exactly one complete JSON object or array. " +
+            "Do not use markdown fences, prose, comments, or text before/after the JSON. " +
+            "Keep the response within the output limit; if needed, shorten arrays rather than truncating JSON.";
 
-        using var response = await _http.SendAsync(request, ct);
+        HttpRequestMessage CreateRequest()
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            request.Content = JsonContent.Create(new
+            {
+                contents = new[]
+                {
+                    new
+                    {
+                        role = "user",
+                        parts = new[] { new { text = jsonOnlyPrompt } }
+                    }
+                }
+                ,
+                generationConfig = new
+                {
+                    responseMimeType = "application/json",
+                    temperature = 0.1,
+                    topP = 0.95,
+                    maxOutputTokens = 4096
+                }
+            });
+            return request;
+        }
+
+        using var response = await VertexAiRequestLimiter.SendAsync(_http, CreateRequest, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
@@ -971,6 +1029,79 @@ Rules:
         }
 
         var text = textNode.GetString() ?? "{}";
-        return JsonDocument.Parse(text).RootElement.Clone();
+        if (!TryParseModelJson(text, out var modelJson))
+        {
+            _logger.LogWarning("Gemini returned incomplete or non-JSON content; ignoring it rather than parsing a partial payload.");
+            return JsonDocument.Parse("{}").RootElement.Clone();
+        }
+
+        return modelJson;
+    }
+
+    private static bool TryParseModelJson(string value, out JsonElement json)
+    {
+        json = default;
+        if (!TryExtractCompleteJson(value, out var completeValue)) return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(completeValue);
+            json = document.RootElement.Clone();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Extracts the first syntactically complete JSON object or array from a model
+    /// response. Any prose, markdown fence, or data after that value is ignored.
+    /// An unfinished value is never passed to JsonDocument.Parse.
+    /// </summary>
+    private static bool TryExtractCompleteJson(string value, out string json)
+    {
+        json = string.Empty;
+        var start = -1;
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (value[index] is '{' or '[')
+            {
+                start = index;
+                break;
+            }
+        }
+
+        if (start < 0) return false;
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var index = start; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (inString)
+            {
+                if (escaped) escaped = false;
+                else if (character == '\\') escaped = true;
+                else if (character == '"') inString = false;
+                continue;
+            }
+
+            if (character == '"') inString = true;
+            else if (character is '{' or '[') depth++;
+            else if (character is '}' or ']')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    json = value[start..(index + 1)];
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

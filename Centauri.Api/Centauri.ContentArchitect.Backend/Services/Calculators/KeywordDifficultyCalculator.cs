@@ -23,7 +23,7 @@ public sealed class KeywordDifficultyCalculator
 
         return new KeywordDifficultyResult
         {
-            Score = kd,
+            Score = Math.Floor(kd),
             Label = kd <= 20 ? "Very Low" :
                     kd <= 40 ? "Low" :
                     kd <= 60 ? "Moderate" :

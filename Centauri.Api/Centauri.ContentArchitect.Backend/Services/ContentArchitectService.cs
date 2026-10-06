@@ -65,31 +65,9 @@ public sealed class ContentArchitectService : IContentArchitectService
             SecondaryClusters = BuildClusters(keywordApi, request.PrimaryKeyword)
         };
 
-        var top10 = serpApi.OrganicResults.Take(10).ToList();
+        var top10 = serpApi.OrganicResults.Take(5).ToList();
 
-        //foreach (var result in top10)
-        //{
-        //    try
-        //    {
-        //        var page = await _parser.ParseAsync(result.Url, ct);
-        //        var ai = await _gemini.AnalyzePageAsync(request.PrimaryKeyword, page.Text, string.Join("\n", page.Headings), ct);
-        //        var links = await _backlinks.GetBacklinkDataAsync(result.Url, ct);
-
-        //        result.ReferringDomains = links.ReferringDomains;
-        //        result.DomainStrength = links.DomainStrength;
-        //        result.ContentCoverage = ai.ContentCoverage;
-        //        result.IntentMatch = ai.IntentMatch;
-        //        result.Questions = ai.Questions;
-        //        result.Entities = ai.Entities;
-        //        result.FirstHandEvidenceRate = ai.FirstHandEvidenceRate;
-        //        result.SourceDensity = ai.SourceDensity;
-        //        result.ExtractedText = page.Text;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        warnings.Add($"Could not fully analyze SERP URL {result.Url}: {ex}");
-        //    }
-        //}
+        await EnrichTopResultsAsync(request.PrimaryKeyword, top10, warnings, ct);
 
         var addressable = _keywordCalculator.Calculate(keywordData);
         var kd = _kd.Calculate(top10);
@@ -107,21 +85,12 @@ public sealed class ContentArchitectService : IContentArchitectService
         var questionUniverse = BuildQuestionUniverse(serpApi, top10);
         var qAnswered = _questions.Calculate(questionUniverse, top10);
 
-        var qAi = await _gemini.AnalyzeQuestionsAsync(
-            request.PrimaryKeyword,
-            questionUniverse,
-            string.Join("\n\n", top10.Select(x => x.Title)),
-            ct);
-
-        var alreadyAnswered = questionUniverse
-            .Where(x => qAnswered.Questions.Any(answered => string.Equals(answered.Question, x, StringComparison.OrdinalIgnoreCase) || SimilarEnough(answered.Question, x)))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var alreadyAnsweredQuestions = qAnswered.Questions.Select(x => x.Question).ToList();
 
         var extraQAi = await _gemini.GenerateAdditionalQuestionsAsync(
             request.PrimaryKeyword,
             questionUniverse,
-            alreadyAnswered,
+            alreadyAnsweredQuestions,
             string.Join("\n\n", top10.Select(x => x.Title + "\n" + x.ExtractedText)),
             ct);
 
@@ -170,6 +139,59 @@ public sealed class ContentArchitectService : IContentArchitectService
                 EeatInformationGain = eeat
             }
         };
+    }
+
+    /// <summary>
+    /// Enriches the raw SERP rows before they are used by the difficulty calculator.
+    /// SERP providers only return rank, title and URL; Gemini supplies the page-content
+    /// metrics and the backlink provider supplies authority/link metrics.
+    /// </summary>
+    private async Task EnrichTopResultsAsync(
+        string keyword, IReadOnlyList<SerpResult> top10, List<string> warnings, CancellationToken ct)
+    {
+        foreach (var batch in top10.Where(x => Uri.TryCreate(x.Url, UriKind.Absolute, out _)).Chunk(3))
+        {
+            var results = await Task.WhenAll(batch.Select(result => EnrichTopResultAsync(keyword, result, ct)));
+            warnings.AddRange(results.Where(message => message is not null).Select(message => message!));
+        }
+
+        var analyzedPages = top10.Count(x => x.ContentCoverage > 0 || x.IntentMatch > 0);
+        var backlinkRows = top10.Count(x => x.DomainStrength > 0 || x.ReferringDomains > 0);
+
+        if (top10.Count == 0)
+            warnings.Add("Keyword difficulty could not be calculated because the SERP provider returned no organic results.");
+        else if (analyzedPages == 0)
+            warnings.Add("Keyword difficulty content metrics are unavailable because no ranking pages could be analyzed by Gemini.");
+
+        if (top10.Count > 0 && backlinkRows == 0)
+            warnings.Add("Keyword difficulty authority and link metrics are unavailable because the configured backlink provider returned no data.");
+    }
+
+    private async Task<string?> EnrichTopResultAsync(string keyword, SerpResult result, CancellationToken ct)
+    {
+        try
+        {
+            // Backlinks do not depend on page parsing, so start that request immediately.
+            var backlinksTask = _backlinks.GetBacklinkDataAsync(result.Url, ct);
+            var page = await _parser.ParseAsync(result.Url, ct);
+            var analysis = await _gemini.AnalyzePageAsync(keyword, page.Text, string.Join("\n", page.Headings), ct);
+            var backlinks = await backlinksTask;
+
+            result.ReferringDomains = Math.Max(0, backlinks.ReferringDomains);
+            result.DomainStrength = MetricMath.Clamp(backlinks.DomainStrength);
+            result.ContentCoverage = MetricMath.Clamp(analysis.ContentCoverage);
+            result.IntentMatch = Math.Clamp(analysis.IntentMatch, 0, 1);
+            result.Questions = analysis.Questions ?? new List<string>();
+            result.Entities = analysis.Entities ?? new List<string>();
+            result.FirstHandEvidenceRate = Math.Clamp(analysis.FirstHandEvidenceRate, 0, 1);
+            result.SourceDensity = Math.Max(0, analysis.SourceDensity);
+            result.ExtractedText = page.Text;
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return $"Could not fully analyze SERP URL {result.Url}: {ex.Message}";
+        }
     }
 
     private async Task<SiteIndexData> BuildIndexabilityAsync(string websiteUrl, CancellationToken ct, List<string> warnings)
@@ -257,7 +279,7 @@ public sealed class ContentArchitectService : IContentArchitectService
         }
     }
 
-    private async Task<ContentAnalysisAggregate> BuildEeatAggregateAsync(
+    private Task<ContentAnalysisAggregate> BuildEeatAggregateAsync(
         AnalysisRequest request, IReadOnlyList<SerpResult> top10,
         QuestionsAnsweredResult qAnswered, ContentGapsResult gaps, CancellationToken ct)
     {
@@ -270,7 +292,10 @@ public sealed class ContentArchitectService : IContentArchitectService
         for (var j = i + 1; j < top.Count; j++)
         {
             if (string.IsNullOrWhiteSpace(top[i].ExtractedText) || string.IsNullOrWhiteSpace(top[j].ExtractedText)) continue;
-            redundancy += await _gemini.CalculateSemanticSimilarityAsync(top[i].ExtractedText, top[j].ExtractedText, ct);
+            // Pairwise Gemini similarity caused up to 45 additional Vertex calls per
+            // analysis. A local token-overlap estimate is sufficient for this
+            // aggregate redundancy signal and avoids exhausting model quota.
+            redundancy += CalculateTextSimilarity(top[i].ExtractedText, top[j].ExtractedText);
             pairs++;
         }
         redundancy = pairs == 0 ? 0 : redundancy / pairs;
@@ -280,7 +305,7 @@ public sealed class ContentArchitectService : IContentArchitectService
         var sourceReq = Math.Clamp(top.Average(x => x.SourceDensity) / 10.0, 0, 1);
         var authority = MetricMath.Clamp(top.Average(x => x.DomainStrength)) / 100.0;
 
-        return new ContentAnalysisAggregate
+        return Task.FromResult(new ContentAnalysisAggregate
         {
             FirstHandEvidenceRate = avgFer,
             OriginalDataPrevalence = avgOriginal,
@@ -292,8 +317,25 @@ public sealed class ContentArchitectService : IContentArchitectService
             MissingQuestionCoverage = gaps.Gaps.Count == 0 ? 0 : MetricMath.Mean(gaps.Gaps.Select(x => x.CompetitorGap)),
             MissingEntityCoverage = 0.50,
             MissingEvidenceCoverage = 1.0 - avgFer
-        };
+        });
     }
+
+    private static double CalculateTextSimilarity(string first, string second)
+    {
+        var firstTokens = Tokenize(first);
+        var secondTokens = Tokenize(second);
+        if (firstTokens.Count == 0 || secondTokens.Count == 0) return 0;
+
+        var intersection = firstTokens.Intersect(secondTokens, StringComparer.OrdinalIgnoreCase).Count();
+        var union = firstTokens.Union(secondTokens, StringComparer.OrdinalIgnoreCase).Count();
+        return union == 0 ? 0 : (double)intersection / union;
+    }
+
+    private static HashSet<string> Tokenize(string text) => text
+        .Split(new[] { ' ', '\t', '\r', '\n', '.', ',', ':', ';', '!', '?', '"', '\'', '(', ')', '[', ']', '{', '}', '/', '\\', '-' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(token => token.Length > 2)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static List<KeywordCluster> BuildClusters(KeywordApiResult api, string primary)
     {
@@ -307,7 +349,7 @@ public sealed class ContentArchitectService : IContentArchitectService
                 Variants = g.Select(x => x.Keyword).Distinct().ToList()
             })
             .OrderByDescending(x => x.Volume)
-            .Take(50)
+            .Take(10)
             .ToList();
     }
 
@@ -360,36 +402,6 @@ public sealed class ContentArchitectService : IContentArchitectService
             foreach (var c in value) hash = hash * 31 + c;
             return hash & int.MaxValue;
         }
-    }
-
-    private static bool SimilarEnough(string a, string b)
-    {
-        var na = NormalizeQuestion(a);
-        var nb = NormalizeQuestion(b);
-        if (string.IsNullOrWhiteSpace(na) || string.IsNullOrWhiteSpace(nb))
-            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-
-        if (na.Contains(nb, StringComparison.OrdinalIgnoreCase) || nb.Contains(na, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var tokensA = na.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var tokensB = nb.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (tokensA.Length == 0 || tokensB.Length == 0) return false;
-
-        var setA = new HashSet<string>(tokensA, StringComparer.OrdinalIgnoreCase);
-        var setB = new HashSet<string>(tokensB, StringComparer.OrdinalIgnoreCase);
-        var overlap = setA.Intersect(setB, StringComparer.OrdinalIgnoreCase).Count();
-        var union = setA.Union(setB, StringComparer.OrdinalIgnoreCase).Count();
-        var jaccard = union == 0 ? 1.0 : (double)overlap / union;
-        return jaccard >= 0.55;
-    }
-
-    private static string NormalizeQuestion(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-        return string.Join(' ', value.ToLowerInvariant()
-            .Split(new[] { ' ', '\t', '\r', '\n', '?', '.', ',', ':', ';', '!', '"', '\'', '(', ')', '[', ']', '{', '}' },
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 }
 

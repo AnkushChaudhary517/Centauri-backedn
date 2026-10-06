@@ -75,18 +75,18 @@ public sealed class GeminiClient : IGeminiClient
         CancellationToken ct)
     {
         var prompt =
-            "Generate a distinct list of additional SEO questions for keyword \"" + keyword + "\".\n" +
-            "The questions should be useful, non-redundant, and not already answered by the top results.\n" +
-            "Do NOT repeat or paraphrase any of the already-answered questions below.\n" +
-            "Prefer new angles, gaps, and buyer intent questions that genuinely add value beyond what is already covered.\n\n" +
-            "Already-answered questions to exclude (strictly):\n" +
+            "Generate only completely NEW SEO questions for keyword \"" + keyword + "\" that are NOT already covered.\n" +
+            "CRITICAL: Do NOT include any question that is the same as, paraphrases, or is semantically similar to the already-answered questions below.\n" +
+            "CRITICAL: Do NOT include duplicate or paraphrased versions of questions from the candidate pool.\n" +
+            "Only include questions that represent genuinely new gaps, untapped buyer intent, or different angles.\n\n" +
+            "Already-answered questions (STRICTLY EXCLUDE THESE and any similar/paraphrased versions):\n" +
             (alreadyAnsweredQuestions.Count == 0
                 ? "<none>"
                 : string.Join("\n", alreadyAnsweredQuestions.Select((q, i) => $"{i + 1}. {q}"))) + "\n\n" +
-            "Candidate question pool (use only as context; do not repeat from it unless they are genuinely new):\n" +
+            "Candidate question pool (reference only; do not repeat):\n" +
             string.Join("\n", candidateQuestions.Select((q, i) => $"{i + 1}. {q}")) + "\n\n" +
             "Ranking-page corpus:\n" + Trim(pageCorpus, 30000) + "\n\n" +
-            "Return JSON only: {\"questions\":[{\"question\":\"...\",\"answered\":false,\"intentRelevance\":0..1,\"demandProxy\":0..1,\"uniqueness\":0..1}]}";
+            "Return JSON only with questions that are COMPLETELY NEW and DISTINCT: {\"questions\":[{\"question\":\"...\",\"answered\":false,\"intentRelevance\":0..1,\"demandProxy\":0..1,\"uniqueness\":0..1}]}";
 
         return GenerateJsonAsync<AiQuestionAnalysis>(prompt, _modelTagging, ct);
     }
@@ -153,14 +153,19 @@ public sealed class GeminiClient : IGeminiClient
         EnsureEnabled();
         var accessToken = await GetAccessTokenAsync();
         var url = $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/projects/{Uri.EscapeDataString(_gcpProject)}/locations/{Uri.EscapeDataString(_gcpLocation)}/publishers/google/models/{Uri.EscapeDataString(model)}:generateContent";
-        using var req = new HttpRequestMessage(HttpMethod.Post, url);
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-        req.Content = JsonContent.Create(new
+        HttpRequestMessage CreateRequest()
         {
-            contents = new[] { new { role = "user", parts = new[] { new { text = prompt } } } },
-            generationConfig = new { responseMimeType = "application/json", temperature = 0.1 }
-        });
-        using var response = await _http.SendAsync(req, ct);
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            request.Content = JsonContent.Create(new
+            {
+                contents = new[] { new { role = "user", parts = new[] { new { text = prompt } } } },
+                generationConfig = new { responseMimeType = "application/json", temperature = 0.1 }
+            });
+            return request;
+        }
+
+        using var response = await VertexAiRequestLimiter.SendAsync(_http, CreateRequest, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         response.EnsureSuccessStatusCode();
 

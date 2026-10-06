@@ -82,7 +82,10 @@ if (useGoogleAds)
 {
     builder.Services.AddScoped<IKeywordDataClient, GoogleAdsClient>();
     builder.Services.AddScoped<ISerpDataClient, GoogleAdsClient>();
-    builder.Services.AddScoped<IBacklinkDataClient, GoogleAdsClient>();
+    // Google Ads does not publish referring-domain or authority metrics.  Use the
+    // configured backlink provider for those inputs so keyword difficulty is not
+    // calculated from default zeroes.
+    builder.Services.AddScoped<IBacklinkDataClient, DataForSeoClient>();
 }
 else
 {

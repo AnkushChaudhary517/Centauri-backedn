@@ -32,6 +32,12 @@ public sealed class AnalysisOptions
 {
     public int CacheDurationMinutes { get; set; } = 30;
     public int TopResultCount { get; set; } = 10;
+    // Keep synchronous analysis safely below the production gateway timeout.
+    // Remaining SERP rows still retain provider-supplied difficulty estimates.
+    public int MaxEnrichedSerpResults { get; set; } = 5;
+    public int EnrichmentParallelism { get; set; } = 5;
+    public int PerResultEnrichmentTimeoutSeconds { get; set; } = 12;
+    public int SitemapRequestTimeoutSeconds { get; set; } = 10;
     public double QuestionCoverageCoreThreshold { get; set; } = 0.60;
     public double QuestionCoverageCommonThreshold { get; set; } = 0.30;
     public double GapStrongThreshold { get; set; } = 75;

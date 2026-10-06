@@ -250,6 +250,10 @@ builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.ArticleUsageServi
 //builder.Services.AddSingleton<CentauriSeo.Core.Modules.Billing.BillingService>();
 
 var app = builder.Build();
+app.UseRouting();
+// Keep CORS outside the exception middleware so API-generated error responses
+// retain Access-Control-Allow-Origin instead of looking like browser CORS errors.
+app.UseCors("DefaultCorsPolicy");
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<UserContextMiddleware>();
 // Ensure database created (simple and safe)
@@ -264,9 +268,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-app.UseRouting();
-// MUST call UseCors before MapControllers / endpoints
-app.UseCors("DefaultCorsPolicy");
 app.UseAuthentication();              // since you configured JWT
 app.UseAuthorization();
 app.MapControllers();

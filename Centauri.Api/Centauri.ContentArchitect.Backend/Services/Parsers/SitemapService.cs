@@ -6,9 +6,16 @@ namespace Centauri.ContentArchitect.Backend.Services.Parsers;
 
 public sealed class SitemapService : ISitemapService
 {
-    private readonly HttpClient _http = new();
+    private readonly HttpClient _http;
     private readonly AnalysisOptions _options;
-    public SitemapService(IOptions<AnalysisOptions> options) => _options = options.Value;
+    public SitemapService(IOptions<AnalysisOptions> options)
+    {
+        _options = options.Value;
+        _http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(Math.Max(1, _options.SitemapRequestTimeoutSeconds))
+        };
+    }
 
     public async Task<List<string>> GetUrlsAsync(string websiteUrl, int maxUrls, CancellationToken ct)
     {

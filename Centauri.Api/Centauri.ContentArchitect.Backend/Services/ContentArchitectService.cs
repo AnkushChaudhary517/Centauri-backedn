@@ -149,18 +149,31 @@ public sealed class ContentArchitectService : IContentArchitectService
     private async Task EnrichTopResultsAsync(
         string keyword, IReadOnlyList<SerpResult> top10, List<string> warnings, CancellationToken ct)
     {
-        foreach (var batch in top10.Where(x => Uri.TryCreate(x.Url, UriKind.Absolute, out _)).Chunk(3))
+        if (top10.Count == 0)
+        {
+            warnings.Add("Keyword difficulty could not be calculated because the SERP provider returned no organic results.");
+            return;
+        }
+
+        var enrichmentLimit = Math.Clamp(_options.MaxEnrichedSerpResults, 1, top10.Count);
+        var candidates = top10
+            .Where(x => Uri.TryCreate(x.Url, UriKind.Absolute, out _))
+            .Take(enrichmentLimit)
+            .ToList();
+
+        foreach (var batch in candidates.Chunk(Math.Max(1, _options.EnrichmentParallelism)))
         {
             var results = await Task.WhenAll(batch.Select(result => EnrichTopResultAsync(keyword, result, ct)));
             warnings.AddRange(results.Where(message => message is not null).Select(message => message!));
         }
 
+        if (candidates.Count < top10.Count)
+            warnings.Add($"Enriched the top {candidates.Count} SERP results to keep analysis responsive; remaining results use the SERP provider metrics.");
+
         var analyzedPages = top10.Count(x => x.ContentCoverage > 0 || x.IntentMatch > 0);
         var backlinkRows = top10.Count(x => x.DomainStrength > 0 || x.ReferringDomains > 0);
 
-        if (top10.Count == 0)
-            warnings.Add("Keyword difficulty could not be calculated because the SERP provider returned no organic results.");
-        else if (analyzedPages == 0)
+        if (analyzedPages == 0)
             warnings.Add("Keyword difficulty content metrics are unavailable because no ranking pages could be analyzed by Gemini.");
 
         if (top10.Count > 0 && backlinkRows == 0)
@@ -169,12 +182,15 @@ public sealed class ContentArchitectService : IContentArchitectService
 
     private async Task<string?> EnrichTopResultAsync(string keyword, SerpResult result, CancellationToken ct)
     {
+        using var enrichmentCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        enrichmentCts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, _options.PerResultEnrichmentTimeoutSeconds)));
+
         try
         {
             // Backlinks do not depend on page parsing, so start that request immediately.
-            var backlinksTask = _backlinks.GetBacklinkDataAsync(result.Url, ct);
-            var page = await _parser.ParseAsync(result.Url, ct);
-            var analysis = await _gemini.AnalyzePageAsync(keyword, page.Text, string.Join("\n", page.Headings), ct);
+            var backlinksTask = _backlinks.GetBacklinkDataAsync(result.Url, enrichmentCts.Token);
+            var page = await _parser.ParseAsync(result.Url, enrichmentCts.Token);
+            var analysis = await _gemini.AnalyzePageAsync(keyword, page.Text, string.Join("\n", page.Headings), enrichmentCts.Token);
             var backlinks = await backlinksTask;
 
             result.ReferringDomains = Math.Max(0, backlinks.ReferringDomains);
@@ -187,6 +203,10 @@ public sealed class ContentArchitectService : IContentArchitectService
             result.SourceDensity = Math.Max(0, analysis.SourceDensity);
             result.ExtractedText = page.Text;
             return null;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return $"Timed out enriching SERP URL {result.Url}; keeping its SERP-provider metrics.";
         }
         catch (Exception ex)
         {

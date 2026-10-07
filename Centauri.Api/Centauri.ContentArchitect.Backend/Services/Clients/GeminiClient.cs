@@ -78,7 +78,8 @@ public sealed class GeminiClient : IGeminiClient
             "Generate only completely NEW SEO questions for keyword \"" + keyword + "\" that are NOT already covered.\n" +
             "CRITICAL: Do NOT include any question that is the same as, paraphrases, or is semantically similar to the already-answered questions below.\n" +
             "CRITICAL: Do NOT include duplicate or paraphrased versions of questions from the candidate pool.\n" +
-            "Only include questions that represent genuinely new gaps, untapped buyer intent, or different angles.\n\n" +
+            "Only include questions that represent genuinely new gaps, untapped buyer intent, or different angles.\n" +
+            "Return exactly 10 questions whenever ten genuinely distinct gaps exist; otherwise return only the distinct gaps that exist.\n\n" +
             "Already-answered questions (STRICTLY EXCLUDE THESE and any similar/paraphrased versions):\n" +
             (alreadyAnsweredQuestions.Count == 0
                 ? "<none>"

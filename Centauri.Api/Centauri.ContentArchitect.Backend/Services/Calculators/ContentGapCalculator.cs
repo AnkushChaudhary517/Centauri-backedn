@@ -34,11 +34,11 @@ public sealed class ContentGapCalculator
             });
         }
 
-        var rankedGaps = output.OrderByDescending(x => x.Score).ToList();
+        var rankedGaps = output.OrderByDescending(x => x.Score).Take(10).ToList();
         return new ContentGapsResult
         {
             Gaps = rankedGaps,
-            TopQuestions = rankedGaps.Take(10).ToList()
+            TopQuestions = rankedGaps
         };
     }
 }

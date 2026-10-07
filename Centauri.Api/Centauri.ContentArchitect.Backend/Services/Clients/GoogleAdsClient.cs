@@ -322,11 +322,31 @@ Rules:
         var accessToken = await GetAccessTokenAsync();
         var url = $"https://{_gcpLocation}-aiplatform.googleapis.com/v1/projects/{Uri.EscapeDataString(_gcpProject)}/locations/{Uri.EscapeDataString(_gcpLocation)}/publishers/google/models/{Uri.EscapeDataString(_modelDefault)}:generateContent";
 
-        var prompt = $"Generate keyword ideas for '{keyword}' for country '{country}' and language '{language}'. " +
-            "Return exactly one complete JSON object only with fields: keyword, searchVolume, cpc, competitionLevel, monthlySearches, ideas. " +
-            "Do not return markdown, explanations, comments, or text before/after the JSON. " +
-            "Keep arrays compact and finish the JSON object before the output limit.";
+        var prompt = $@"Act as an expert SEO research analyst.
 
+Perform a precise market-demand estimation for the following seed keyword:
+- Keyword: '{keyword}'
+- Country/Market: '{country}'
+- Language: '{language}'
+
+Estimation Guidelines:
+1. 'searchVolume': Estimate the realistic AVERAGE MONTHLY search volume for this exact market based on search intent, regional population, and industry benchmark data.
+2. 'cpc': Estimate advertiser Cost-Per-Click in USD based on competitive commercial intent.
+3. 'competitionLevel': Output exactly 'Low', 'Medium', or 'High'.
+4. 'ideas': Provide 8 to 10 distinct, localized long-tail keyword variations in {language} with their monthly search values and competition levels
+
+Output Constraints:
+Return EXACTLY ONE raw JSON object only. No markdown formatting (no ```json wrappers), no explanatory text, and no commentary before or after JSON.
+
+Required JSON Structure:
+{{
+  ""keyword"": ""{keyword}"",
+  ""searchVolume"": 0,
+  ""cpc"": 0.0,
+  ""competitionLevel"": ""Low"",
+  ""ideas"": [
+{{""searchVolume"":5000,""keyword"":"""",""competitionLevel"":""High""}}]
+}}";
         HttpRequestMessage CreateRequest()
         {
             var request = new HttpRequestMessage(HttpMethod.Post, url);
@@ -339,12 +359,20 @@ Rules:
                     {
                         role = "user",
                         parts = new[] { new { text = prompt } }
-                    }
+                    },
+
+                },
+                tools = new[]
+                {
+                new
+                {
+                    googleSearch = new { }
+                }
                 }
                 ,
                 generationConfig = new
                 {
-                    responseMimeType = "application/json",
+                    //responseMimeType = "application/json",
                     temperature = 0.1,
                     maxOutputTokens = 4096
                 }

@@ -17,13 +17,23 @@ public sealed class AnalysisController : ControllerBase
     private readonly IGeminiClient _gemini;
     private readonly IMemoryCache _cache;
     private readonly AnalysisOptions _analysisOptions;
+    private readonly IKeywordDataClient _keywords;
 
-    public AnalysisController(IContentArchitectService service, IGeminiClient gemini, IMemoryCache cache, IOptions<AnalysisOptions> analysisOptions)
+    public AnalysisController(IContentArchitectService service, IGeminiClient gemini, IMemoryCache cache, IOptions<AnalysisOptions> analysisOptions,
+        IKeywordDataClient keywords)
     {
         _service = service;
         _gemini = gemini;
         _cache = cache;
         _analysisOptions = analysisOptions.Value;
+        _keywords = keywords;
+    }
+
+    [HttpPost("analyze-kwyword")]
+    public async Task<ActionResult<KeywordApiResult>> AnalyzeKeyword([FromBody] AnalysisRequest request, CancellationToken cancellationToken)
+    {
+        var res =  await _keywords.GetKeywordDataAsync(request.PrimaryKeyword, request.TargetRegion, request.Language, cancellationToken);
+        return Ok(res);
     }
 
     [HttpPost("analyze")]

@@ -65,14 +65,17 @@ public sealed class ContentArchitectService : IContentArchitectService
             SecondaryClusters = BuildClusters(keywordApi, request.PrimaryKeyword)
         };
 
-        var top10 = serpApi.OrganicResults.Take(5).ToList();
+        var top10 = serpApi.OrganicResults.Take(10).ToList();
 
+        // Independent of competitor enrichment: run sitemap/indexability work while
+        // page fetches, backlink requests, and Gemini enrichment are in progress.
+        var siteIndexTask = BuildIndexabilityAsync(request.TargetUrl, ct, warnings);
         await EnrichTopResultsAsync(request.PrimaryKeyword, top10, warnings, ct);
 
         var addressable = _keywordCalculator.Calculate(keywordData);
         var kd = _kd.Calculate(top10);
 
-        var siteIndex = await BuildIndexabilityAsync(request.TargetUrl, ct, warnings);
+        var siteIndex = await siteIndexTask;
         var indexability = _indexability.Calculate(siteIndex);
 
         var clickability = CalculateSerpClickability(serpApi);
@@ -94,7 +97,12 @@ public sealed class ContentArchitectService : IContentArchitectService
             string.Join("\n\n", top10.Select(x => x.Title + "\n" + x.ExtractedText)),
             ct);
 
-        var gaps = _gaps.Calculate(extraQAi.Questions, qAnswered.Questions);
+        var generatedQuestions = extraQAi.Questions
+            .GroupBy(question => question.Question.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(10)
+            .ToList();
+        var gaps = _gaps.Calculate(generatedQuestions, qAnswered.Questions);
 
         var contentAggregate = await BuildEeatAggregateAsync(request, top10, qAnswered, gaps, ct);
         var eeat = _eeat.Calculate(contentAggregate);
@@ -156,7 +164,7 @@ public sealed class ContentArchitectService : IContentArchitectService
         }
 
         var enrichmentLimit = Math.Clamp(_options.MaxEnrichedSerpResults, 1, top10.Count);
-        var candidates = top10
+        var candidates = top10.Take(5)
             .Where(x => Uri.TryCreate(x.Url, UriKind.Absolute, out _))
             .Take(enrichmentLimit)
             .ToList();
@@ -167,17 +175,17 @@ public sealed class ContentArchitectService : IContentArchitectService
             warnings.AddRange(results.Where(message => message is not null).Select(message => message!));
         }
 
-        if (candidates.Count < top10.Count)
-            warnings.Add($"Enriched the top {candidates.Count} SERP results to keep analysis responsive; remaining results use the SERP provider metrics.");
+        //if (candidates.Count < top10.Count)
+        //    warnings.Add($"Enriched the top {candidates.Count} SERP results to keep analysis responsive; remaining results use the SERP provider metrics.");
 
-        var analyzedPages = top10.Count(x => x.ContentCoverage > 0 || x.IntentMatch > 0);
-        var backlinkRows = top10.Count(x => x.DomainStrength > 0 || x.ReferringDomains > 0);
+        //var analyzedPages = top10.Count(x => x.ContentCoverage > 0 || x.IntentMatch > 0);
+        //var backlinkRows = top10.Count(x => x.DomainStrength > 0 || x.ReferringDomains > 0);
 
-        if (analyzedPages == 0)
-            warnings.Add("Keyword difficulty content metrics are unavailable because no ranking pages could be analyzed by Gemini.");
+        //if (analyzedPages == 0)
+        //    warnings.Add("Keyword difficulty content metrics are unavailable because no ranking pages could be analyzed by Gemini.");
 
-        if (top10.Count > 0 && backlinkRows == 0)
-            warnings.Add("Keyword difficulty authority and link metrics are unavailable because the configured backlink provider returned no data.");
+        //if (top10.Count > 0 && backlinkRows == 0)
+        //    warnings.Add("Keyword difficulty authority and link metrics are unavailable because the configured backlink provider returned no data.");
     }
 
     private async Task<string?> EnrichTopResultAsync(string keyword, SerpResult result, CancellationToken ct)

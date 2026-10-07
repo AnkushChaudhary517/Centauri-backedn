@@ -23,18 +23,19 @@ public sealed class ContentArchitectService : IContentArchitectService
     private readonly ContentGapCalculator _gaps;
     private readonly EeatInformationGainCalculator _eeat;
     private readonly AnalysisOptions _options;
+    private readonly HttpClient _httpClient;
 
     public ContentArchitectService(
         IKeywordDataClient keywords, ISerpDataClient serp, IBacklinkDataClient backlinks,
         ISearchConsoleClient gsc, IPublicIndexabilityClient publicIndexability, IGeminiClient gemini, IWebPageParser parser, ISitemapService sitemap,
         IKeywordCalculator keywordCalculator, KeywordDifficultyCalculator kd, IndexabilityCalculator indexability,
         TrafficPotentialCalculator traffic, QuestionCoverageCalculator questions, ContentGapCalculator gaps,
-        EeatInformationGainCalculator eeat, IOptions<AnalysisOptions> options)
+        EeatInformationGainCalculator eeat, IOptions<AnalysisOptions> options, HttpClient httpClient)
     {
         _keywords = keywords; _serp = serp; _backlinks = backlinks; _gsc = gsc; _publicIndexability = publicIndexability; _gemini = gemini;
         _parser = parser; _sitemap = sitemap; _keywordCalculator = keywordCalculator; _kd = kd;
         _indexability = indexability; _traffic = traffic; _questions = questions; _gaps = gaps; _eeat = eeat;
-        _options = options.Value;
+        _options = options.Value; _httpClient = httpClient;
     }
 
     public async Task<AnalysisResponse> AnalyzeAsync(AnalysisRequest request, CancellationToken ct)
@@ -65,7 +66,12 @@ public sealed class ContentArchitectService : IContentArchitectService
             SecondaryClusters = BuildClusters(keywordApi, request.PrimaryKeyword)
         };
 
-        var top10 = serpApi.OrganicResults.Take(10).ToList();
+        // Validate URLs and filter out any that don't respond with a success status
+        var top10 = await ValidateAndFilterUrlsAsync(serpApi.OrganicResults, 10, ct);
+        if (top10.Count == 0)
+        {
+            warnings.Add("No valid URLs found in the top results. All URLs failed validation or returned non-success status codes.");
+        }
 
         // Independent of competitor enrichment: run sitemap/indexability work while
         // page fetches, backlink requests, and Gemini enrichment are in progress.
@@ -420,6 +426,64 @@ public sealed class ContentArchitectService : IContentArchitectService
             },
             Warnings = warnings
         };
+    }
+
+    /// <summary>
+    /// Validates URLs by making a HEAD request and returns only those with successful status codes.
+    /// Continues fetching results until we have the requested count or run out of candidates.
+    /// </summary>
+    private async Task<List<SerpResult>> ValidateAndFilterUrlsAsync(
+        IEnumerable<SerpResult> results, int maxCount, CancellationToken ct)
+    {
+        var validResults = new List<SerpResult>();
+        
+        foreach (var result in results)
+        {
+            if (validResults.Count >= maxCount)
+                break;
+
+            if (await IsUrlValidAsync(result.Url, ct))
+            {
+                validResults.Add(result);
+            }
+        }
+
+        return validResults;
+    }
+
+    /// <summary>
+    /// Checks if a URL is accessible by making a HEAD request with a short timeout.
+    /// Returns true if the response status is successful (2xx), false otherwise.
+    /// </summary>
+    private async Task<bool> IsUrlValidAsync(string url, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            var request = new HttpRequestMessage(HttpMethod.Head, uri);
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            
+            return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (HttpRequestException)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static int StableHash(string value)

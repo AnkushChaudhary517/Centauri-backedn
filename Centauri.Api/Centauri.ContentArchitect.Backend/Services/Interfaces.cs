@@ -4,7 +4,7 @@ namespace Centauri.ContentArchitect.Backend.Services;
 
 public interface IContentArchitectService
 {
-    Task<AnalysisResponse> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken);
+    Task<AnalysisResponse> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken, string analysisId = "");
 }
 public interface IKeywordDataClient
 {

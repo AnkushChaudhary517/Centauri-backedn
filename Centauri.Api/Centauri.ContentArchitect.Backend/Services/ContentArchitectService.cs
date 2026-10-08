@@ -1,6 +1,7 @@
 using Centauri.ContentArchitect.Backend.Configuration;
 using Centauri.ContentArchitect.Backend.Models;
 using Centauri.ContentArchitect.Backend.Services.Calculators;
+using CentauriSeo.Infrastructure.Services;
 using Microsoft.Extensions.Options;
 
 namespace Centauri.ContentArchitect.Backend.Services;
@@ -24,24 +25,29 @@ public sealed class ContentArchitectService : IContentArchitectService
     private readonly EeatInformationGainCalculator _eeat;
     private readonly AnalysisOptions _options;
     private readonly HttpClient _httpClient;
+    private readonly IAnalysisProgressReporter _progressReporter;
 
     public ContentArchitectService(
         IKeywordDataClient keywords, ISerpDataClient serp, IBacklinkDataClient backlinks,
         ISearchConsoleClient gsc, IPublicIndexabilityClient publicIndexability, IGeminiClient gemini, IWebPageParser parser, ISitemapService sitemap,
         IKeywordCalculator keywordCalculator, KeywordDifficultyCalculator kd, IndexabilityCalculator indexability,
         TrafficPotentialCalculator traffic, QuestionCoverageCalculator questions, ContentGapCalculator gaps,
-        EeatInformationGainCalculator eeat, IOptions<AnalysisOptions> options, HttpClient httpClient)
+        EeatInformationGainCalculator eeat, IOptions<AnalysisOptions> options, HttpClient httpClient, IAnalysisProgressReporter progressReporter)
     {
         _keywords = keywords; _serp = serp; _backlinks = backlinks; _gsc = gsc; _publicIndexability = publicIndexability; _gemini = gemini;
         _parser = parser; _sitemap = sitemap; _keywordCalculator = keywordCalculator; _kd = kd;
         _indexability = indexability; _traffic = traffic; _questions = questions; _gaps = gaps; _eeat = eeat;
-        _options = options.Value; _httpClient = httpClient;
+        _options = options.Value; _httpClient = httpClient; _progressReporter = progressReporter;
     }
 
-    public async Task<AnalysisResponse> AnalyzeAsync(AnalysisRequest request, CancellationToken ct)
+    public async Task<AnalysisResponse> AnalyzeAsync(AnalysisRequest request, CancellationToken ct, string analysisId = "")
     {
+        if (string.IsNullOrEmpty(analysisId))
+            analysisId = Guid.NewGuid().ToString();
+            
         var warnings = new List<string>();
 
+        _progressReporter.Report(analysisId, 5, "keywords", "Fetching keyword data...");
         var keywordTask = _keywords.GetKeywordDataAsync(request.PrimaryKeyword, request.TargetRegion, request.Language, ct);
         var intentTask = _keywords.GetKeywordIntentAsync(request.PrimaryKeyword, request.TargetRegion, request.Language, ct);
         var serpTask = _serp.GetSerpAsync(request.PrimaryKeyword, request.TargetRegion, request.Language, ct);
@@ -50,6 +56,8 @@ public sealed class ContentArchitectService : IContentArchitectService
         var keywordApi = await keywordTask;
         var keywordIntent = await intentTask;
         var serpApi = await serpTask;
+
+        _progressReporter.Report(analysisId, 15, "keywords", "Keyword data ready. Analyzing SERP results...");
 
         var keywordData = new KeywordData
         {
@@ -73,10 +81,14 @@ public sealed class ContentArchitectService : IContentArchitectService
             warnings.Add("No valid URLs found in the top results. All URLs failed validation or returned non-success status codes.");
         }
 
+        _progressReporter.Report(analysisId, 25, "serp", "Validating competitor URLs...");
+
         // Independent of competitor enrichment: run sitemap/indexability work while
         // page fetches, backlink requests, and Gemini enrichment are in progress.
         var siteIndexTask = BuildIndexabilityAsync(request.TargetUrl, ct, warnings);
         await EnrichTopResultsAsync(request.PrimaryKeyword, top10, warnings, ct);
+
+        _progressReporter.Report(analysisId, 40, "competitors", "Analyzing competitor content...");
 
         var addressable = _keywordCalculator.Calculate(keywordData);
         var kd = _kd.Calculate(top10);
@@ -84,12 +96,16 @@ public sealed class ContentArchitectService : IContentArchitectService
         var siteIndex = await siteIndexTask;
         var indexability = _indexability.Calculate(siteIndex);
 
+        _progressReporter.Report(analysisId, 50, "indexability", "Analyzing site indexability...");
+
         var clickability = CalculateSerpClickability(serpApi);
         var traffic = _traffic.Calculate(
             new[] { new KeywordCluster { CanonicalKeyword = request.PrimaryKeyword, Volume = keywordData.PrimarySearchVolume } }
                 .Concat(keywordData.SecondaryClusters).ToList(),
             indexability.ReadinessScore,
             clickability);
+
+        _progressReporter.Report(analysisId, 60, "questions", "Analyzing question coverage...");
 
         var questionUniverse = BuildQuestionUniverse(serpApi, top10);
         var qAnswered = _questions.Calculate(questionUniverse, top10);
@@ -108,13 +124,21 @@ public sealed class ContentArchitectService : IContentArchitectService
             .Select(group => group.First())
             .Take(10)
             .ToList();
+
+        _progressReporter.Report(analysisId, 75, "gaps", "Identifying content gaps...");
+
         var gaps = _gaps.Calculate(generatedQuestions, qAnswered.Questions);
+
+        _progressReporter.Report(analysisId, 85, "eeat", "Calculating EEAT metrics...");
 
         var contentAggregate = await BuildEeatAggregateAsync(request, top10, qAnswered, gaps, ct);
         var eeat = _eeat.Calculate(contentAggregate);
 
-        return new AnalysisResponse
+        _progressReporter.Report(analysisId, 95, "finalizing", "Finalizing analysis...");
+
+        var response = new AnalysisResponse
         {
+            AnalysisId = analysisId,
             PrimaryKeyword = request.PrimaryKeyword,
             TargetRegion = request.TargetRegion,
             Language = request.Language,
@@ -151,8 +175,12 @@ public sealed class ContentArchitectService : IContentArchitectService
                 QuestionsAnswered = qAnswered,
                 AdditionalQuestions = gaps,
                 EeatInformationGain = eeat
-            }
+            },
+            IsCompleted = true
         };
+
+        _progressReporter.Report(analysisId, 100, "complete", "Analysis complete!", isCompleted: true);
+        return response;
     }
 
     /// <summary>
@@ -334,10 +362,10 @@ public sealed class ContentArchitectService : IContentArchitectService
         }
         redundancy = pairs == 0 ? 0 : redundancy / pairs;
 
-        var avgFer = top.Average(x => x.FirstHandEvidenceRate);
-        var avgOriginal = top.Average(x => 0.0); // AI original-data field is page-level and can be added to SerpResult if needed.
-        var sourceReq = Math.Clamp(top.Average(x => x.SourceDensity) / 10.0, 0, 1);
-        var authority = MetricMath.Clamp(top.Average(x => x.DomainStrength)) / 100.0;
+        var avgFer = top.Count == 0 ? 0 : top.Average(x => x.FirstHandEvidenceRate);
+        var avgOriginal = top.Count == 0 ? 0 : top.Average(x => 0.0); // AI original-data field is page-level and can be added to SerpResult if needed.
+        var sourceReq = top.Count == 0 ? 0 : Math.Clamp(top.Average(x => x.SourceDensity) / 10.0, 0, 1);
+        var authority = top.Count == 0 ? 0 : MetricMath.Clamp(top.Average(x => x.DomainStrength)) / 100.0;
 
         return Task.FromResult(new ContentAnalysisAggregate
         {

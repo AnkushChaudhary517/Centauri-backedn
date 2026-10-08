@@ -22,6 +22,9 @@ public sealed class AnalysisResponse
     public FoundationalData? Foundational { get; set; } = new();
     public IntermediateMetrics? Intermediate { get; set; } = new();
     public MetricResults? Metrics { get; set; } = new();
+    public bool IsCompleted { get; set; } = true;
+    public bool IsError { get; set; } = false;
+    public string? ErrorDetail { get; set; }
 }
 
 public sealed class AnalysisErrorResponse

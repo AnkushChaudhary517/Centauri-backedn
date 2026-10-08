@@ -2,6 +2,7 @@ using Centauri.ContentArchitect.Backend.Models;
 using Centauri.ContentArchitect.Backend.Services;
 using Centauri.ContentArchitect.Backend.Configuration;
 using Centauri.ContentArchitect.Backend.Extensions;
+using CentauriSeo.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -18,15 +19,17 @@ public sealed class AnalysisController : ControllerBase
     private readonly IMemoryCache _cache;
     private readonly AnalysisOptions _analysisOptions;
     private readonly IKeywordDataClient _keywords;
+    private readonly IAnalysisProgressReporter _progressReporter;
 
     public AnalysisController(IContentArchitectService service, IGeminiClient gemini, IMemoryCache cache, IOptions<AnalysisOptions> analysisOptions,
-        IKeywordDataClient keywords)
+        IKeywordDataClient keywords, IAnalysisProgressReporter progressReporter)
     {
         _service = service;
         _gemini = gemini;
         _cache = cache;
         _analysisOptions = analysisOptions.Value;
         _keywords = keywords;
+        _progressReporter = progressReporter;
     }
 
     [HttpPost("analyze-kwyword")]
@@ -48,19 +51,91 @@ public sealed class AnalysisController : ControllerBase
 
         try
         {
-            var result = await _service.AnalyzeAsync(request, cancellationToken);
-            //var test = System.IO.File.ReadAllText("AnalysisResponse.json");
-            //var result = JsonConvert.DeserializeObject<AnalysisResponse>(test);
-            StoreAnalysis(request, result);
-            return Ok(result);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return StatusCode(StatusCodes.Status499ClientClosedRequest, new AnalysisErrorResponse
+            var cacheKey = $"analyze__{request.PrimaryKeyword}_{request.TargetRegion}_{request.TargetUrl}";
+            var cacheKeyStarted = $"{cacheKey}__started";
+            var requestIdCacheKey = $"{cacheKey}__requestId";
+
+            var cachedData = _cache.Get(cacheKey);
+            var isAnalysisStarted = _cache.Get(cacheKeyStarted);
+
+            // If analysis is already in progress, return cached data with current progress
+            if (isAnalysisStarted != null)
             {
-                Error = "The analysis request was cancelled.",
-                StackTrace = Environment.StackTrace
-            });
+                var progressRequestId = _cache.Get<string>(requestIdCacheKey) ?? Guid.NewGuid().ToString();
+                _progressReporter.Report(progressRequestId, 2, "in_progress", "Analysis is already running. Retrieving current progress...");
+
+                if (cachedData != null)
+                {
+                    var options = new System.Text.Json.JsonSerializerOptions 
+                    { 
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
+                    var cachedResponse = System.Text.Json.JsonSerializer.Deserialize<AnalysisResponse>(cachedData?.ToString(), options);
+                    if (cachedResponse != null)
+                    {
+                        cachedResponse.AnalysisId = progressRequestId;
+                        return Ok(cachedResponse);
+                    }
+                }
+
+                // Return empty response with progress tracking
+                return Ok(new AnalysisResponse
+                {
+                    AnalysisId = progressRequestId,
+                    PrimaryKeyword = request.PrimaryKeyword,
+                    TargetRegion = request.TargetRegion,
+                    Targeturl = request.TargetUrl,
+                    IsCompleted = false,
+                    IsError = false
+                });
+            }
+
+            // Mark analysis as started
+            var analysisId = Guid.NewGuid().ToString();
+            _cache.Set(cacheKeyStarted, true, TimeSpan.FromMinutes(30));
+            _cache.Set(requestIdCacheKey, analysisId, TimeSpan.FromMinutes(30));
+
+            // Report initial progress
+            _progressReporter.Report(analysisId, 5, "initializing", "Starting analysis...");
+
+            // Return immediately with initial response
+            var initialResponse = new AnalysisResponse
+            {
+                AnalysisId = analysisId,
+                PrimaryKeyword = request.PrimaryKeyword,
+                TargetRegion = request.TargetRegion,
+                Targeturl = request.TargetUrl,
+                IsCompleted = false,
+                IsError = false
+            };
+
+            // Start background processing without blocking the HTTP response
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await _service.AnalyzeAsync(request, CancellationToken.None, analysisId);
+                    result.AnalysisId = analysisId;
+                    result.IsCompleted = true;
+                    result.IsError = false;
+
+                    // Cache the complete result
+                    _cache.Set(cacheKey, System.Text.Json.JsonSerializer.Serialize(result), TimeSpan.FromMinutes(60));
+
+                    // Report completion
+                    _progressReporter.Report(analysisId, 100, "complete", "Analysis complete!", isCompleted: true);
+
+                    // Store analysis
+                    StoreAnalysis(request, result);
+                }
+                catch (Exception ex)
+                {
+                    _progressReporter.Report(analysisId, 0, "error", $"Analysis failed: {ex.Message}", isCompleted: true, isError: true, errorDetail: ex.Message);
+                }
+            }, CancellationToken.None);
+
+            return Ok(initialResponse);
         }
         catch (Exception ex)
         {
@@ -70,6 +145,39 @@ public sealed class AnalysisController : ControllerBase
                 StackTrace = ex.StackTrace ?? ex.ToString()
             });
         }
+    }
+
+    [HttpGet("progress/{analysisId}")]
+    public ActionResult<object> GetAnalysisProgress(string analysisId)
+    {
+        if (string.IsNullOrWhiteSpace(analysisId))
+            return BadRequest("AnalysisId is required.");
+
+        var progress = _progressReporter.Get(analysisId);
+        if (progress == null)
+        {
+            return Ok(new
+            {
+                percentage = 0,
+                stage = "pending",
+                message = "Analysis has not started yet.",
+                isCompleted = false,
+                isError = false,
+                errorDetail = (string)null,
+                timestampUtc = DateTime.UtcNow.ToString("o")
+            });
+        }
+
+        return Ok(new
+        {
+            percentage = progress.Percentage,
+            stage = progress.Stage,
+            message = progress.Message,
+            isCompleted = progress.IsCompleted,
+            isError = progress.IsError,
+            errorDetail = progress.ErrorDetail,
+            timestampUtc = progress.TimestampUtc.ToString("o")
+        });
     }
 
     [HttpPost("generate-outline")]
